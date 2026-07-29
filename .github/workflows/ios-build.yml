@@ -1,0 +1,55 @@
+name: iOS build check
+
+# Compiles the Capacitor-wrapped iOS app on Apple's own macOS runners so the
+# native project (ios/) is continuously validated as buildable, without
+# needing any Apple Developer signing credentials — it targets the iOS
+# Simulator SDK, which never requires code signing. This is a build check,
+# not a release pipeline: it does not produce a distributable .ipa. See
+# docs/WIDGET_SETUP.md for turning this into a real signed app.
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "src/**"
+      - "ios/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ios-build.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "ios/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Sync native project (copies dist/ into ios/App/App/public, installs pods)
+        run: npx cap sync ios
+
+      - name: Build the App target for the Simulator (no signing required)
+        working-directory: ios/App
+        run: |
+          xcodebuild build \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
