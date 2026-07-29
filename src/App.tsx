@@ -14,6 +14,7 @@ import ViewerLanding from "./components/ViewerLanding";
 import { sanitizeCustomField } from "./lib/questions";
 import { validateDatabase } from "./lib/validate";
 import { serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped } from "./lib/exports";
+import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
 
 /* ============================================================
    Family Health Journal — MVP
@@ -6379,6 +6380,40 @@ export default function App({ viewer = false }) {
     saveTimer.current = setTimeout(() => { store.set(SKEY, JSON.stringify(db)); }, 500);
     return () => clearTimeout(saveTimer.current);
   }, [db]);
+
+  // Push a tiny summary to the iOS Home Screen widget (no-op outside the
+  // native shell — see src/lib/widgetBridge.ts). Same debounce as the save
+  // above so rapid taps in Quick Log don't spam the App Group write.
+  useEffect(() => {
+    if (viewer || !db || !loaded.current) return;
+    const t = setTimeout(() => {
+      try {
+        const entries = entriesFor(db);
+        const tpl = getProfileTemplate(db.profile);
+        const keyField = getField(tpl, tpl.keyMetric);
+        const today = entryOn(entries, todayStr());
+        const keyToday = keyField ? today?.answers[tpl.keyMetric] : null;
+        const trend = keyField ? trendFor(entries, tpl.keyMetric, keyField.dir) : { status: "nodata" };
+        const trendLabel = trend.status === "improving" ? "Improving"
+          : trend.status === "worsening" ? "Worsening"
+          : trend.status === "stable" ? "Steady" : "";
+        syncWidgetSnapshot({
+          streak: calcStreak(entries),
+          todayLogged: !!today?.quickLogCompleted || !!today?.detailedLogCompleted,
+          metricLabel: keyField ? keyField.label : "Log today",
+          metricValue: typeof keyToday === "number" ? String(keyToday) : "—",
+          trendLabel,
+        });
+      } catch (e) { /* widget sync is best-effort */ }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [db, viewer]);
+
+  // Tapping the iOS widget opens straight to today's Quick Log (no-op on web).
+  useEffect(() => {
+    if (viewer) return;
+    return onWidgetDeepLink(() => { setLogDate(todayStr()); setLogMode("quick"); setScreen("log"); });
+  }, [viewer]);
 
   const upsertEntry = (profileId, date, patch, mode) => {
     setDb((prev) => {

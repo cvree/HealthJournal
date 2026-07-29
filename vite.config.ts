@@ -40,5 +40,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    // Several suites mount the full App (React + recharts + xlsx) in jsdom;
+    // under CPU contention on small/CI runners the default 5s waitFor budget
+    // can time out even though nothing is actually wrong (observed directly:
+    // ~1s isolated vs 5s+ when all 6 suites run concurrently on 4 cores).
+    testTimeout: 15000,
   },
 } as any);

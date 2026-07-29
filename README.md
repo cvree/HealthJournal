@@ -73,6 +73,10 @@ The build ships a second page: **`/viewer.html`** — a read-only viewer for jou
 
 The production build ships a web app manifest and service worker (`vite-plugin-pwa`). Deploy `dist/` anywhere over HTTPS, open it on your phone, and use "Add to Home Screen" — the journal then launches full-screen and works fully offline. Icons live in `public/pwa-*.png`.
 
+## Native iOS app + Home Screen widget
+
+`ios/` contains a Capacitor-wrapped native project plus starter WidgetKit source (`ios/HealthJournalWidget/`) for a real Home Screen widget showing today's streak and key metric — data reaches it via an on-device App Group, no network involved. Finishing it requires a Mac + Xcode; see **[docs/WIDGET_SETUP.md](docs/WIDGET_SETUP.md)** for the full walkthrough.
+
 ## Push to GitHub
 
 ```bash
