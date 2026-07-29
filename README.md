@@ -34,6 +34,10 @@ First run shows the onboarding wizard. To skip straight to a fully populated app
 
 Clearing site data in the browser erases the journal. Export a JSON backup first.
 
+### Optional PIN lock
+
+Off by default — the app opens straight to your journal, one open profile, same as always. If this device is ever shared, turn on a 4-digit PIN in **Settings → App lock**. It re-locks whenever the app is backgrounded, and only a salted SHA-256 hash is stored (`src/lib/lock.ts`), in its own storage key that's never included in an exported backup. Forgetting the PIN never locks you out of your data: "Forgot your PIN?" removes the lock (not the journal) after a confirmation.
+
 ## Project layout
 
 ```

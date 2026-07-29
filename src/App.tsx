@@ -11,10 +11,12 @@ import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCar
 import VantaBackdrop from "./components/VantaBackdrop";
 import RecoveryScreen from "./components/RecoveryScreen";
 import ViewerLanding from "./components/ViewerLanding";
+import LockScreen from "./components/LockScreen";
 import { sanitizeCustomField } from "./lib/questions";
 import { validateDatabase } from "./lib/validate";
 import { serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped } from "./lib/exports";
 import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
+import { createPinRecord, verifyPin } from "./lib/lock";
 
 /* ============================================================
    Family Health Journal — MVP
@@ -696,6 +698,10 @@ function genSampleData() {
 /* ---------- persistence (window.storage with in-memory fallback) ---------- */
 
 const SKEY = "fhj_v1";
+// Deliberately its own key, never included in profile/entries — so the PIN
+// record never rides along in an exported JSON backup or the Fitbit-style
+// data model. See src/lib/lock.ts.
+const LOCK_KEY = "fhj_lock_v1";
 const mem = {};
 const store = {
   async get(k) {
@@ -3629,7 +3635,7 @@ function DataDurabilityCard({ db, setDb }) {
   );
 }
 
-function SettingsScreen({ db, setDb, goHome, goSetup, goImport }) {
+function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onSetupPin, onChangePin, onDisablePin }) {
   const prefs = db.profile.prefs || { sound: false, haptics: true };
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
@@ -3683,6 +3689,28 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport }) {
         <button onClick={goImport} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
           Import wearable data
         </button>
+      </Card>
+      <Card className="mt-3">
+        <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>App lock</div>
+        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+          {lockEnabled
+            ? "A PIN is required to open the app on this device, and it re-locks whenever you leave the app."
+            : "Off by default — the app opens straight to your journal, like today. Turn this on if this device is ever shared and you want a PIN before it opens."}
+        </p>
+        {lockEnabled ? (
+          <div className="flex flex-col gap-2">
+            <button onClick={onChangePin} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
+              Change PIN
+            </button>
+            <button onClick={onDisablePin} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: "#F6E9E7", color: "#8E3B2F" }}>
+              Turn off PIN lock
+            </button>
+          </div>
+        ) : (
+          <button onClick={onSetupPin} className="w-full py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: C.accent }}>
+            Turn on PIN lock
+          </button>
+        )}
       </Card>
       <Card className="mt-3">
         <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Disclaimer</div>
@@ -6334,6 +6362,11 @@ export default function App({ viewer = false }) {
   const [corrupt, setCorrupt] = useState(null); // { raw, detail } when saved data is unreadable
   const [viewerErr, setViewerErr] = useState(null);
   const [viewerBusy, setViewerBusy] = useState(false);
+  // App lock: undefined = still loading, null = no PIN set, {salt,hash} = PIN set.
+  // Off by default — one open profile, as today — until someone opts in via Settings.
+  const [lock, setLock] = useState(undefined);
+  const [unlocked, setUnlocked] = useState(false);
+  const [lockFlow, setLockFlow] = useState(null); // null | "setup" | "change-verify" | "change-create" | "disable-verify"
   const saveTimer = useRef(null);
   const loaded = useRef(false);
   const screenRef = useRef(null);
@@ -6373,6 +6406,26 @@ export default function App({ viewer = false }) {
       setDb(data);
     })();
   }, []);
+
+  // App lock: the viewer never carries a real journal, so it's never locked.
+  useEffect(() => {
+    if (viewer) { setLock(null); return; }
+    (async () => {
+      const raw = await store.get(LOCK_KEY);
+      let record = null;
+      if (raw) { try { record = JSON.parse(raw); } catch (e) { record = null; } }
+      setLock(record);
+    })();
+  }, [viewer]);
+
+  // Re-lock whenever the app is backgrounded, so a PIN actually protects
+  // against someone picking up the phone later — not just the first open.
+  useEffect(() => {
+    if (viewer || !lock) return;
+    const onVisibility = () => { if (document.hidden) setUnlocked(false); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [viewer, lock]);
 
   useEffect(() => {
     if (viewer || !db || !loaded.current) return; // read-only viewer never persists
@@ -6488,6 +6541,63 @@ export default function App({ viewer = false }) {
     setDb(migrateDb({ ...genSampleData(), ack: true, onboarded: true }));
   };
 
+  const handleUnlock = async (pin) => {
+    const ok = await verifyPin(pin, lock);
+    if (ok) { setUnlocked(true); feedback("save"); }
+    return ok;
+  };
+  const handleForgotPin = async () => {
+    if (window.confirm(
+      "Forgot your PIN? This removes the PIN lock but keeps all your journal data safe on this device. " +
+      "You can turn a new PIN on anytime in Settings."
+    )) {
+      await store.del(LOCK_KEY);
+      setLock(null);
+      setUnlocked(true);
+    }
+  };
+  const handleCreatePin = async (pin) => {
+    const record = await createPinRecord(pin);
+    await store.set(LOCK_KEY, JSON.stringify(record));
+    setLock(record);
+    setUnlocked(true);
+    setLockFlow(null);
+    feedback("save");
+    return true;
+  };
+  const handleVerifyForChange = async (pin) => {
+    const ok = await verifyPin(pin, lock);
+    if (ok) setLockFlow("change-create");
+    return ok;
+  };
+  const handleVerifyForDisable = async (pin) => {
+    const ok = await verifyPin(pin, lock);
+    if (ok) {
+      await store.del(LOCK_KEY);
+      setLock(null);
+      setLockFlow(null);
+      feedback("save");
+    }
+    return ok;
+  };
+
+  // App lock gates come first — before onboarding/corrupt-data/viewer screens,
+  // since those can surface raw journal content too.
+  if (!viewer && lock === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.sub }}>
+        <div className="font-display text-lg">Family Health Journal…</div>
+      </div>
+    );
+  }
+  if (!viewer && lock && !unlocked) {
+    return (
+      <LockScreen key="unlock-gate" mode="verify" title="Enter your PIN" subtitle="Health Journal is locked on this device."
+        tint={db?.profile ? getProfileTemplate(db.profile).color : undefined}
+        onSubmit={handleUnlock} onForgot={handleForgotPin} />
+    );
+  }
+
   if (viewer && !db) {
     return <ViewerLanding onFileText={openViewerBackup} onDemo={openViewerDemo} error={viewerErr} busy={viewerBusy} />;
   }
@@ -6527,6 +6637,32 @@ export default function App({ viewer = false }) {
   const entries = entriesFor(db);
   const tpl = getProfileTemplate(profile);
 
+  // Settings-driven PIN setup/change/disable flows — full-screen, same as unlock.
+  if (!viewer && lockFlow === "setup") {
+    return (
+      <LockScreen key="setup" mode="create" title="Choose a PIN" subtitle="You'll need this PIN to open Health Journal on this device."
+        tint={tpl.color} onSubmit={handleCreatePin} onCancel={() => setLockFlow(null)} />
+    );
+  }
+  if (!viewer && lockFlow === "change-verify") {
+    return (
+      <LockScreen key="change-verify" mode="verify" title="Enter your current PIN" tint={tpl.color}
+        onSubmit={handleVerifyForChange} onCancel={() => setLockFlow(null)} />
+    );
+  }
+  if (!viewer && lockFlow === "change-create") {
+    return (
+      <LockScreen key="change-create" mode="create" title="Choose a new PIN" tint={tpl.color}
+        onSubmit={handleCreatePin} onCancel={() => setLockFlow(null)} />
+    );
+  }
+  if (!viewer && lockFlow === "disable-verify") {
+    return (
+      <LockScreen key="disable-verify" mode="verify" title="Enter your PIN to turn off the lock" tint={tpl.color}
+        onSubmit={handleVerifyForDisable} onCancel={() => setLockFlow(null)} />
+    );
+  }
+
   const goHome = () => setScreen("dashboard");
   const goToLog = (d) => { if (viewer) return; setLogDate(d); setLogMode("quick"); setScreen("log"); };
   const goReport = (type) => { setReportParams({ type }); setScreen("report"); };
@@ -6545,7 +6681,9 @@ export default function App({ viewer = false }) {
     content = <DashboardScreen {...dashProps} />;
   } else if (screen === "settings") {
     content = <SettingsScreen db={db} setDb={setDb} goHome={goHome} goSetup={() => setScreen("setup")}
-      goImport={() => setScreen("fitbit")} />;
+      goImport={() => setScreen("fitbit")} lockEnabled={!!lock}
+      onSetupPin={() => setLockFlow("setup")} onChangePin={() => setLockFlow("change-verify")}
+      onDisablePin={() => setLockFlow("disable-verify")} />;
   } else if (screen === "setup") {
     content = <EditSetupScreen profile={profile} entries={entries} onSave={updateProfile} goBack={goHome} />;
   } else if (screen === "export") {
