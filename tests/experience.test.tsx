@@ -4,7 +4,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import React from "react";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import { causalLanguageAudit } from "../src/lib/validate";
 
 let I: any;
@@ -218,7 +218,11 @@ describe("swipe between report periods", () => {
       db, setDb: vi.fn(), params: { type: "week" }, goBack: () => {},
     }));
   };
-  const label = () => screen.getByText(/days? logged/i).parentElement!.textContent;
+  // scoped to the period-nav header (`.no-print`) so it can't also match the
+  // "quiet period" empty-state copy, which reuses the phrase "days logged"
+  // and would otherwise make this ambiguous whenever the current calendar
+  // period doesn't yet have 4+ logged days (sample data never logs "today").
+  const label = () => within(document.querySelector(".no-print")!).getByText(/days? logged/i).parentElement!.textContent;
   const area = () => document.querySelector(".print-area")!;
 
   it("horizontal swipe pages to the previous period; swipe back returns", async () => {
@@ -251,6 +255,15 @@ describe("swipe between report periods", () => {
 
   it("cannot swipe forward past the current period", async () => {
     renderReport();
+    // the default landing period is the best *reportable* one (>=4 logged
+    // days), which isn't necessarily offset 0 - e.g. sample data never logs
+    // "today", so a real current week with only a couple of days logged so
+    // far gets skipped in favor of the last full week. Jump to true offset 0
+    // via the "latest" affordance (a no-op if already there) before probing
+    // the forward-navigation cap.
+    const latestBtn = screen.queryByText("latest");
+    if (latestBtn) fireEvent.click(latestBtn);
+    await waitFor(() => expect(screen.queryByText("latest")).toBeNull());
     const start = label();
     fireEvent.pointerDown(area(), { clientX: 300, clientY: 300 });
     fireEvent.pointerMove(area(), { clientX: 220, clientY: 302 });
