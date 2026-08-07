@@ -85,10 +85,10 @@ history, enough to exercise the dashboard, charts, calendar, patterns, reports, 
 
 Everything is client-side, so "deploying" means serving a folder of static files.
 
-**GitHub Pages** is wired up already. In the repository, set **Settings → Pages → Source** to
-**GitHub Actions**; the `pages.yml` workflow then builds and publishes on every push to `main`.
-It reads the real Pages base path, so a project site at `user.github.io/HealthJournal/` works
-without editing anything.
+**GitHub Pages** is wired up and self-enabling. The `pages.yml` workflow builds and publishes
+on every push to `main`, turning Pages on itself the first time it runs (`enablement: true`), so
+there is no manual switch to find in Settings. It reads the real Pages base path, so a project
+site at `user.github.io/HealthJournal/` works without editing anything.
 
 **Anywhere else** (Netlify, Vercel, Cloudflare Pages, your own server):
 

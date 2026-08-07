@@ -41,7 +41,13 @@ jobs:
         # A project site lives at https://<owner>.github.io/<repo>/, a user or
         # custom-domain site at the root. `actions/configure-pages` reports the
         # real one, so the build is rebased correctly either way.
+        #
+        # enablement: true turns Pages on the first time this runs, instead of
+        # failing with "Get Pages site failed" until someone visits Settings →
+        # Pages by hand. It is a no-op on every run after that.
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Build for Pages
         env:
