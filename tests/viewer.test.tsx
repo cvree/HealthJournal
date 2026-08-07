@@ -95,6 +95,15 @@ describe("web viewer", () => {
     await openFile("{ not json at all");
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/couldn't be read/i));
     await openFile(JSON.stringify({ app: "Something Else" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/isn't a family health journal backup/i));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/isn't a health journal backup/i));
+  });
+
+  it("still opens backups written under the app's former name", async () => {
+    installMemStorage();
+    render(React.createElement(App, { viewer: true }));
+    // The fixture in this suite carries app: "Family Health Journal" — the
+    // pre-rename magic string. Journals exported years ago have to keep opening.
+    await openFile(JSON.stringify(dataBackup()));
+    await waitFor(() => expect(screen.getAllByText(/Read-only/i).length).toBeGreaterThan(0));
   });
 });

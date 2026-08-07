@@ -196,6 +196,36 @@ describe("editable report time frame", () => {
     expect(next.disabled).toBe(true);
   });
 
+  it("survives the card picker handing off to the report on the very first run", async () => {
+    // Regression: ReportScreen used to declare refs and a layout effect *after*
+    // its `if (needsPrefs) return <SwipeDeck/>` early return. The first render
+    // (picker) ran fewer hooks than the second (report), so finishing the deck
+    // threw React error #310 and dropped every new user into the error boundary
+    // the first time they opened a report. Hooks now all sit above that return.
+    const db = sample();
+    delete db.profile.reportPrefs; // undefined => the picker is shown
+    let current = db;
+    const setDb = vi.fn((updater: any) => {
+      current = typeof updater === "function" ? updater(current) : updater;
+      rerender(React.createElement(I.ReportScreen, {
+        db: current, setDb, params: { type: "week" }, goBack: () => {},
+      }));
+    });
+    const { rerender } = render(React.createElement(I.ReportScreen, {
+      db: current, setDb, params: { type: "week" }, goBack: () => {},
+    }));
+
+    const catalog = I.availableReportCards(I.getProfileTemplate(db.profile));
+    for (let i = 0; i < catalog.length; i++) {
+      fireEvent.click(screen.getByLabelText("include this card"));
+      await waitFor(() => {});
+    }
+    fireEvent.click(screen.getByText(/show my report/i));
+
+    await waitFor(() => expect(document.body.textContent).toMatch(/in review/i));
+    expect(document.body.textContent).not.toMatch(/something went wrong/i);
+  });
+
   it("thin periods show the friendly quiet state instead of a report", async () => {
     const db = sample();
     db.profile.reportPrefs = {};

@@ -1,4 +1,4 @@
-/* Shared data model for Family Health Journal.
+/* Shared data model for Health Journal.
    These types describe the shapes that already exist at runtime in App.tsx —
    they are the contract, verified against live data by src/lib/validate.ts and
    the test suite. New code must import from here; App.tsx adopts them
@@ -103,8 +103,20 @@ export interface TrackingSetup {
   photoBaselines?: Record<string, string>; // photo field key -> photoId
   reportPrefs?: Record<string, boolean>; // report card key -> included
   prefs?: UserSettings;
+  reminder?: DailyReminder;
+  /** ISO timestamp of the last restorable backup the user downloaded. */
+  lastBackupAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** Daily check-in reminder. See src/lib/reminders.ts for why there are two layers. */
+export interface DailyReminder {
+  enabled: boolean;
+  /** "HH:MM", 24-hour, local wall-clock time. */
+  time: string;
+  /** Fire a browser Notification too (needs granted permission). */
+  notify: boolean;
 }
 
 /* ---------- photos (blob index) ---------- */

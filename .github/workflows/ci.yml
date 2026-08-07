@@ -1,0 +1,26 @@
+name: CI
+
+# Typecheck, tests, and a production build on every push and PR. This is the
+# gate the Pages deploy waits on — nothing reaches users that hasn't been
+# through `npm run check`.
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck, test, build
+        run: npm run check

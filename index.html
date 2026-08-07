@@ -4,16 +4,68 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#F2F4F1" />
-    <meta name="description" content="Family Health Journal — a private, on-device daily health tracking journal. Not medical advice." />
-    <title>Family Health Journal</title>
+    <meta name="color-scheme" content="light" />
+
+    <title>Health Journal — private daily health tracking</title>
+    <meta
+      name="description"
+      content="A private daily health journal that lives on your device. Build a check-in around your own situation, watch trends over weeks, and print a summary for an appointment. No account, no server, no tracking. Not medical advice."
+    />
+
+    <!-- Link previews. og-image.png is generated at 1200x630 and ships with the app. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Health Journal" />
+    <meta property="og:title" content="Health Journal — your health, in your own words" />
+    <meta
+      property="og:description"
+      content="A daily check-in built around your situation. Trends over time, reports you can print for an appointment, and everything stored on your own device."
+    />
+    <meta property="og:image" content="%SITE%%BASE%og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Health Journal — your health, in your own words. No account, no server, no tracking, works offline." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Health Journal — your health, in your own words" />
+    <meta
+      name="twitter:description"
+      content="Private daily health tracking that never leaves your device. Not medical advice."
+    />
+    <meta name="twitter:image" content="%SITE%%BASE%og-image.png" />
+
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Health Journal" />
+
+    <!-- Rendered before React mounts so a slow first load on a phone shows the
+         product's own surface rather than a white rectangle. Removed by main.tsx. -->
+    <style>
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f2f4f1;
+        color: #66736d;
+        font: 500 17px/1.4 Georgia, "Times New Roman", serif;
+        transition: opacity 220ms ease;
+      }
+      #boot[hidden] {
+        display: none;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot">Health Journal…</div>
+    <noscript>
+      <p style="padding: 2rem; font: 16px/1.5 system-ui, sans-serif; color: #1f2b27">
+        Health Journal is a JavaScript app that runs entirely in your browser — there is no
+        server to fall back to. Please enable JavaScript to use it.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

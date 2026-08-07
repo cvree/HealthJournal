@@ -17,12 +17,27 @@ import { validateDatabase } from "./lib/validate";
 import { serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped } from "./lib/exports";
 import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
 import { createPinRecord, verifyPin } from "./lib/lock";
+import {
+  DEFAULT_REMINDER_TIME, isValidTime, formatTime, msUntilNext, buildReminderICS,
+  notificationPermission, requestNotificationPermission, showReminderNotification,
+} from "./lib/reminders";
+import {
+  storageStatus, requestPersistentStorage, backupNudge, describeBackupAge,
+  isIOSWebBrowser, isStandalone,
+} from "./lib/durability";
+import { screenFromSearch, clearDeepLink } from "./lib/deeplink";
 
 /* ============================================================
-   Family Health Journal — MVP
-   Private, mobile-first, multi-profile health tracking.
+   Health Journal
+   Private, mobile-first, on-device health tracking.
    Not medical advice. Tracks possible patterns only.
    ============================================================ */
+
+/* The name users see. Backup files still carry the original app string as
+   their magic value (see BACKUP_APP_IDS) so journals exported before the
+   rename keep restoring. */
+export const APP_NAME = "Health Journal";
+export const APP_VERSION = "1.0.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -939,13 +954,14 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     check: <path {...p} d="M5 12.5l4.5 4.5L19 7" />,
     plus: <path {...p} d="M12 5v14M5 12h14" />,
     x: <path {...p} d="M6 6l12 12M18 6L6 18" />,
+    print: <g><path {...p} d="M7 9V4h10v5M7 18H5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2" /><path {...p} d="M7 15h10v5H7z" /></g>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
 function Card({ children, className = "", style = {} }) {
   return (
-    <div className={"rounded-2xl p-4 " + className}
+    <div className={"fhj-card rounded-2xl p-4 " + className}
       style={{ background: C.card, border: `1px solid ${C.line}`, ...style }}>
       {children}
     </div>
@@ -2352,7 +2368,7 @@ function WeeklyBars({ entries, field, color }) {
   );
 }
 
-function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup }) {
+function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
@@ -2372,6 +2388,15 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
   const recent = [...entries].reverse().slice(0, 5);
   const photoFields = useMemo(() => tpl.fields.filter((f) => f.type === "photo"), [tpl]);
   const photoItems = useMemo(() => buildPhotoItems(tpl, entries), [tpl, entries]);
+  // Nobody else is holding a copy of this journal. Once it's big enough to
+  // hurt losing, say so — quietly, once, and only while it's actually true.
+  const nudge = viewer ? { show: false } : backupNudge({
+    lastBackupAt: profile.lastBackupAt,
+    entryCount: entries.length,
+    entriesSinceBackup: profile.lastBackupAt
+      ? entries.filter((e) => (e.createdAt || "") > profile.lastBackupAt).length
+      : undefined,
+  });
 
   if (!keyField || tpl.fields.length === 0) {
     return (
@@ -2414,6 +2439,24 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
           </button>
         )}
       </Card>
+
+      {/* backup nudge — the one thing this app can't do for you */}
+      {nudge.show && (
+        <Card className="mt-3" style={{ borderLeft: `3px solid ${C.accent}` }}>
+          <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>
+            Keep a copy
+          </div>
+          <p className="text-sm leading-relaxed mb-3">
+            {nudge.reason === "never"
+              ? `${entries.length} days are logged here and nowhere else. Save a backup file so a lost or wiped phone doesn't take them with it.`
+              : `Your last backup was ${nudge.ageDays} days ago, and you've logged since. A fresh one takes a couple of seconds.`}
+          </p>
+          <button onClick={goSettings}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+            Back up now
+          </button>
+        </Card>
+      )}
 
       {/* photo progress */}
       {photoFields.length > 0 && (
@@ -2717,7 +2760,7 @@ function wideTable(profile, entries) {
   return buildWideTable(getProfileTemplate(profile), profile, entries);
 }
 
-function ExportScreen({ db }) {
+function ExportScreen({ db, setDb }) {
   const profile = db.profile;
   const [range, setRange] = useState("30");
   const [from, setFrom] = useState(addDays(todayStr(), -29));
@@ -2738,13 +2781,13 @@ function ExportScreen({ db }) {
     const { header, rows } = wideTable(profile, inRange);
     const csv = toCSV([header, ...rows]);
     download(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }),
-      `family-health-journal_${stamp}.csv`);
+      `health-journal_${stamp}.csv`);
   };
 
   const exportXLSX = () => {
     const wb = XLSX.utils.book_new();
     const readme = [
-      ["Family Health Journal — Export"],
+      [`${APP_NAME} — Export`],
       ["Export date", new Date().toISOString()],
       ["Setup", getProfileTemplate(profile).label],
       ["Date range", bounds.label],
@@ -2794,18 +2837,19 @@ function ExportScreen({ db }) {
 
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     download(new Blob([out], { type: "application/octet-stream" }),
-      `family-health-journal_${stamp}.xlsx`);
+      `health-journal_${stamp}.xlsx`);
   };
 
   const exportJSON = () => {
     const payload = {
-      app: "Family Health Journal", exportedAt: new Date().toISOString(),
+      app: APP_NAME, exportedAt: new Date().toISOString(),
       dateRange: bounds.label, disclaimer: DISCLAIMER,
       profile, entries: inRange,
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
     };
     download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
-      `family-health-journal_backup_${stamp}.json`);
+      `health-journal_backup_${stamp}.json`);
+    if (setDb) markBackedUp(setDb);
   };
 
   const chip = (active, label, onClick, key) => (
@@ -3398,18 +3442,32 @@ async function buildFullBackup(db) {
     photos.push({ id, meta, full, thumb: thumb || null });
   }
   return {
-    app: "Family Health Journal", kind: "full", schemaVersion: SCHEMA_VERSION,
+    app: APP_NAME, kind: "full", schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(), disclaimer: DISCLAIMER,
     profile: db.profile, entries: db.entries, reports: db.reports || [],
     photos,
   };
 }
 
+/* Stamp the moment a backup file actually reached the user's disk. This is the
+   only signal the app has for "your data exists somewhere other than here", and
+   the dashboard nudge reads it. Both the full backup and the JSON export count;
+   CSV/XLSX deliberately do not, since neither can be restored from. */
+function markBackedUp(setDb) {
+  setDb((prev) => ({
+    ...prev,
+    profile: { ...prev.profile, lastBackupAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  }));
+}
+
 /* Pure: is this JSON one of ours, and what's inside? Accepts both full
-   backups and the older data-only exports (which have no photos array). */
+   backups and the older data-only exports (which have no photos array).
+   The app used to be called "Family Health Journal"; files written under that
+   name have to keep opening, so both strings are recognised forever. */
+const BACKUP_APP_IDS = ["Family Health Journal", "Health Journal"];
 function validateBackup(obj) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { ok: false, error: "Not a valid backup file." };
-  if (obj.app !== "Family Health Journal") return { ok: false, error: "This file isn't a Family Health Journal backup." };
+  if (!BACKUP_APP_IDS.includes(obj.app)) return { ok: false, error: `This file isn't a ${APP_NAME} backup.` };
   if (!obj.profile || typeof obj.profile !== "object" || !Array.isArray(obj.entries)) {
     return { ok: false, error: "Backup is missing its setup or entries." };
   }
@@ -3504,12 +3562,126 @@ function photoLegendRows(tpl, entries, start, end) {
     }));
 }
 
+/* ---------- daily reminder ---------- */
+
+const DEFAULT_REMINDER = { enabled: false, time: DEFAULT_REMINDER_TIME, notify: false };
+const readReminder = (profile) => {
+  const r = profile && profile.reminder;
+  if (!r || typeof r !== "object") return { ...DEFAULT_REMINDER };
+  return {
+    enabled: r.enabled === true,
+    time: isValidTime(r.time) ? r.time : DEFAULT_REMINDER_TIME,
+    notify: r.notify === true,
+  };
+};
+
+/* Settings card: pick a check-in time, then choose how the phone should say so.
+   The calendar file is listed first on purpose — it's the only one of the two
+   that still works with the browser closed, and pretending otherwise would set
+   people up to quietly stop logging. */
+function ReminderCard({ profile, onSave }) {
+  const reminder = readReminder(profile);
+  const [perm, setPerm] = useState(() => notificationPermission());
+  const [msg, setMsg] = useState(null);
+
+  const patch = (next) => onSave({ ...reminder, ...next });
+
+  const addToCalendar = () => {
+    try {
+      const ics = buildReminderICS({
+        time: reminder.time,
+        title: `${APP_NAME} check-in`,
+        description: "Open your journal and log today. Everything stays on your device.",
+      });
+      download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "health-journal-daily-reminder.ics");
+      setMsg({ ok: true, text: "Calendar file saved — open it to add the daily reminder to your phone." });
+      feedback("save");
+    } catch (e) {
+      setMsg({ ok: false, text: "Couldn't build the calendar file on this device." });
+    }
+  };
+
+  const enableNotifications = async () => {
+    const result = await requestNotificationPermission();
+    setPerm(result);
+    if (result === "granted") {
+      patch({ notify: true });
+      setMsg({ ok: true, text: `Reminder set for ${formatTime(reminder.time)} on days you leave the app open.` });
+    } else if (result === "denied") {
+      setMsg({ ok: false, text: "Your browser blocked notifications for this site. The calendar reminder above works regardless." });
+    }
+  };
+
+  return (
+    <Card className="mt-3">
+      <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>Daily reminder</div>
+      <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+        A journal only helps if you write in it. Pick a time that fits your day — most people log in the evening.
+      </p>
+
+      <label className="flex items-center justify-between gap-3 py-1.5">
+        <span className="text-sm font-medium">Check in at</span>
+        <input type="time" value={reminder.time}
+          onChange={(e) => { if (isValidTime(e.target.value)) patch({ time: e.target.value, enabled: true }); }}
+          className="px-3 py-2 rounded-xl text-sm font-medium"
+          style={{ background: C.faint, border: `1px solid ${C.line}`, color: C.ink }} />
+      </label>
+
+      <div className="mt-3 flex flex-col gap-2">
+        <button onClick={addToCalendar}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+          Add {formatTime(reminder.time)} reminder to my calendar
+        </button>
+        <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
+          Downloads a small calendar file that repeats daily. Your phone does the reminding, so it still
+          works when the app is closed. Nothing is sent anywhere — the file never leaves your device
+          unless you put it somewhere yourself.
+        </p>
+      </div>
+
+      {perm !== "unsupported" && (
+        <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+          {perm === "granted" ? (
+            <button onClick={() => patch({ notify: !reminder.notify })}
+              className="w-full flex items-center justify-between py-2 text-left gap-3">
+              <span>
+                <span className="text-sm font-medium block">Also nudge me in the browser</span>
+                <span className="text-[11px] block" style={{ color: C.sub }}>
+                  Only while the app is open or running in the background.
+                </span>
+              </span>
+              <span className="w-10 h-6 rounded-full relative shrink-0 transition-colors"
+                style={{ background: reminder.notify ? C.accent : C.line }}>
+                <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all"
+                  style={{ left: reminder.notify ? "1.15rem" : "0.15rem" }} />
+              </span>
+            </button>
+          ) : (
+            <button onClick={enableNotifications} disabled={perm === "denied"}
+              className="w-full py-2.5 rounded-xl text-sm font-medium disabled:opacity-50" style={{ background: C.faint }}>
+              {perm === "denied" ? "Notifications blocked in browser settings" : "Also allow browser notifications"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {msg && (
+        <div className="mt-3 px-3 py-2 rounded-xl text-sm"
+          style={{ background: msg.ok ? C.faint : "#F6E9E7", color: msg.ok ? C.ink : "#8E3B2F" }}>
+          {msg.text}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /* Settings card: storage meter, free-up-space, full backup, restore. */
 function DataDurabilityCard({ db, setDb }) {
   const [usage, setUsage] = useState(null);
   const [ix, setIx] = useState({});
   const [busy, setBusy] = useState(null); // "backup" | "restore" | "free"
   const [msg, setMsg] = useState(null);
+  const [persist, setPersist] = useState(null);
   const fileRef = useRef(null);
 
   const refresh = async () => {
@@ -3518,13 +3690,23 @@ function DataDurabilityCard({ db, setDb }) {
     setUsage(storageUsage(db, index));
   };
   useEffect(() => { refresh(); }, [db.entries.length, Object.keys(db.profile.photoBaselines || {}).length]); // eslint-disable-line
+  useEffect(() => { storageStatus().then(setPersist).catch(() => {}); }, []);
+
+  const askPersist = async () => {
+    const status = await requestPersistentStorage();
+    setPersist(status);
+    setMsg(status.persisted
+      ? { ok: true, text: "This browser will now keep your journal even when storage runs low." }
+      : { ok: false, text: "The browser declined for now. Installing the app to your Home Screen usually earns it — and a downloaded backup protects you either way." });
+  };
 
   const fullBackup = async () => {
     setBusy("backup"); setMsg(null);
     try {
       const payload = await buildFullBackup(db);
       download(new Blob([JSON.stringify(payload)], { type: "application/json" }),
-        `family-health-journal_full-backup_${todayStr()}.json`);
+        `health-journal_full-backup_${todayStr()}.json`);
+      markBackedUp(setDb);
       setMsg({ ok: true, text: `Full backup saved — ${payload.entries.length} entries, ${payload.photos.length} photos.` });
     } catch (e) {
       setMsg({ ok: false, text: "Couldn't build the backup on this device." });
@@ -3580,6 +3762,13 @@ function DataDurabilityCard({ db, setDb }) {
   return (
     <Card className="mt-3">
       <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Backup & storage</div>
+      <div className="flex items-center justify-between text-sm mb-3">
+        <span style={{ color: C.sub }}>{describeBackupAge(db.profile.lastBackupAt)}</span>
+        {db.profile.lastBackupAt && (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+            style={{ background: C.faint, color: C.sub }}>{db.profile.lastBackupAt.slice(0, 10)}</span>
+        )}
+      </div>
       {usage && (
         <div className="rounded-xl px-3 py-2.5 mb-3 text-sm" style={{ background: C.faint }}>
           <div className="flex justify-between"><span style={{ color: C.sub }}>On this device</span><b>{fmtBytes(usage.totalBytes)}</b></div>
@@ -3602,6 +3791,35 @@ function DataDurabilityCard({ db, setDb }) {
         </button>
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden"
           onChange={(e) => onRestoreFile(e.target.files)} />
+      </div>
+
+      {/* Browsers evict site storage — Safari after 7 idle days, others under
+          pressure. Say so plainly and offer the one lever the platform gives us. */}
+      <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+        <div className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: C.sub }}>
+          Keeping it on this device
+        </div>
+        {persist && persist.persisted ? (
+          <p className="text-[12px] leading-relaxed" style={{ color: C.sub }}>
+            <b style={{ color: C.accent }}>Protected.</b> This browser has marked your journal as persistent —
+            it won't be cleared to free up space. Clearing site data by hand still erases it, so keep a backup.
+          </p>
+        ) : (
+          <>
+            <p className="text-[12px] leading-relaxed mb-2" style={{ color: C.sub }}>
+              Browsers can clear a site's storage on their own to reclaim space
+              {isIOSWebBrowser() && !isStandalone() ? ", and Safari clears it after about a week without a visit" : ""}
+              . Two things prevent that: asking the browser to keep it, and{" "}
+              {isStandalone() ? "the downloaded backup above" : "adding the app to your Home Screen"}.
+            </p>
+            {persist && persist.supported && (
+              <button onClick={askPersist}
+                className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
+                Ask this browser to keep my journal
+              </button>
+            )}
+          </>
+        )}
       </div>
       {usage && usage.photoCount > 0 && (
         <>
@@ -3644,6 +3862,9 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
   const setReportPrefs = (reportPrefs) => setDb((prev) => ({
     ...prev, profile: { ...prev.profile, reportPrefs, updatedAt: new Date().toISOString() },
   }));
+  const setReminder = (reminder) => setDb((prev) => ({
+    ...prev, profile: { ...prev.profile, reminder, updatedAt: new Date().toISOString() },
+  }));
   const prefToggle = (on, onClick, label, desc) => (
     <button onClick={onClick} className="w-full flex items-center justify-between py-2.5 text-left gap-3">
       <span>
@@ -3663,6 +3884,7 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
           Edit Survey / Tracking Setup
         </button>
       </Card>
+      <ReminderCard profile={db.profile} onSave={setReminder} />
       <Card className="mt-3">
         <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>Taps & sounds</div>
         {hapticsSupported() && prefToggle(prefs.haptics !== false,
@@ -3743,8 +3965,54 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
           </button>
         </div>
       </Card>
-      <p className="text-[11px] mt-3" style={{ color: C.sub }}>Family Health Journal · MVP · your data stays on this device.</p>
+      <PrivacyCard />
+      <p className="text-[11px] mt-3 text-center" style={{ color: C.sub }}>
+        {APP_NAME} {APP_VERSION} · your data stays on this device.
+      </p>
     </div>
+  );
+}
+
+/* The claim this whole app rests on, written out so it can be checked rather
+   than taken on faith. Every line here is verifiable from the source: there is
+   no analytics call, no fetch to a backend, and after first load no network
+   request at all — the fonts are bundled, not fetched from a CDN. */
+function PrivacyCard() {
+  const [open, setOpen] = useState(false);
+  const facts = [
+    ["No account", "There's no sign-up, no email, no password. Nothing identifies you to anyone."],
+    ["No server", "Your entries, photos, and reports are written to this browser's storage and never uploaded. There is no backend to upload them to."],
+    ["No tracking", "No analytics, no cookies, no advertising or third-party scripts of any kind."],
+    ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode."],
+    ["Your files, your move", "Exports and backups are ordinary files saved to your device. Where they go next is entirely up to you."],
+  ];
+  return (
+    <Card className="mt-3">
+      <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Privacy</div>
+      <div className="flex flex-col gap-2.5">
+        {facts.slice(0, open ? facts.length : 3).map(([title, body]) => (
+          <div key={title} className="flex gap-2.5">
+            <span className="shrink-0 mt-0.5"><Icon name="check" size={15} color={C.accent} /></span>
+            <span>
+              <span className="text-sm font-medium block">{title}</span>
+              <span className="text-[12px] leading-relaxed block" style={{ color: C.sub }}>{body}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      {!open && (
+        <button onClick={() => setOpen(true)} className="mt-3 text-sm font-medium" style={{ color: C.accent }}>
+          Read the rest
+        </button>
+      )}
+      {open && (
+        <p className="text-[11px] leading-relaxed mt-3 pt-3" style={{ color: C.sub, borderTop: `1px solid ${C.line}` }}>
+          The flip side of all this: nobody can recover your journal for you. If you clear this browser's
+          site data, uninstall the app, or lose the device, the only copy that survives is a backup file
+          you saved yourself.
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -4777,9 +5045,9 @@ function PhotoCompareCard({ groups, tint }) {
   const [ab, setAb] = useState(null);
   return (
     <ReportCardShell eyebrow="Photo comparison" tint={tint} footer={REPORT_COPY.photoFooter}>
-      <div data-noswipe className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollSnapType: "x mandatory" }}>
+      <div data-noswipe className="fhj-photo-pager flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollSnapType: "x mandatory" }}>
         {groups.map((g) => (
-          <div key={g.fieldKey} className="shrink-0" style={{ width: groups.length > 1 ? "86%" : "100%", scrollSnapAlign: "start" }}>
+          <div key={g.fieldKey} className="fhj-photo-page shrink-0" style={{ width: groups.length > 1 ? "86%" : "100%", scrollSnapAlign: "start" }}>
             <div className="text-sm font-semibold mb-1">{g.spot}</div>
             {g.ratingLabel && <div className="text-[10px] mb-2" style={{ color: C.sub }}>Rating shown: {g.ratingLabel}</div>}
             <button onClick={() => setAb(g)} className="w-full text-left" aria-label={`open full comparison for ${g.spot}`}>
@@ -4794,12 +5062,12 @@ function PhotoCompareCard({ groups, tint }) {
                 <DeltaBadge delta={g.b.rating - g.a.rating} dir="neutral" />
               </div>
             )}
-            <div className="text-[10px] mt-1 text-center" style={{ color: C.sub }}>Tap photos for full-screen slider</div>
+            <div className="text-[10px] mt-1 text-center no-print" style={{ color: C.sub }}>Tap photos for full-screen slider</div>
           </div>
         ))}
       </div>
       {groups.length > 1 && (
-        <div className="text-[10px] mt-2" style={{ color: C.sub }}>Swipe sideways for more body spots →</div>
+        <div className="text-[10px] mt-2 no-print" style={{ color: C.sub }}>Swipe sideways for more body spots →</div>
       )}
       {ab && <ABSlider a={ab.a} b={ab.b} ratingLabel={ab.spot} onClose={() => setAb(null)} />}
     </ReportCardShell>
@@ -4812,7 +5080,10 @@ function ReportCards({ cards, tint }) {
       {cards.map((card, i) => {
         if (card.type === "header") {
           return (
-            <Card key={i} className="mb-3 relative overflow-hidden" style={{ background: tint, border: "none" }}>
+            /* Hidden when printing — the print masthead already carries the
+               title, range, and day count, and this card's white-on-tint text
+               is unreadable once print styles flatten backgrounds to paper. */
+            <Card key={i} className="mb-3 relative overflow-hidden no-print" style={{ background: tint, border: "none" }}>
               <AmbientGlow tint="#FDFCF9" second="#C9A03C" opacity={0.3} />
               <div className="text-[10px] font-semibold uppercase tracking-wider relative" style={{ color: "rgba(255,255,255,0.75)" }}>
                 {card.periodType === "week" ? "Weekly report" : "Monthly report"}
@@ -5289,6 +5560,29 @@ function ReportScreen({ db, setDb, params, goBack }) {
     setDb((prev) => ({ ...prev, profile: { ...prev.profile, reportPrefs: prefs, updatedAt: new Date().toISOString() } }));
   };
 
+  /* Every hook in this component has to run before the card-picker early
+     return below. The picker only shows on the very first report, so a
+     hook declared after it would appear on the *next* render and trip
+     React's "rendered more hooks than during the previous render" —
+     which is exactly what used to crash the first report a user opened.
+     Both motion helpers tolerate a null ref, so running them while the
+     picker is up is a no-op. */
+  const revealRef = useRef(null);
+  const lastReveal = useRef(0);
+  const hswipe = useRef(null);
+  useLayoutEffect(() => {
+    // rapid ‹ ›/swipe flipping shouldn't strobe: within 350ms of the last
+    // change, cards appear instantly; once the person settles, animate
+    const now = Date.now();
+    const rapid = now - lastReveal.current < 350;
+    lastReveal.current = now;
+    if (rapid) { dirRef.current = 0; return; }
+    slideFrom(revealRef.current, dirRef.current); // directional continuity when navigating
+    dirRef.current = 0;
+    const kill = initReportReveal(revealRef.current);
+    return kill;
+  }, [cards]);
+
   if (needsPrefs) {
     return <SwipeDeck catalog={availableReportCards(tpl)} initialPrefs={null} tint={tpl.color} onDone={savePrefs} />;
   }
@@ -5320,25 +5614,9 @@ function ReportScreen({ db, setDb, params, goBack }) {
 
   const hasPhotoCard = (cards || []).some((c) => c.type === "photoCompare");
 
-  const revealRef = useRef(null);
-  const lastReveal = useRef(0);
-  useLayoutEffect(() => {
-    // rapid ‹ ›/swipe flipping shouldn't strobe: within 350ms of the last
-    // change, cards appear instantly; once the person settles, animate
-    const now = Date.now();
-    const rapid = now - lastReveal.current < 350;
-    lastReveal.current = now;
-    if (rapid) { dirRef.current = 0; return; }
-    slideFrom(revealRef.current, dirRef.current); // directional continuity when navigating
-    dirRef.current = 0;
-    const kill = initReportReveal(revealRef.current);
-    return kill;
-  }, [cards]);
-
   /* swipe left = forward in time, swipe right = back; axis-locked, and
      hands-off anywhere that owns its own horizontal gesture (photo compare,
      A/B slider, charts) */
-  const hswipe = useRef(null);
   const onSwipeDown = (e) => {
     if (saved) return;
     if (e.target.closest && e.target.closest("svg, [data-noswipe], input, button")) { hswipe.current = null; return; }
@@ -5405,10 +5683,23 @@ function ReportScreen({ db, setDb, params, goBack }) {
         </div>
       )}
       {saved && (
-        <div className="text-xs mb-2 px-3 py-2 rounded-xl" style={{ background: C.faint, color: C.sub }}>
+        <div className="text-xs mb-2 px-3 py-2 rounded-xl no-print" style={{ background: C.faint, color: C.sub }}>
           Saved report from {fmtNice(saved.createdAt.slice(0, 10))} — shown exactly as saved.
         </div>
       )}
+
+      {/* Printed-only masthead. On screen the range already sits in the pager
+          above; on paper — the version that gets handed to a clinician — the
+          page has to say what it is, whose logs it covers, and when it was made. */}
+      <div className="print-only print-masthead">
+        <div className="print-title">{APP_NAME} — {range.type === "month" ? "monthly" : "weekly"} summary</div>
+        <div className="print-meta">
+          <span>{profile.name || tpl.label}</span>
+          <span>{range.label}</span>
+          <span>{range.days} daily {range.days === 1 ? "entry" : "entries"}</span>
+          <span>Printed {fmtNice(todayStr())}</span>
+        </div>
+      </div>
       {!enough ? (
         <Card className="text-center py-8">
           <div className="font-display text-xl mb-1">Quiet {type}</div>
@@ -5453,7 +5744,18 @@ function ReportScreen({ db, setDb, params, goBack }) {
         <p className="text-[11px] mt-3 leading-relaxed" style={{ color: C.sub }}>
           {REPORT_COPY.footer} This report is a summary of your own logs, not medical advice.
         </p>
+        <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.sub }}>
+          <b>Print / PDF</b> produces a clean one-document version to bring to an appointment —
+          choose "Save as PDF" in the print dialog to keep a file.
+        </p>
       </div>}
+
+      {/* The printed page leaves the app; it has to carry its own caveat. */}
+      <div className="print-only print-footnote">
+        <p><b>{PATTERN_NOTE}</b></p>
+        <p>{DISCLAIMER}</p>
+        <p>Self-reported daily ratings recorded in {APP_NAME} {APP_VERSION}. Data stored on the author's own device.</p>
+      </div>
     </div>
   );
 }
@@ -5766,7 +6068,7 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
     <div className="px-4 pb-10">
       <div className="flex items-start justify-between pt-6 pb-2">
         <div>
-          <h1 className="font-display text-3xl leading-tight">Family Health Journal</h1>
+          <h1 className="font-display text-3xl leading-tight">{APP_NAME}</h1>
           <div className="text-sm mt-1" style={{ color: C.sub }}>
             {viewer ? "Read-only viewer · nothing is saved" : `${fmtNice(todayStr())} · private, on this device`}
           </div>
@@ -5793,7 +6095,7 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
       </div>
       <TrendsScreen profile={profile} entries={entries} openLog={openLog} goExport={goExport} goGallery={goGallery}
         goReport={goReport} reports={reports} openSavedReport={openSavedReport} deleteSavedReport={deleteSavedReport}
-        goSetup={goSetup} />
+        goSetup={goSetup} goSettings={goSettings} viewer={viewer} />
     </div>
   );
 }
@@ -6468,6 +6770,57 @@ export default function App({ viewer = false }) {
     return onWidgetDeepLink(() => { setLogDate(todayStr()); setLogMode("quick"); setScreen("log"); });
   }, [viewer]);
 
+  // Home Screen shortcuts ("Log today") arrive as ?screen=log. Consumed once,
+  // after the journal has loaded, then wiped from the address bar so a refresh
+  // doesn't drag the user back out of wherever they navigated to.
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (viewer || !db || !db.onboarded || deepLinked.current) return;
+    deepLinked.current = true;
+    const target = screenFromSearch(typeof window === "undefined" ? "" : window.location.search);
+    if (!target) return;
+    if (target === "log") { setLogDate(todayStr()); setLogMode("quick"); }
+    if (target === "report") setReportParams({ type: "week" });
+    setScreen(target);
+    clearDeepLink();
+  }, [viewer, db]);
+
+  // Daily reminder, browser layer. Only fires while the page is alive, which is
+  // exactly what the settings copy promises — the calendar file is what covers
+  // a closed browser. Skipped entirely once today is already logged.
+  useEffect(() => {
+    if (viewer || !db || !db.onboarded) return;
+    const reminder = readReminder(db.profile);
+    if (!reminder.notify || notificationPermission() !== "granted") return;
+
+    let timer = null;
+    const arm = () => {
+      const wait = msUntilNext(reminder.time);
+      if (wait == null) return;
+      timer = setTimeout(() => {
+        const today = entryOn(entriesFor(db), todayStr());
+        const logged = !!today?.quickLogCompleted || !!today?.detailedLogCompleted;
+        if (!logged) {
+          const streak = calcStreak(entriesFor(db));
+          showReminderNotification(
+            streak > 1 ? `Time for today's check-in — ${streak} days running.` : "Time for today's check-in.",
+          );
+        }
+        arm(); // roll forward to tomorrow
+      }, wait);
+    };
+    arm();
+    return () => { if (timer) clearTimeout(timer); };
+  }, [viewer, db]);
+
+  // Ask the browser to stop evicting this origin's storage. Chrome usually
+  // grants it silently for installed / returning visitors; a refusal is fine
+  // and simply leaves the Settings card's manual button in play.
+  useEffect(() => {
+    if (viewer || !db || !db.onboarded) return;
+    requestPersistentStorage().catch(() => {});
+  }, [viewer, db?.onboarded]);
+
   const upsertEntry = (profileId, date, patch, mode) => {
     setDb((prev) => {
       const now = new Date().toISOString();
@@ -6586,7 +6939,7 @@ export default function App({ viewer = false }) {
   if (!viewer && lock === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.sub }}>
-        <div className="font-display text-lg">Family Health Journal…</div>
+        <div className="font-display text-lg">{APP_NAME}…</div>
       </div>
     );
   }
@@ -6615,7 +6968,7 @@ export default function App({ viewer = false }) {
   if (!db) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.sub }}>
-        <div className="font-display text-lg">Family Health Journal…</div>
+        <div className="font-display text-lg">{APP_NAME}…</div>
       </div>
     );
   }
@@ -6687,7 +7040,7 @@ export default function App({ viewer = false }) {
   } else if (screen === "setup") {
     content = <EditSetupScreen profile={profile} entries={entries} onSave={updateProfile} goBack={goHome} />;
   } else if (screen === "export") {
-    content = <ExportScreen db={db} />;
+    content = <ExportScreen db={db} setDb={viewer ? null : setDb} />;
   } else if (screen === "log") {
     content = (
       <LogScreen profile={profile} entries={entries} date={logDate} setDate={setLogDate}
@@ -6713,9 +7066,27 @@ export default function App({ viewer = false }) {
     <div className="min-h-screen" style={{ background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
       <style>{`
         .font-display { font-family: 'Fraunces Variable', 'Fraunces', Georgia, serif; font-weight: 500; }
-        button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid ${C.accent}; outline-offset: 2px; }
+        button:focus-visible, input:focus-visible, textarea:focus-visible,
+        select:focus-visible, a:focus-visible, [role="button"]:focus-visible,
+        [tabindex]:not([tabindex="-1"]):focus-visible { outline: 2px solid ${C.accent}; outline-offset: 2px; border-radius: 6px; }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-        input[type=date] { -webkit-appearance: none; }
+        input[type=date], input[type=time] { -webkit-appearance: none; }
+
+        /* Skip link: off-canvas until a keyboard reaches it. */
+        .fhj-skip {
+          position: fixed; left: 50%; top: 0; transform: translate(-50%, -140%);
+          z-index: 60; padding: 0.6rem 1.1rem; border-radius: 0 0 0.75rem 0.75rem;
+          background: ${C.accent}; color: #fff; font-size: 0.85rem; font-weight: 600;
+          transition: transform 160ms ease;
+        }
+        .fhj-skip:focus { transform: translate(-50%, 0); }
+
+        /* Honour a system request for more contrast rather than keeping the
+           soft palette that makes this app calm but low-contrast. */
+        @media (prefers-contrast: more) {
+          body { color: #111A17; }
+          .fhj-card { border-color: #8FA096 !important; }
+        }
 
         /* motion system — CSS layer; Lenis + GSAP add smooth scroll and screen transitions */
         html { scroll-behavior: smooth; }
@@ -6765,25 +7136,78 @@ export default function App({ viewer = false }) {
           100% { opacity: 0; transform: translateY(230px) rotate(280deg); } }
         @keyframes fhjPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(51,104,90,0.45); } 50% { box-shadow: 0 0 0 7px rgba(51,104,90,0); } }
         .fhj-pulse { animation: fhjPulse 1.1s ease infinite; }
+        /* Blocks that exist only on paper. Kept out of the screen layout
+           entirely rather than visually hidden, so they never affect flow. */
+        .print-only { display: none; }
+
+        /* A printed report is the version that gets handed to a clinician, so
+           it is treated as its own document: no app chrome, ink-friendly
+           surfaces, and cards that don't get sliced across a page break. */
         @media print {
-          nav, header, .no-print { display: none !important; }
-          body, .min-h-screen { background: #fff !important; }
+          @page { margin: 14mm 12mm; }
+          nav, header, .no-print, .fhj-glow { display: none !important; }
+          .print-only { display: block !important; }
+          html, body, .min-h-screen { background: #fff !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .print-area { padding: 0 !important; }
+          /* The app is a 28rem phone column on screen; paper is not. */
+          .max-w-md { max-width: none !important; }
+          * { box-shadow: none !important; text-shadow: none !important;
+              animation: none !important; transition: none !important; }
+          /* Report cards are revealed by a GSAP ScrollTrigger, which leaves
+             everything below the fold at opacity 0 with a translate still
+             applied. Printing does not scroll, so without this the second
+             half of the report comes out as blank paper. */
+          .print-area, .print-area * {
+            opacity: 1 !important; visibility: visible !important;
+            transform: none !important; filter: none !important;
+          }
+          /* Cards keep a hairline rule instead of a fill — cheaper to print,
+             and the boundaries still read. */
+          .fhj-card, .print-area .rounded-2xl {
+            border: 1px solid #C9D2CC !important;
+            background: #fff !important;
+            break-inside: avoid; page-break-inside: avoid;
+          }
+          /* Horizontal pagers have no meaning on paper — anything past the
+             first page would simply be cut off. Stack them instead. */
+          .print-area .overflow-x-auto { overflow: visible !important; }
+          .fhj-photo-pager { display: block !important; }
+          .fhj-photo-page {
+            width: 100% !important; margin-bottom: 14px;
+            break-inside: avoid; page-break-inside: avoid;
+          }
+          .print-masthead {
+            border-bottom: 2px solid #1F2B27; padding-bottom: 8px; margin-bottom: 14px;
+          }
+          .print-title { font-family: 'Fraunces Variable', Georgia, serif; font-size: 18pt; }
+          .print-meta {
+            display: flex; flex-wrap: wrap; gap: 4px 16px;
+            font-size: 9pt; color: #46534E; margin-top: 4px;
+          }
+          .print-footnote {
+            margin-top: 18px; padding-top: 8px; border-top: 1px solid #C9D2CC;
+            font-size: 8pt; line-height: 1.45; color: #46534E;
+          }
+          .print-footnote p { margin-bottom: 4px; }
         }
       `}</style>
 
       <VantaBackdrop enabled={db.profile?.prefs?.backdrop === true} />
+      {/* Keyboard and screen-reader users land on the nav-skip before the
+          header controls; it stays out of the way until it's focused. */}
+      <a href="#main" className="fhj-skip">Skip to main content</a>
       <div className="max-w-md mx-auto relative" style={{ paddingBottom: "5.5rem", zIndex: 1 }}>
         {showHeader && (
           <header className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
             style={{ background: C.bg, borderBottom: `1px solid ${C.line}` }}>
-            <button onClick={goHome} aria-label="dashboard"
+            <button onClick={goHome} aria-label="Back to dashboard"
               className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
               style={{ background: C.card, border: `1px solid ${C.line}` }}>
               <Icon name="home" size={17} color={C.sub} />
             </button>
             <div className="flex-1 min-w-0">
-              <div className="font-display text-lg">{screenTitle}</div>
+              <h1 className="font-display text-lg">{screenTitle}</h1>
               <div className="text-[11px]" style={{ color: tpl.color }}>{tpl.label}</div>
             </div>
             {viewer && (
@@ -6796,14 +7220,14 @@ export default function App({ viewer = false }) {
         )}
 
         <ErrorBoundary onRecover={goHome}>
-          <div key={screen} ref={screenRef}>{content}</div>
+          <main id="main" key={screen} ref={screenRef} tabIndex={-1} style={{ outline: "none" }}>{content}</main>
         </ErrorBoundary>
 
         {!db.ack && (
           <DisclaimerModal onAck={() => setDb((prev) => ({ ...prev, ack: true }))} />
         )}
 
-        <nav className="fixed bottom-0 left-0 right-0 z-30">
+        <nav className="fixed bottom-0 left-0 right-0 z-30" aria-label="Main">
           <div className="max-w-md mx-auto px-3 pb-3">
             <div className="flex rounded-2xl overflow-hidden"
               style={{ background: C.card, border: `1px solid ${C.line}`, boxShadow: "0 6px 24px rgba(31,43,39,0.10)" }}>
@@ -6813,6 +7237,7 @@ export default function App({ viewer = false }) {
                 return (
                   <button key={n.id}
                     onClick={() => setScreen(n.id)}
+                    aria-current={active ? "page" : undefined}
                     className="flex-1 py-2.5 flex flex-col items-center gap-0.5">
                     <Icon name={n.icon} size={19} color={color} />
                     <span className="text-[10px] font-medium" style={{ color }}>{n.label}</span>

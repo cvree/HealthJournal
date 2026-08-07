@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# The backup viewer is a tool, not a page worth indexing.
+Disallow: /viewer.html

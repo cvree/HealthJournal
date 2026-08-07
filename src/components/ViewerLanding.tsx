@@ -1,4 +1,4 @@
-/* Read-only web viewer landing. Opens a Family Health Journal JSON backup
+/* Read-only web viewer landing. Opens a Health Journal JSON backup
    (data-only or full-with-photos) entirely in this browser tab — nothing is
    uploaded, nothing is saved. Meant for reviewing your journal on a desktop,
    or for a partner/clinician you've handed a backup file to. */
@@ -40,7 +40,7 @@ export default function ViewerLanding({
     >
       <div className="max-w-md mx-auto px-4 w-full py-10">
         <h1 className="text-3xl mb-1" style={{ fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, serif" }}>
-          Family Health Journal
+          Health Journal
         </h1>
         <div className="text-sm mb-6" style={{ color: C.sub }}>
           Read-only viewer · everything stays in this browser tab

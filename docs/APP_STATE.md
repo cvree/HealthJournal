@@ -1,4 +1,6 @@
-# APP_STATE.md — Family Health Journal
+# APP_STATE.md — Health Journal
+
+> Renamed from "Family Health Journal" at 1.0; older sections below still use the old name.
 
 > **2026-07-17 addendum — repo migration (supersedes stale sections below).**
 > The app now lives in a GitHub-ready Vite project (`health-journal/`), not a lone artifact file. `src/App.tsx` is the same single-file app (P2.5–P7 all shipped: reports, swipe prefs, photo compare, report history, durability, Fitbit import, onboarding) plus: Lenis smooth scroll, GSAP screen transitions/finish moment, opt-in Vanta backdrop, self-hosted Fraunces (zero external requests), IndexedDB `window.storage` polyfill (`src/lib/storage.ts` — real artifact storage still wins when present), PWA manifest + service worker (installable, offline). Tests: `tests/pure.test.ts` (8 pure-function tests via `__internals`) + `tests/render.test.tsx` (jsdom full-app smoke). `npm run check` = typecheck + test + build, all green. Source of truth: the repo. Remaining: incremental typing of App.tsx, on-device accessibility pass.
@@ -15,6 +17,16 @@
 >
 > **2026-07-17 addendum 6 — report paging polish.** Horizontal swipe on the report pages periods (left = forward in time, right = back), axis-locked after 8px, 60px threshold, clamped to [minPeriodOffset, 0]; gestures starting on svg/[data-noswipe]/inputs/buttons are ignored (photo-compare pager marked data-noswipe; A/B slider already touchAction:none). Period changes slide content directionally (`slideFrom`, ±36px power2.out) composed with the spring card reveal. buildReport results cached per `${type}:${start}` in a ref (cleared when db changes) so flipping back/forth is instant. Tests: 57.
 
+
+> **2026-08-07 addendum 7 — 1.0: shipped, not just built.** The app was feature-complete but unshippable and had a crash on every new user's first report. Fixed + added:
+> - **Crash fix (critical).** `ReportScreen` declared `revealRef`/`lastReveal`/`hswipe` + a `useLayoutEffect` *below* `if (needsPrefs) return <SwipeDeck/>`. Finishing the first-run card picker therefore rendered more hooks than the previous render → React #310 → error boundary. All hooks moved above that early return (both motion helpers are null-ref safe). Pinned by `tests/experience.test.tsx` → "survives the card picker handing off to the report on the very first run" (verified to fail when the bug is reintroduced).
+> - **Print fixes.** GSAP ScrollTrigger left below-fold cards at `opacity:0` (printing doesn't scroll) → `.print-area, .print-area *` forced visible; tinted report header card was white-on-white → `no-print` (the new print masthead covers it); horizontal photo pager was clipped → `.fhj-photo-pager` stacks. Interaction hints marked `no-print`.
+> - **Deploy.** `.github/workflows/ci.yml` (npm run check) + `pages.yml` (GitHub Pages, uses `actions/configure-pages` base path). `vite.config.ts` reads `BASE_PATH` (normalised) → `base`, PWA `start_url`/`scope`/`navigateFallback`, plus a `transformIndexHtml` plugin filling `%BASE%`/`%SITE%` in og tags (Vite doesn't rebase `<meta content>`). `SITE_URL` opts into absolute preview URLs.
+> - **New typed modules + tests.** `src/lib/reminders.ts` (time validation, `nextOccurrence`, RFC 5545 `.ics` with `RRULE:FREQ=DAILY`, floating local time, folding/escaping, Notification wrappers), `src/lib/durability.ts` (`storageStatus`/`requestPersistentStorage`, `backupNudge`, `describeBackupAge`), `src/lib/deeplink.ts` (`?screen=` allowlist for PWA shortcuts). 22 new tests; 92 total across 9 suites.
+> - **App wiring.** Settings gains `ReminderCard` + `PrivacyCard`; `DataDurabilityCard` gains persistence status and backup age; `markBackedUp()` stamps `profile.lastBackupAt` on full backup and JSON export; dashboard shows a backup nudge (`TrendsScreen` now takes `goSettings`/`viewer`); App effects for reminder scheduling, `requestPersistentStorage`, and deep links.
+> - **Rename.** User-facing "Family Health Journal" → **Health Journal** (`APP_NAME`/`APP_VERSION` exported from App.tsx). `BACKUP_APP_IDS` accepts both strings forever; new backups write the new one. Removed the stale zip and `GITHUB_QUICKSTART.md`; README + CHANGELOG rewritten.
+> - **A11y.** Skip link, `<main id="main">` landmark, `aria-current="page"` on the active tab, header title is an `<h1>`, wider `:focus-visible`, `prefers-contrast: more`.
+> - **Still open:** no licence declared (owner's call — package.json intentionally has no `license` field); `App.tsx` still `@ts-nocheck`; on-device a11y pass with a real screen reader not done.
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
