@@ -85,10 +85,15 @@ history, enough to exercise the dashboard, charts, calendar, patterns, reports, 
 
 Everything is client-side, so "deploying" means serving a folder of static files.
 
-**GitHub Pages** is wired up and self-enabling. The `pages.yml` workflow builds and publishes
-on every push to `main`, turning Pages on itself the first time it runs (`enablement: true`), so
-there is no manual switch to find in Settings. It reads the real Pages base path, so a project
-site at `user.github.io/HealthJournal/` works without editing anything.
+**GitHub Pages** is wired up. The `pages.yml` workflow builds and publishes on every push to
+`main`, and reads the real Pages base path, so a project site at `user.github.io/HealthJournal/`
+works without editing anything.
+
+It needs **one manual switch, once**: go to **Settings → Pages** and set **Source** to
+**GitHub Actions**. Creating a Pages site requires admin rights that the workflow's built-in
+token does not have, so the deploy fails with *"Resource not accessible by integration"* until a
+human does this. After that, every push deploys on its own — re-run the failed job or push
+anything to `main` to publish the first time.
 
 **Anywhere else** (Netlify, Vercel, Cloudflare Pages, your own server):
 

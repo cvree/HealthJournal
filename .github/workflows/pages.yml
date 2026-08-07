@@ -42,9 +42,13 @@ jobs:
         # custom-domain site at the root. `actions/configure-pages` reports the
         # real one, so the build is rebased correctly either way.
         #
-        # enablement: true turns Pages on the first time this runs, instead of
-        # failing with "Get Pages site failed" until someone visits Settings →
-        # Pages by hand. It is a no-op on every run after that.
+        # enablement: true asks GitHub to create the Pages site if it does not
+        # exist yet. That call needs admin-level rights, which the default
+        # GITHUB_TOKEN does not have — on a repo where Pages has never been
+        # turned on it fails with "Resource not accessible by integration", and
+        # a human has to visit Settings → Pages → Source: "GitHub Actions" once.
+        # Kept anyway: it is a no-op once the site exists, and it does succeed
+        # where the workflow runs with a token that carries those rights.
         uses: actions/configure-pages@v5
         with:
           enablement: true
