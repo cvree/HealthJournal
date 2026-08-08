@@ -45,7 +45,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.2.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -988,6 +988,9 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     device: <g><path {...p} d="M3.5 5.5h17a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z" /><path {...p} d="M8 19h8" /></g>,
     key: <g><circle {...p} cx="8" cy="12" r="3.5" /><path {...p} d="M11.5 12H21M18 12v3M15 12v2.2" /></g>,
     warn: <g><path {...p} d="M12 4.5 21 19.5H3z" /><path {...p} d="M12 10v4M12 16.6v.4" /></g>,
+    /* "Opens somewhere else" — the arrow leaving the box is the convention
+       people already read without being told. */
+    link: <g><path {...p} d="M14 4h6v6" /><path {...p} d="M20 4l-8.5 8.5" /><path {...p} d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></g>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -2673,11 +2676,487 @@ function AiSendPreview({ summary, windowLabel, onCancel, onConfirm }) {
   );
 }
 
-function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer }) {
+/* ---------- guided setup ----------
+
+   Turning this on used to mean: read a Settings card, flip a switch, leave the
+   app to find Google AI Studio, work out which button on that page makes a
+   key, come back, paste, pick a storage mode, save, navigate back to the
+   dashboard, find the section again, press Analyse, then confirm. Ten steps
+   across two screens and an external site, with nothing holding your place.
+
+   This is the same work as one guided flow that never leaves the screen it
+   started on. Each step does exactly one thing, Continue stays disabled until
+   that thing is done, the key verifies itself the moment it is pasted, and the
+   last step runs the analysis — so finishing setup and getting a result are
+   the same action rather than two things to remember. */
+
+const AI_STUDIO_URL = "https://aistudio.google.com/app/apikey";
+
+const WIZARD_STEPS = [
+  { id: "intro", label: "What it does" },
+  { id: "key", label: "Get a key" },
+  { id: "paste", label: "Connect" },
+  { id: "review", label: "Review" },
+];
+
+function WizardProgress({ index }) {
+  return (
+    <ol className="flex items-center gap-1.5" aria-label="Setup progress">
+      {WIZARD_STEPS.map((s, i) => {
+        const done = i < index;
+        const current = i === index;
+        return (
+          <li key={s.id} className="flex items-center gap-1.5"
+            aria-current={current ? "step" : undefined}>
+            <span
+              className="flex items-center justify-center rounded-full text-[10px] font-bold shrink-0"
+              style={{
+                width: 20, height: 20,
+                background: done || current ? C.accent : C.faint,
+                color: done || current ? C.onAccent : C.subtle,
+                transition: "background-color 220ms ease, color 220ms ease",
+              }}>
+              {done ? <Icon name="check" size={11} color={C.onAccent} /> : i + 1}
+            </span>
+            {i < WIZARD_STEPS.length - 1 && (
+              <span aria-hidden="true" className="rounded-full"
+                style={{
+                  width: 14, height: 2,
+                  background: done ? C.accent : C.line,
+                  transition: "background-color 220ms ease",
+                }} />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Numbered, literal instructions for the one part of this that happens on
+    someone else's website. Written as what you will see, not what to think. */
+function AiStudioSteps() {
+  const steps = [
+    ["Sign in", "with any Google account. It's the same account you already use — nothing new to create."],
+    ["Press “Create API key”", "on the page that opens. If it asks which project, any of them is fine."],
+    ["Copy the key", "with the copy button next to it. It starts with “AIza”."],
+    ["Come back here", "and paste it on the next step. That's the whole thing."],
+  ];
+  return (
+    <ol className="flex flex-col gap-3 mt-4">
+      {steps.map(([title, body], i) => (
+        <li key={title} className="flex gap-3">
+          <span className="flex items-center justify-center rounded-full text-[11px] font-bold shrink-0 mt-0.5"
+            style={{ width: 22, height: 22, background: C.accentSoft, color: C.accentText }}>
+            {i + 1}
+          </span>
+          <span className="min-w-0">
+            <span className="text-sm font-semibold block">{title}</span>
+            <span className="text-[12.5px] leading-relaxed block mt-0.5" style={{ color: C.sub }}>{body}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState("");
+  const [mode, setMode] = useState("persist");
+  // "idle" | "checking" | "ok" | "bad"
+  const [check, setCheck] = useState({ state: "idle", message: "" });
+  const [overrode, setOverrode] = useState(false); // continued past a failed check
+  const [existing, setExisting] = useState(null);  // masked key already on device
+  const [opened, setOpened] = useState(false);     // AI Studio was opened at least once
+  const [canPaste, setCanPaste] = useState(false);
+  const inputRef = useRef(null);
+  const checkSeq = useRef(0);
+
+  /* Someone who already has a key should not be walked through getting one. */
+  useEffect(() => {
+    let live = true;
+    loadKey().then((k) => {
+      if (!live || !k) return;
+      setExisting(maskKey(k));
+      setCheck({ state: "ok", message: "Using the key already on this device." });
+      setStep(3);
+    });
+    setCanPaste(typeof navigator !== "undefined" && !!navigator.clipboard?.readText);
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  /* Verify as soon as there is something key-shaped to verify. Pressing a
+     separate "Test" button was one more thing to know about, and skipping it
+     was how people found out their key was wrong four steps later. */
+  useEffect(() => {
+    const key = draft.trim();
+    setOverrode(false);
+    if (!key) { setCheck({ state: "idle", message: "" }); return; }
+    if (!looksLikeKey(key)) {
+      setCheck({ state: "bad", message: "That doesn't look like a full key yet — it should be one long line starting with “AIza”." });
+      return;
+    }
+    const seq = ++checkSeq.current;
+    setCheck({ state: "checking", message: "Checking with Google…" });
+    const t = setTimeout(async () => {
+      const res = await testApiKey(key);
+      if (seq !== checkSeq.current) return; // a newer keystroke won
+      setCheck(res.ok
+        ? { state: "ok", message: "That key works." }
+        : { state: "bad", message: res.message });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [draft]);
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) { setDraft(text.trim()); inputRef.current?.focus(); }
+    } catch {
+      // Permission refused or unsupported — the field is right there.
+      inputRef.current?.focus();
+    }
+  };
+
+  const keyReady = existing || check.state === "ok" || overrode;
+  const canContinue =
+    step === 0 ? true :
+    step === 1 ? true :
+    step === 2 ? keyReady :
+    true;
+
+  const advance = async () => {
+    if (step === 2 && !existing) {
+      await saveKey(draft.trim(), mode);
+      feedback("save");
+    }
+    setStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1));
+  };
+
+  const finish = async (andRun) => {
+    setAi({ enabled: true });
+    feedback("save");
+    onClose();
+    if (andRun && input) onRun(input);
+  };
+
+  const enoughDays = !!input && input.days.length >= 5;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: C.bg }}
+      role="dialog" aria-modal="true" aria-label="Set up AI observations">
+      {/* header */}
+      <div className="shrink-0 px-4 py-3 flex items-center gap-3"
+        style={{ borderBottom: `1px solid ${C.line}` }}>
+        <button onClick={onClose} aria-label="Close setup" className="fhj-icon-btn"
+          style={{ width: "2.25rem", height: "2.25rem" }}>
+          <Icon name="x" size={16} color={C.sub} />
+        </button>
+        <div className="flex-1 min-w-0">
+          {/* The dots already say which step this is, so the text doesn't
+              repeat the count — that prefix was what pushed the title into
+              "Set up AI obser…" at 320px, which reads as a rendering bug.
+              The full position is still announced, just not drawn twice. */}
+          <div className="text-sm font-semibold truncate">AI observations</div>
+          <div className="text-[11px] truncate" style={{ color: C.subtle }}>
+            <span className="sr-only">Step {step + 1} of {WIZARD_STEPS.length}: </span>
+            {WIZARD_STEPS[step].label}
+          </div>
+        </div>
+        <WizardProgress index={step} />
+      </div>
+
+      {/* body */}
+      <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
+        <div className="max-w-md mx-auto px-4 py-6" key={step}>
+          <div className="fhj-screen">
+
+            {step === 0 && (
+              <>
+                <h2 className="font-display text-2xl leading-snug">
+                  A second opinion on your own logs
+                </h2>
+                <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
+                  The patterns above are worked out on this device by comparing your higher days
+                  against your lower ones. That catches pairs, and misses everything else.
+                </p>
+                <p className="text-sm leading-relaxed mt-2.5" style={{ color: C.sub }}>
+                  {AI_MODEL_LABEL} can read the same numbers and look for what that maths can't:
+                  symptoms that keep turning up together, changes in the days after something,
+                  sleep and mood relationships, recurring timing, and drifts from your own
+                  baseline.
+                </p>
+
+                <div className="rounded-xl p-4 mt-5" style={{ background: C.faint }}>
+                  <div className="fhj-eyebrow mb-2.5">Before you start, the honest version</div>
+                  <ul className="flex flex-col gap-2.5">
+                    {[
+                      ["It's free, but it's your account", `You'll create a Google API key — it takes about a minute and costs nothing at normal use. We'll walk you through it.`],
+                      ["Only numbers leave this device", "Your ratings and the names of what you track. Never your notes, never a photo, never your name."],
+                      ["Nothing sends by itself", "You press a button, see exactly what's going, and confirm. Every single time."],
+                      ["You can undo all of it", "Remove the key whenever you like and the app goes back to working entirely offline."],
+                    ].map(([t, b]) => (
+                      <li key={t} className="flex gap-2.5">
+                        <span className="shrink-0 mt-0.5"><Icon name="check" size={14} color={C.good} /></span>
+                        <span>
+                          <span className="text-[13px] font-semibold block">{t}</span>
+                          <span className="text-[12.5px] leading-relaxed block" style={{ color: C.sub }}>{b}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <p className="text-[11.5px] leading-relaxed mt-4" style={{ color: C.subtle }}>
+                  Observations are things to notice, not findings. This is not a diagnosis and not
+                  medical advice.
+                </p>
+              </>
+            )}
+
+            {step === 1 && (
+              <>
+                <h2 className="font-display text-2xl leading-snug">Get your free key</h2>
+                <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
+                  This is the one part that happens on Google's site. It opens in a new tab, so
+                  this page stays exactly where it is — nothing you've done so far is lost.
+                </p>
+
+                <Button variant="primary" block className="mt-5" icon="link"
+                  onClick={() => {
+                    setOpened(true);
+                    window.open(AI_STUDIO_URL, "_blank", "noopener,noreferrer");
+                  }}>
+                  Open Google AI Studio
+                </Button>
+
+                <AiStudioSteps />
+
+                <div className="rounded-xl p-3.5 mt-5" style={{ background: C.faint }}>
+                  <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
+                    <b style={{ color: C.ink }}>Can't open a new tab?</b> Go to{" "}
+                    <span style={{ color: C.accentText, wordBreak: "break-all" }}>aistudio.google.com/app/apikey</span>{" "}
+                    on any device, then come back and paste the key on the next step.
+                  </p>
+                </div>
+
+                {opened && (
+                  <p className="text-[12.5px] leading-relaxed mt-4" style={{ color: C.good }}>
+                    Opened. Once you've copied the key, come back and press Continue.
+                  </p>
+                )}
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <h2 className="font-display text-2xl leading-snug">Paste it here</h2>
+                <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
+                  We'll check it with Google as soon as you paste, so you find out now rather than
+                  later.
+                </p>
+
+                <label className="fhj-eyebrow block mt-5 mb-2" htmlFor="fhj-wizard-key">
+                  Your Gemini API key
+                </label>
+                <input
+                  id="fhj-wizard-key"
+                  ref={inputRef}
+                  type="password"
+                  className="fhj-input"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="AIza…"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  aria-describedby="fhj-wizard-key-status"
+                />
+                {canPaste && (
+                  <Button variant="secondary" size="sm" block className="mt-2" onClick={pasteFromClipboard}>
+                    Paste from clipboard
+                  </Button>
+                )}
+
+                <div id="fhj-wizard-key-status" role="status" className="mt-3 min-h-[1.25rem]">
+                  {check.state === "checking" && (
+                    <span className="flex items-center gap-2 text-[12.5px]" style={{ color: C.accentText }}>
+                      <span className="fhj-dots" aria-hidden="true"><span /><span /><span /></span>
+                      {check.message}
+                    </span>
+                  )}
+                  {check.state === "ok" && (
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-medium" style={{ color: C.good }}>
+                      <Icon name="check" size={14} color={C.good} /> {check.message}
+                    </span>
+                  )}
+                  {check.state === "bad" && (
+                    <div className="rounded-xl p-3 text-[12.5px] leading-relaxed"
+                      style={{ background: C.dangerBg, color: C.dangerInk }}>
+                      {check.message}
+                      {/* A dead end here would strand someone over a flaky
+                          connection or a fresh key Google hasn't propagated
+                          yet, so there is always a way forward. */}
+                      {looksLikeKey(draft.trim()) && !overrode && (
+                        <button onClick={() => setOverrode(true)}
+                          className="block mt-2 text-[12.5px] font-semibold underline"
+                          style={{ color: C.dangerInk }}>
+                          Use this key anyway
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {overrode && (
+                    <p className="text-[12px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                      Saved without a successful check. If analysis fails later, come back to
+                      Settings and replace the key.
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-6">
+                  <div className="fhj-eyebrow mb-2">Should we remember it?</div>
+                  <Segmented
+                    label="How to store the key"
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                      { value: "persist", label: "Yes, on this device" },
+                      { value: "session", label: "Just this visit" },
+                    ]}
+                  />
+                  <p className="text-[12px] leading-relaxed mt-2.5" style={{ color: C.subtle }}>
+                    {mode === "persist"
+                      ? "Kept in this browser's storage, separate from your journal so it can never end up inside an exported backup. It is not encrypted — anyone who can use this browser profile could read it."
+                      : "Held in memory only and forgotten when you close the tab. The right choice on a shared or borrowed computer."}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <h2 className="font-display text-2xl leading-snug">
+                  {enoughDays ? "Here's exactly what gets sent" : "You're set up"}
+                </h2>
+
+                {existing && (
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl mt-4" style={{ background: C.faint }}>
+                    <Icon name="key" size={16} color={C.good} />
+                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{existing}</span>
+                    <Badge tone="good">Ready</Badge>
+                  </div>
+                )}
+
+                {enoughDays ? (
+                  <>
+                    <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
+                      Nothing has left this device yet. Press the button below and this — and only
+                      this — goes to Google.
+                    </p>
+                    <div className="rounded-xl p-4 mt-4" style={{ background: C.faint }}>
+                      <div className="flex items-center justify-between gap-2 mb-2.5">
+                        <div className="fhj-eyebrow">Sending</div>
+                        <span className="text-[11px]" style={{ color: C.subtle }}>{windowLabel}</span>
+                      </div>
+                      <ul className="text-sm leading-relaxed flex flex-col gap-1.5">
+                        <li>· <b>{summary.days}</b> logged day{summary.days === 1 ? "" : "s"} of numeric answers ({summary.values} values, about {summary.approxKB} KB)</li>
+                        <li>· the names of <b>{summary.metrics}</b> metric{summary.metrics === 1 ? "" : "s"} you track</li>
+                      </ul>
+                      <div className="fhj-eyebrow mt-4 mb-2">Not sending</div>
+                      <ul className="text-sm leading-relaxed flex flex-col gap-1.5" style={{ color: C.sub }}>
+                        <li>· your written notes</li>
+                        <li>· any photo</li>
+                        <li>· your name, or anything that identifies you</li>
+                        <li>· any entry outside {windowLabel}</li>
+                      </ul>
+                    </div>
+                    {summary.metricLabels.length > 0 && (
+                      <details className="mt-3">
+                        <summary className="text-sm font-medium cursor-pointer" style={{ color: C.accentText }}>
+                          See the exact metric names
+                        </summary>
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                          {summary.metricLabels.map((m) => (
+                            <span key={m} className="fhj-badge fhj-badge-neutral">{m}</span>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
+                      Your key is saved and AI observations are on. There{" "}
+                      {input && input.days.length === 1 ? "is" : "are"}{" "}
+                      <b style={{ color: C.ink }}>{input ? input.days.length : 0}</b> logged{" "}
+                      {input && input.days.length === 1 ? "day" : "days"} in the last 90, and an
+                      observation needs at least 5 before it means anything.
+                    </p>
+                    <p className="text-sm leading-relaxed mt-2.5" style={{ color: C.sub }}>
+                      Keep logging. The Analyse button is waiting on your dashboard, and you'll
+                      still see exactly what would be sent before it goes.
+                    </p>
+                  </>
+                )}
+
+                <p className="text-[11.5px] leading-relaxed mt-4" style={{ color: C.subtle }}>
+                  Google's handling of API requests is governed by their terms, not by this app.
+                  Everything else in {APP_NAME} stays on this device either way.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* sticky actions — the way forward is always in the same place */}
+      <div className="shrink-0 px-4 pt-3"
+        style={{
+          borderTop: `1px solid ${C.line}`,
+          background: C.bg,
+          paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+        }}>
+        <div className="max-w-md mx-auto flex gap-2">
+          {step > 0 && !(step === 3 && existing) && (
+            <Button variant="ghost" onClick={() => setStep((s) => Math.max(0, s - 1))}>Back</Button>
+          )}
+          {step < 3 ? (
+            <Button variant="primary" block onClick={advance} disabled={!canContinue}>
+              {step === 0 ? "Get started" : step === 1 ? "I've copied my key" : "Save and continue"}
+            </Button>
+          ) : enoughDays ? (
+            <Button variant="primary" block icon="spark" onClick={() => finish(true)}>
+              Send and analyse
+            </Button>
+          ) : (
+            <Button variant="primary" block onClick={() => finish(false)}>Done</Button>
+          )}
+        </div>
+        {step === 2 && !keyReady && (
+          <p className="max-w-md mx-auto text-[11.5px] text-center mt-2" style={{ color: C.subtle }}>
+            Paste your key to continue
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer, aiAutoRun = 0 }) {
   const [keyPresent, setKeyPresent] = useState(null); // null = still checking
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null); // { input, summary }
+  const [wizard, setWizard] = useState(null);   // { input, summary, windowLabel }
   const abortRef = useRef(null);
 
   const enabled = !viewer && ai?.enabled === true;
@@ -2686,17 +3165,37 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
 
   useEffect(() => {
     let live = true;
-    if (!enabled) { setKeyPresent(false); return; }
     loadKey().then((k) => { if (live) setKeyPresent(!!k); });
     return () => { live = false; };
   }, [enabled]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  /* The wizard's last step already showed the payload and said "send", so this
+     runs straight away rather than asking for the same confirmation twice. */
+  const ranFor = useRef(0);
+  useEffect(() => {
+    if (!aiAutoRun || aiAutoRun === ranFor.current) return;
+    ranFor.current = aiAutoRun;
+    setKeyPresent(true);
+    run(buildInput());
+  }, [aiAutoRun]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const visible = (analysis?.patterns || []).filter((p) => !dismissed.includes(p.id));
 
   const start = addDays(todayStr(), -89); // a quarter is enough for "recurring"
   const buildInput = () => buildAnalysisInput(tpl.fields, entries, start, todayStr());
+
+  /* The wizard needs the same payload the preview does, so both are built the
+     same way — what someone is shown at the end of setup is byte-for-byte what
+     the Analyse button would send. */
+  const describe = (input) => ({
+    input,
+    summary: summariseInput(input),
+    windowLabel: `${fmtNice(input.startDate)} – ${fmtNice(input.endDate)}`,
+  });
+
+  const openWizard = () => { setError(null); setWizard(describe(buildInput())); };
 
   const openPreview = () => {
     setError(null);
@@ -2708,11 +3207,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
       });
       return;
     }
-    setPreview({
-      input,
-      summary: summariseInput(input),
-      windowLabel: `${fmtNice(input.startDate)} – ${fmtNice(input.endDate)}`,
-    });
+    setPreview(describe(input));
   };
 
   const run = async (input) => {
@@ -2804,12 +3299,23 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
                 recurring timing, and drifts from your own baseline.
               </p>
               <p className="text-sm mt-2 leading-relaxed" style={{ color: C.sub }}>
-                It's off. Turning it on needs your own Google Gemini API key and sends a minimal
-                slice of your journal to Google each time you ask for an analysis.
+                {keyPresent
+                  ? "It's switched off right now. Your key is still on this device, so turning it back on takes one tap."
+                  : "It's off. Setup takes about a minute and walks you through every step, including getting the free Google key — you never have to work out what to do next."}
               </p>
-              <Button variant="outline" block className="mt-4" onClick={goSettings}>
-                Set this up in Settings
-              </Button>
+              {keyPresent ? (
+                <Button variant="primary" block className="mt-4" icon="spark"
+                  onClick={() => { setAi({ enabled: true }); feedback("select"); }}>
+                  Turn it back on
+                </Button>
+              ) : (
+                <Button variant="primary" block className="mt-4" icon="spark" onClick={openWizard}>
+                  Set it up — about a minute
+                </Button>
+              )}
+              <p className="text-[11.5px] text-center mt-2.5" style={{ color: C.subtle }}>
+                Nothing is sent until you've seen it and pressed send.
+              </p>
             </Card>
           ) : keyPresent === false ? (
             <Card>
@@ -2821,7 +3327,9 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
                 AI observations are switched on, but there's no key stored on this device — a
                 session-only key is forgotten when the tab closes.
               </p>
-              <Button variant="outline" block className="mt-4" onClick={goSettings}>Add a key</Button>
+              <Button variant="primary" block className="mt-4" onClick={openWizard}>
+                Add a key — guided, about a minute
+              </Button>
             </Card>
           ) : busy ? (
             <Card>
@@ -2850,9 +3358,10 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
               </div>
               <p className="text-sm mt-2 leading-relaxed" style={{ color: C.sub }}>{error.body}</p>
               <div className="flex gap-2 mt-4">
-                <Button variant="secondary" block onClick={openPreview}>Try again</Button>
-                {error.showSettings && (
-                  <Button variant="ghost" block onClick={goSettings}>Settings</Button>
+                {error.showSettings ? (
+                  <Button variant="primary" block onClick={openWizard}>Fix my key</Button>
+                ) : (
+                  <Button variant="secondary" block onClick={openPreview}>Try again</Button>
                 )}
               </div>
             </Card>
@@ -2920,11 +3429,19 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
           onCancel={() => setPreview(null)}
           onConfirm={() => run(preview.input)} />
       )}
+
+      {wizard && (
+        <AiSetupWizard
+          input={wizard.input} summary={wizard.summary} windowLabel={wizard.windowLabel}
+          setAi={setAi}
+          onRun={(input) => { setKeyPresent(true); run(input); }}
+          onClose={() => { setWizard(null); loadKey().then((k) => setKeyPresent(!!k)); }} />
+      )}
     </>
   );
 }
 
-function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi }) {
+function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
@@ -3148,7 +3665,7 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
 
       {/* insights — locally calculated, plus optional AI observations */}
       <PatternsSection tpl={tpl} entries={entries} insights={insights}
-        ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} />
+        ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} aiAutoRun={aiAutoRun} />
 
       {/* recent entries */}
       <SectionTitle>Recent entries</SectionTitle>
@@ -4443,40 +4960,37 @@ function AppearanceCard() {
    Everything here is inert until someone deliberately turns it on. The key is
    held outside the journal object so it cannot be exported, and the copy is
    honest about what "stored locally" does and does not buy you. */
-function AiSettingsCard({ ai, setAi }) {
+function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
   const [storedMask, setStoredMask] = useState(null); // null = none, string = masked key
-  const [mode, setMode] = useState("persist");
-  const [draft, setDraft] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [status, setStatus] = useState(null); // { ok, message }
+  const [status, setStatus] = useState(null);         // { ok, message }
   const [testing, setTesting] = useState(false);
+  const [wizard, setWizard] = useState(null);
 
   const enabled = ai?.enabled === true;
+  const configured = enabled && !!storedMask;
 
   const refresh = () => loadKey().then((k) => setStoredMask(k ? maskKey(k) : null));
   useEffect(() => { refresh(); }, []);
 
-  const save = async () => {
-    const key = draft.trim();
-    if (!looksLikeKey(key)) {
-      setStatus({ ok: false, message: "That doesn't look like a Google AI Studio key. Paste the whole thing." });
-      return;
-    }
-    await saveKey(key, mode);
-    setDraft("");
-    setEditing(false);
-    setStatus({ ok: true, message: mode === "persist" ? "Key saved on this device." : "Key held for this session only." });
-    await refresh();
-    feedback("save");
+  /* Setup — including replacing a key — always runs through the guided flow.
+     Keeping a second, subtly different inline form here is how two paths drift
+     apart, and the wizard is the one that explains itself. */
+  const openWizard = () => {
+    setStatus(null);
+    const tpl = getProfileTemplate(db.profile);
+    const input = buildAnalysisInput(tpl.fields, entriesFor(db), addDays(todayStr(), -89), todayStr());
+    setWizard({
+      input,
+      summary: summariseInput(input),
+      windowLabel: `${fmtNice(input.startDate)} – ${fmtNice(input.endDate)}`,
+    });
   };
 
   const test = async () => {
     setTesting(true);
     setStatus(null);
     try {
-      // Whatever is typed wins over whatever is stored — "Test" next to a
-      // filled field has to test that field, saved key or not.
-      const key = draft.trim() || (await loadKey());
+      const key = await loadKey();
       if (!key) { setStatus({ ok: false, message: "There's no key to test yet." }); return; }
       const res = await testApiKey(key);
       setStatus(res.ok ? { ok: true, message: "The key works." } : { ok: false, message: res.message });
@@ -4496,7 +5010,7 @@ function AiSettingsCard({ ai, setAi }) {
     <Card className="mt-3">
       <div className="flex items-center justify-between gap-3 mb-1">
         <div className="fhj-eyebrow">AI observations</div>
-        <Badge tone="neutral">Optional</Badge>
+        <Badge tone={configured ? "good" : "neutral"}>{configured ? "On" : "Optional"}</Badge>
       </div>
 
       <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
@@ -4505,133 +5019,90 @@ function AiSettingsCard({ ai, setAi }) {
         {AI_MODEL_LABEL} using your own API key, and shows what it noticed. You see exactly what
         would be sent, and confirm, every single time.
       </p>
-      <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
-        Nothing runs on its own, and everything else in {APP_NAME} stays on this device whether
-        this is on or off.
-      </p>
 
-      <div className="mt-3 pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
-        <SwitchRow
-          on={enabled}
-          onChange={(on) => { setAi({ enabled: on }); feedback("select"); }}
-          label="Enable AI observations"
-          desc={enabled
-            ? "The analysis button appears on the dashboard. It still asks before sending anything."
-            : "Turn this on to add an optional AI section under Possible Patterns."}
-        />
-      </div>
-
-      {enabled && (
-        <div className="mt-2 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
-          <div className="fhj-eyebrow mb-2">Your Gemini API key</div>
-
-          {storedMask && !editing ? (
-            <>
-              <div className="flex items-center gap-2.5 p-3 rounded-xl" style={{ background: C.faint }}>
-                <Icon name="key" size={16} color={C.good} />
-                <span className="text-sm font-medium flex-1 min-w-0 truncate">{storedMask}</span>
-                <Badge tone="good">Set</Badge>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2.5">
-                <Button variant="secondary" size="sm" onClick={test} disabled={testing}>
-                  {testing ? "Testing…" : "Test key"}
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => { setEditing(true); setStatus(null); }}>
-                  Replace
-                </Button>
-                <Button variant="danger" size="sm" icon="trash" onClick={remove}>Remove</Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <label className="text-sm font-medium block mb-1.5" htmlFor="fhj-ai-key">
-                Paste your key
-              </label>
-              <input
-                id="fhj-ai-key"
-                type="password"
-                className="fhj-input"
-                value={draft}
-                onChange={(e) => { setDraft(e.target.value); setStatus(null); }}
-                placeholder="AIza…"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                /* A password field so it isn't shoulder-surfed, isn't captured
-                   by autofill heuristics, and isn't read aloud character by
-                   character in a screen reader by default. */
-              />
-              <p className="text-[11.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
-                Create one free at Google AI Studio (aistudio.google.com). It's your key and your
-                quota — this app never sees it leave your browser except in the request to Google.
-              </p>
-
-              <div className="mt-3">
-                <div className="fhj-eyebrow mb-1.5">Remember it?</div>
-                <Segmented
-                  label="How to store the key"
-                  value={mode}
-                  onChange={setMode}
-                  options={[
-                    { value: "persist", label: "On this device" },
-                    { value: "session", label: "This session" },
-                  ]}
-                />
-                <p className="text-[11.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
-                  {mode === "persist"
-                    ? "Stored in this browser's local database, separate from your journal so it can never end up inside an exported backup."
-                    : "Kept in memory only. Closing the tab forgets it — the right choice on a shared or borrowed computer."}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2 mt-3">
-                <Button variant="primary" size="sm" onClick={save} disabled={!draft.trim()}>Save key</Button>
-                <Button variant="secondary" size="sm" onClick={test} disabled={testing || !draft.trim()}>
-                  {testing ? "Testing…" : "Test without saving"}
-                </Button>
-                {storedMask && (
-                  <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setDraft(""); setStatus(null); }}>
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </>
+      {!configured ? (
+        <>
+          <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
+            {enabled
+              ? "It's switched on, but there's no key on this device yet."
+              : "Setup is a short guided walkthrough — it gets you the free Google key, checks it works, and explains each step as it goes."}
+          </p>
+          <Button variant="primary" block className="mt-4" icon="spark" onClick={openWizard}>
+            {enabled ? "Add a key — guided" : "Set it up — about a minute"}
+          </Button>
+          {enabled && (
+            <Button variant="ghost" block className="mt-2"
+              onClick={() => { setAi({ enabled: false }); feedback("select"); }}>
+              Turn AI observations off
+            </Button>
           )}
-
-          {status && (
-            <div className="mt-3 p-3 rounded-xl text-[12.5px] leading-relaxed" role="status"
-              style={{
-                background: status.ok ? C.goodSoft : C.dangerBg,
-                color: status.ok ? C.good : C.dangerInk,
-              }}>
-              {status.message}
-            </div>
-          )}
-
-          {/* The honest part. A local-first app cannot promise a vault, so it
-              shouldn't imply one. */}
-          <div className="mt-3.5 p-3 rounded-xl" style={{ background: C.faint }}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <Icon name="warn" size={14} color={C.warn} />
-              <span className="text-[12px] font-semibold">What "stored locally" really means</span>
-            </div>
-            <p className="text-[11.5px] leading-relaxed" style={{ color: C.sub }}>
-              A key saved here sits in this browser's storage on this device. That keeps it out of
-              your backups and away from any server — but it is <b>not encrypted</b>, and it can't
-              be: there's no password in this app to encrypt it with that an attacker holding your
-              unlocked device wouldn't also have. Anyone who can use this browser profile can read
-              it. On a shared computer, choose "This session". Whatever you choose, you can revoke
-              the key at Google at any time, and that revocation is what actually stops it working.
-            </p>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-2.5 p-3 rounded-xl mt-4" style={{ background: C.faint }}>
+            <Icon name="key" size={16} color={C.good} />
+            <span className="text-sm font-medium flex-1 min-w-0 truncate">{storedMask}</span>
+            <Badge tone="good">Connected</Badge>
           </div>
+          <div className="flex flex-wrap gap-2 mt-2.5">
+            <Button variant="secondary" size="sm" onClick={test} disabled={testing}>
+              {testing ? "Testing…" : "Test key"}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={openWizard}>Replace</Button>
+            <Button variant="danger" size="sm" icon="trash" onClick={remove}>Remove</Button>
+          </div>
+
+          <div className="mt-3 pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+            <SwitchRow
+              on={enabled}
+              onChange={(on) => { setAi({ enabled: on }); feedback("select"); }}
+              label="Enable AI observations"
+              desc="The analysis button appears on the dashboard. It still asks before sending anything." />
+          </div>
+        </>
+      )}
+
+      {status && (
+        <div className="mt-3 p-3 rounded-xl text-[12.5px] leading-relaxed" role="status"
+          style={{
+            background: status.ok ? C.goodSoft : C.dangerBg,
+            color: status.ok ? C.good : C.dangerInk,
+          }}>
+          {status.message}
         </div>
+      )}
+
+      {/* The honest part. A local-first app cannot promise a vault, so it
+          shouldn't imply one. */}
+      {configured && (
+        <div className="mt-3.5 p-3 rounded-xl" style={{ background: C.faint }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <Icon name="warn" size={14} color={C.warn} />
+            <span className="text-[12px] font-semibold">What "stored locally" really means</span>
+          </div>
+          <p className="text-[11.5px] leading-relaxed" style={{ color: C.sub }}>
+            A key saved here sits in this browser's storage on this device. That keeps it out of
+            your backups and away from any server — but it is <b>not encrypted</b>, and it can't
+            be: there's no password in this app to encrypt it with that an attacker holding your
+            unlocked device wouldn't also have. Anyone who can use this browser profile can read
+            it. Whatever you choose, you can revoke the key at Google at any time, and that
+            revocation is what actually stops it working.
+          </p>
+        </div>
+      )}
+
+      {wizard && (
+        <AiSetupWizard
+          input={wizard.input} summary={wizard.summary} windowLabel={wizard.windowLabel}
+          setAi={setAi}
+          onRun={onSetupComplete}
+          onClose={() => { setWizard(null); refresh(); }} />
       )}
     </Card>
   );
 }
 
-function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi }) {
+function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete }) {
   const prefs = db.profile.prefs || { sound: false, haptics: true };
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
@@ -4674,7 +5145,7 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
           desc="A soft moving background behind the app. Skipped automatically when your device prefers reduced motion." />
       </Card>
 
-      <AiSettingsCard ai={db.ai} setAi={setAi} />
+      <AiSettingsCard ai={db.ai} setAi={setAi} db={db} onSetupComplete={onAiSetupComplete} />
 
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-1.5">Report cards</div>
@@ -6875,7 +7346,7 @@ async function loadSampleData(setDb) {
 }
 
 
-function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi }) {
+function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun }) {
   return (
     <div className="px-4 pb-10">
       <div className="flex items-start justify-between pt-6 pb-2">
@@ -6907,7 +7378,7 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
       </div>
       <TrendsScreen profile={profile} entries={entries} openLog={openLog} goExport={goExport} goGallery={goGallery}
         goReport={goReport} reports={reports} openSavedReport={openSavedReport} deleteSavedReport={deleteSavedReport}
-        goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} />
+        goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} aiAutoRun={aiAutoRun} />
     </div>
   );
 }
@@ -7473,6 +7944,10 @@ export default function App({ viewer = false }) {
   const [logDate, setLogDate] = useState(todayStr());
   const [logMode, setLogMode] = useState("quick");
   const [reportParams, setReportParams] = useState({ type: "week" });
+  /* Bumped when the AI setup wizard finishes with "analyse". The dashboard
+     watches it and runs immediately, so finishing setup and seeing a result
+     are one action rather than two screens apart. */
+  const [aiAutoRun, setAiAutoRun] = useState(0);
   const [corrupt, setCorrupt] = useState(null); // { raw, detail } when saved data is unreadable
   const [viewerErr, setViewerErr] = useState(null);
   const [viewerBusy, setViewerBusy] = useState(false);
@@ -7853,7 +8328,7 @@ export default function App({ viewer = false }) {
     goExport: () => setScreen("export"), goSettings: () => setScreen("settings"),
     goSetup: () => setScreen("setup"), goGallery: () => setScreen("gallery"),
     goReport, reports: db.reports, openSavedReport, deleteSavedReport,
-    ai: db.ai, setAi,
+    ai: db.ai, setAi, aiAutoRun,
   };
 
   let content = null;
@@ -7861,6 +8336,7 @@ export default function App({ viewer = false }) {
     content = <DashboardScreen {...dashProps} />;
   } else if (screen === "settings") {
     content = <SettingsScreen db={db} setDb={setDb} setAi={setAi} goHome={goHome} goSetup={() => setScreen("setup")}
+      onAiSetupComplete={() => { setAiAutoRun((n) => n + 1); setScreen("dashboard"); }}
       goImport={() => setScreen("fitbit")} lockEnabled={!!lock}
       onSetupPin={() => setLockFlow("setup")} onChangePin={() => setLockFlow("change-verify")}
       onDisablePin={() => setLockFlow("disable-verify")} />;

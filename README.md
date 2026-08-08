@@ -161,10 +161,23 @@ Clearing site data by hand still erases everything. Export a backup first.
 
 ### Optional AI observations, and your API key
 
-Off by default, and everything else works identically whether it's on or off. Turning it on in
-**Settings → AI observations** needs a Google Gemini API key you create yourself at
-[Google AI Studio](https://aistudio.google.com/) — the app ships with none, hard-codes none, and
-reads none from the environment.
+Off by default, and everything else works identically whether it's on or off.
+
+Setup is a **four-step guided walkthrough** launched by one button on the dashboard — you never
+have to work out what to do next, and you never leave the screen you started on:
+
+1. **What it does**, and exactly what would and wouldn't leave the device.
+2. **Get a key** — opens Google AI Studio in a new tab, with the four things to click on that
+   page written out, because "create an API key" is where most people stop.
+3. **Paste it** — the key is verified against Google the moment it's pasted, so a wrong one is
+   caught immediately rather than four steps later. Continue stays disabled until it checks out
+   (with an explicit override so a flaky connection isn't a dead end).
+4. **Review and run** — the exact payload, then the analysis, landing straight on the results.
+
+The key is one you create yourself at [Google AI Studio](https://aistudio.google.com/) — the app
+ships with none, hard-codes none, and reads none from the environment. **Settings → AI
+observations** is for managing it afterwards (test, replace, remove); replacing runs the same
+guided flow rather than a second, subtly different form.
 
 What actually leaves the device, only after you confirm a preview that spells it out:
 

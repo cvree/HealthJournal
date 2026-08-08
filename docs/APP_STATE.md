@@ -62,6 +62,23 @@
 > - **Still open:** unchanged from 1.0 — no licence declared, `App.tsx` still `@ts-nocheck`,
 >   on-device screen-reader pass not done.
 
+> **2026-08-08 addendum 9 — 1.2: guided AI setup.** Setup moved out of the Settings form into
+> `AiSetupWizard` (in App.tsx, next to `PatternsSection`): a 4-step full-screen flow —
+> intro → get key (opens `AI_STUDIO_URL` in a new tab, instructions inline) → paste (auto-verifies
+> via `testApiKey` on a 450ms debounce, `checkSeq` ref discards stale results) → review + run.
+> Continue is gated per step; a failed check exposes "Use this key anyway" so a network blip is
+> never a dead end. `saveKey` fires only when step 3 completes; `setAi({enabled:true})` only at
+> the end.
+> **Cross-screen wiring:** finishing from Settings can't run the analysis itself (PatternsSection
+> owns `run`), so App holds an `aiAutoRun` counter — Settings' `onAiSetupComplete` bumps it and
+> navigates to the dashboard; `PatternsSection` watches it via a `ranFor` ref and runs once. The
+> wizard's own review step is the confirmation, so this deliberately does *not* re-prompt.
+> `AiSettingsCard` is now management-only (test / replace / remove) and delegates all setup —
+> including replace — to the wizard, so the two paths can't drift.
+> `PatternsSection` now checks for a stored key regardless of `ai.enabled`, so "key present but
+> switched off" offers a one-tap re-enable rather than a first-run walkthrough.
+> Tests: 182 across 13 suites (new `tests/aiWizard.test.tsx`).
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.2.0
+
+### Guided AI setup
+
+Turning on AI observations used to mean: read a Settings card, flip a switch, leave the app to
+find Google AI Studio, work out which button on that page makes a key, come back, paste, pick a
+storage mode, save, navigate back to the dashboard, find the section again, press Analyse, then
+confirm. Ten steps across two screens and an external site, with nothing holding your place.
+
+It is now a four-step walkthrough launched by one button, which never leaves the screen it
+started on:
+
+- **Every step does one thing**, with a progress indicator, a sticky action bar in the same
+  place each time, and Back always available.
+- **Getting the key is walked through, not assumed.** The step that happens on Google's site
+  opens in a new tab and spells out the four things to click there — that page is where most
+  people stopped.
+- **The key verifies itself the moment it's pasted.** No Test button to know about, no finding
+  out it was wrong four steps later. An incomplete key is caught locally without spending a
+  request; a rejected one says what Google said and offers an explicit override so a flaky
+  connection or a not-yet-propagated key isn't a dead end.
+- **Continue is disabled until the step is actually done**, and says why underneath.
+- **Finishing setup and getting a result are the same action.** The last step shows the exact
+  payload and sends it, landing on the observations — rather than telling you where to find a
+  button you now have to go and press.
+- **Thin journals still finish.** Under five logged days the last step completes setup, explains
+  that observations need at least five, and says the Analyse button is waiting.
+- **Nothing is turned on early.** The key is written only when its step completes, and the
+  feature flips on only at the end.
+
+Settings is now the management surface — test, replace, remove — rather than a second, subtly
+different copy of setup. Replacing a key runs the same guided flow. Someone who already has a
+key skips to the run; someone who has a key but switched the feature off gets a one-tap
+re-enable instead of a rerun of the walkthrough.
+
+15 new tests (`tests/aiWizard.test.tsx`); 182 total across 13 suites.
+
 ## 1.1.0
 
 A visual and interaction pass over the whole app, a proper fix for the 30-day trend selector,
