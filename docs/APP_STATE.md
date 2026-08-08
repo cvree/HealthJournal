@@ -28,6 +28,40 @@
 > - **A11y.** Skip link, `<main id="main">` landmark, `aria-current="page"` on the active tab, header title is an `<h1>`, wider `:focus-visible`, `prefers-contrast: more`.
 > - **Still open:** no licence declared (owner's call — package.json intentionally has no `license` field); `App.tsx` still `@ts-nocheck`; on-device a11y pass with a real screen reader not done.
 
+> **2026-08-08 addendum 8 — 1.1: design system, trend-picker fix, optional AI.**
+> - **Theme layer (new).** `src/lib/theme.ts` owns two palettes (`dark` default, `light`) and
+>   exports a *mutable* token object `C`. App.tsx reads colours as `C.x` at render time, so a
+>   theme swap is `Object.assign(C, palette)` + one re-render — no context threaded through
+>   ~7k lines. Same values mirrored to `:root` as `--fhj-*` so `index.css` stays in sync.
+>   Preference in `localStorage` (`fhj_theme_v1`), read by an inline script in index.html and
+>   viewer.html **before first paint** — that script must keep working if the palettes change.
+>   `initTheme()` runs as an import side effect, so anything importing `C` is already correct.
+>   **Gotcha:** `TEMPLATES[*].color` and `computeProfileTemplate().color` are now live getters
+>   (`liveTint()`) returning `C.accent` — per-pack tints are gone deliberately, and the getter
+>   is what stops the WeakMap template cache freezing a stale hex.
+> - **`src/styles/index.css` is now the component layer** (buttons, chips, cards, segmented,
+>   switches, sheets, picker, print). Both inline `<style>` blocks were deleted from App.tsx.
+>   New shared primitives in App.tsx: `Button`, `Segmented`, `SwitchRow`, `Badge`, `Modal`.
+> - **`src/components/MetricPicker.tsx` (new)** replaces the 30-day trend chip strip. Roving
+>   tabindex, wheel→horizontal, edge fades/arrows, scroll-selection-into-view. `scrollTo`/
+>   `scrollBy` are feature-detected because jsdom lacks both.
+> - **`src/lib/ai.ts` (new, fully typed).** Optional Gemini analysis. Key under its own storage
+>   key (`fhj_ai_key_v1`), never in `db`, never in a backup, never logged; `redact()` scrubs
+>   key-shaped strings out of anything user-facing. `buildAnalysisInput` sends numeric answers
+>   only, day-ordinals not dates, no notes/photos/name. `normaliseAnalysis` + `scrubCausalLanguage`
+>   sanitise model output at the render boundary. New db slice `db.ai = { enabled, analysis,
+>   dismissed }` (`DEFAULT_AI`, filled by `migrateDb`); `buildFullBackup` carries `analysis`
+>   and `dismissed` but deliberately **not** `enabled` — opting in is per device.
+> - **A11y.** Contrast audited by script over computed styles on every screen in both themes;
+>   `subtle` and `muted` were raised (they carried real body copy at 3.1:1) and five uses of
+>   `C.accent` as a *text* colour moved to `C.accentText`/`C.good`. `readableInk()` picks label
+>   colour by luminance at the true 0.179 crossover. `tests/theme.test.ts` now fails the build
+>   on any AA regression.
+> - **Tests: 167 across 12 suites** (was 92/9). New: `ai.test.ts`, `theme.test.ts`,
+>   `metricPicker.test.tsx`.
+> - **Still open:** unchanged from 1.0 — no licence declared, `App.tsx` still `@ts-nocheck`,
+>   on-device screen-reader pass not done.
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

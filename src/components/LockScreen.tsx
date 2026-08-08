@@ -6,18 +6,9 @@
    feel right on phones; the dots are just a visual readout of its value. */
 
 import React, { useEffect, useRef, useState } from "react";
+import { C } from "../lib/theme";
 import { prefersReducedMotion } from "../lib/motion";
 import { PIN_LENGTH, isValidPin } from "../lib/lock";
-
-const C = {
-  bg: "#F2F4F1",
-  card: "#FFFFFF",
-  ink: "#1F2B27",
-  sub: "#66736D",
-  line: "#E2E7E2",
-  accent: "#33685A",
-  danger: "#B4433C",
-};
 
 interface LockScreenProps {
   mode: "verify" | "create";
@@ -146,7 +137,7 @@ export default function LockScreen({ mode, title, subtitle, tint = C.accent, onS
             ))}
           </button>
 
-          {error && <p className="text-xs mb-3" style={{ color: C.danger }}>{error}</p>}
+          {error && <p className="text-xs mb-3" style={{ color: C.bad }}>{error}</p>}
           {busy && <p className="text-xs mb-3" style={{ color: C.sub }}>Checking…</p>}
 
           {mode === "verify" && onForgot && (

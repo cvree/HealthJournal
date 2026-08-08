@@ -4,15 +4,7 @@
    or for a partner/clinician you've handed a backup file to. */
 
 import React, { useRef, useState } from "react";
-
-const C = {
-  bg: "#F2F4F1",
-  card: "#FFFFFF",
-  ink: "#1F2B27",
-  sub: "#66736D",
-  line: "#E2E7E2",
-  accent: "#33685A",
-};
+import { C } from "../lib/theme";
 
 export default function ViewerLanding({
   onFileText,
@@ -79,7 +71,7 @@ export default function ViewerLanding({
 
         {error && (
           <div className="mt-3 rounded-xl px-4 py-3 text-sm" role="alert"
-            style={{ background: "#F7ECEA", color: "#B4433C", border: "1px solid #E8D4D1" }}>
+            style={{ background: C.dangerBg, color: C.dangerInk, border: `1px solid ${C.dangerInk}` }}>
             {error}
           </div>
         )}

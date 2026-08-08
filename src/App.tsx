@@ -26,6 +26,14 @@ import {
   isIOSWebBrowser, isStandalone,
 } from "./lib/durability";
 import { screenFromSearch, clearDeepLink } from "./lib/deeplink";
+import {
+  C, readableInk, getThemePreference, setThemePreference, getTheme, onThemeChange,
+} from "./lib/theme";
+import MetricPicker from "./components/MetricPicker";
+import {
+  AI_MODEL_LABEL, hasStoredKey, loadKey, saveKey, clearKey, maskKey, testApiKey,
+  buildAnalysisInput, summariseInput, runPatternAnalysis, strengthLabel, looksLikeKey,
+} from "./lib/ai";
 
 /* ============================================================
    Health Journal
@@ -37,7 +45,7 @@ import { screenFromSearch, clearDeepLink } from "./lib/deeplink";
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.1.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -45,15 +53,11 @@ const DISCLAIMER =
 const PATTERN_NOTE =
   "Possible pattern in your own logs — not proof of cause. May be worth noticing or discussing with a healthcare professional.";
 
-const C = {
-  bg: "#F2F4F1",
-  card: "#FFFFFF",
-  ink: "#1F2B27",
-  sub: "#66736D",
-  line: "#E2E7E2",
-  accent: "#33685A",
-  faint: "#EAEEEA",
-};
+/* Severity ramp, theme-aware. `colorFor` returns a value that is legible as
+   *text* on a page background; `fillFor` is the same step as a solid swatch,
+   with `readableInk` supplying whatever label sits on top of it. Keeping the
+   two apart is what stops a green "2" from disappearing into a light card. */
+const SEVERITY_STEPS = () => [C.good, C.warn, C.alert, C.bad];
 
 /* ---------- small utils ---------- */
 
@@ -99,10 +103,11 @@ function mulberry32(a) {
 function colorFor(value, dir) {
   if (value == null) return C.sub;
   const bad = dir === "pos" ? 11 - value : value;
-  if (bad <= 3) return "#4E9A6C";
-  if (bad <= 5) return "#C9A03C";
-  if (bad <= 7) return "#CE7038";
-  return "#B4433C";
+  const steps = SEVERITY_STEPS();
+  if (bad <= 3) return steps[0];
+  if (bad <= 5) return steps[1];
+  if (bad <= 7) return steps[2];
+  return steps[3];
 }
 
 /* ---------- field builders ---------- */
@@ -178,7 +183,7 @@ const TEMPLATES = {
 
   carnivore: {
     label: "Carnivore / Diet",
-    color: "#8E3B2F",
+    color: C.dangerInk,
     keyMetric: "diet_adherence",
     chartMetrics: ["diet_adherence", "weight", "energy", "digestion_comfort", "cravings", "sleep_quality"],
     pairs: [
@@ -359,7 +364,7 @@ const TEMPLATES = {
 
   fatigue: {
     label: "Fatigue / Long COVID",
-    color: "#4A8CC0",
+    color: C.chart3,
     keyMetric: "fatigue",
     chartMetrics: ["fatigue", "brain_fog", "energy", "activity", "sleep_quality"],
     pairs: [
@@ -533,6 +538,22 @@ const TEMPLATES = {
 
 
 
+/* Question packs used to each carry their own tint, which meant the interface
+   changed hue depending on which packs someone had enabled. One accent reads
+   as a considered product; ten read as ten products. The `color` key stays on
+   every template so existing call sites keep working — it just resolves to the
+   live theme accent instead of a frozen hex, which also means a theme switch
+   repaints it without invalidating any cached template. */
+function liveTint(target) {
+  Object.defineProperty(target, "color", {
+    get: () => C.accent,
+    enumerable: true,
+    configurable: true,
+  });
+  return target;
+}
+for (const t of Object.values(TEMPLATES)) liveTint(t);
+
 const BODY_AREAS = ["Face", "Scalp", "Neck", "Chest", "Back", "Arms", "Hands", "Abdomen", "Legs", "Feet", "Full body", "Other"];
 
 const getField = (tpl, k) => tpl.fields.find((f) => f.k === k);
@@ -630,12 +651,12 @@ function computeProfileTemplate(profile) {
     ? primary.keyMetric
     : (dashboardMetrics[0] || chartMetrics[0] || fields.find((f) => f.type === "scale")?.k || null);
   const label = modules.length ? modules.map((mk) => TEMPLATES[mk].label).join(" + ") : "Custom setup";
-  return {
-    label, color: primary.color, keyMetric,
+  return liveTint({
+    label, keyMetric,
     chartMetrics: chartMetrics.length ? chartMetrics : [keyMetric].filter(Boolean),
     dashboardMetrics: dashboardMetrics.length ? dashboardMetrics : [keyMetric].filter(Boolean),
     pairs, fields,
-  };
+  });
 }
 
 /* ---------- sample data ---------- */
@@ -955,23 +976,137 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     plus: <path {...p} d="M12 5v14M5 12h14" />,
     x: <path {...p} d="M6 6l12 12M18 6L6 18" />,
     print: <g><path {...p} d="M7 9V4h10v5M7 18H5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2" /><path {...p} d="M7 15h10v5H7z" /></g>,
+    /* A four-point star rather than the usual AI "sparkles" cluster — one mark
+       reads as a label, three read as decoration. */
+    spark: <path {...p} d="M12 3.5l2.1 5.2a2 2 0 0 0 1.2 1.2l5.2 2.1-5.2 2.1a2 2 0 0 0-1.2 1.2L12 20.5l-2.1-5.2a2 2 0 0 0-1.2-1.2L3.5 12l5.2-2.1a2 2 0 0 0 1.2-1.2z" />,
+    info: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M12 11v5M12 7.8v.4" /></g>,
+    refresh: <path {...p} d="M20 12a8 8 0 1 1-2.6-5.9M20 4v4h-4" />,
+    trash: <path {...p} d="M5 7h14M10 7V5h4v2M8.5 7l.6 12h5.8l.6-12M11 10.5v5M13 10.5v5" />,
+    eye: <g><path {...p} d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z" /><circle {...p} cx="12" cy="12" r="2.8" /></g>,
+    sun: <g><circle {...p} cx="12" cy="12" r="4" /><path {...p} d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6" /></g>,
+    moon: <path {...p} d="M20 13.4A8.2 8.2 0 0 1 10.6 4a8.4 8.4 0 1 0 9.4 9.4z" />,
+    device: <g><path {...p} d="M3.5 5.5h17a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z" /><path {...p} d="M8 19h8" /></g>,
+    key: <g><circle {...p} cx="8" cy="12" r="3.5" /><path {...p} d="M11.5 12H21M18 12v3M15 12v2.2" /></g>,
+    warn: <g><path {...p} d="M12 4.5 21 19.5H3z" /><path {...p} d="M12 10v4M12 16.6v.4" /></g>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
-function Card({ children, className = "", style = {} }) {
+/* ---------- shared primitives ----------
+   These carry the design system. Screens compose them rather than restating
+   padding, radius, and hover behaviour inline — which is how the app drifted
+   into eleven slightly different button shapes in the first place. */
+
+function Card({ children, className = "", style = {}, tappable = false, ...rest }) {
   return (
-    <div className={"fhj-card rounded-2xl p-4 " + className}
-      style={{ background: C.card, border: `1px solid ${C.line}`, ...style }}>
+    <div className={"fhj-card p-4 " + (tappable ? "fhj-card-tap " : "") + className}
+      style={style} {...rest}>
       {children}
     </div>
   );
 }
 
-function SectionTitle({ children }) {
+function SectionTitle({ children, action }) {
   return (
-    <div className="mt-5 mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>
+    <div className="mt-7 mb-2 flex items-end justify-between gap-3">
+      <h2 className="fhj-eyebrow">{children}</h2>
+      {action}
+    </div>
+  );
+}
+
+/** One button, five intents. `variant` picks the intent; everything else —
+    height, radius, press feel, focus ring, disabled treatment — is shared. */
+function Button({
+  variant = "primary", size = "md", block = false, icon, iconRight,
+  className = "", children, ...rest
+}) {
+  const cls = [
+    "fhj-btn", `fhj-btn-${variant}`,
+    size === "sm" ? "fhj-btn-sm" : "",
+    block ? "fhj-btn-block" : "",
+    className,
+  ].filter(Boolean).join(" ");
+  const iconColor =
+    variant === "primary" ? C.onAccent :
+    variant === "danger" ? C.dangerInk :
+    variant === "outline" ? C.accentText : C.sub;
+  return (
+    <button type="button" className={cls} {...rest}>
+      {icon && <Icon name={icon} size={size === "sm" ? 15 : 17} color={iconColor} />}
       {children}
+      {iconRight && <Icon name={iconRight} size={size === "sm" ? 15 : 17} color={iconColor} />}
+    </button>
+  );
+}
+
+/** Radio-group semantics, pill presentation. Used for theme, log mode, report
+    period — anywhere exactly one of a short list is active. */
+function Segmented({ options, value, onChange, label }) {
+  return (
+    <div className="fhj-segmented" role="radiogroup" aria-label={label}>
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button key={o.value} type="button" role="radio" aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={"fhj-segment" + (active ? " is-active" : "")}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Label + optional description on the left, switch on the right. The whole
+    row is the target, which matters a lot on a phone. */
+function SwitchRow({ on, onChange, label, desc, disabled = false }) {
+  return (
+    <button type="button" role="switch" aria-checked={!!on} disabled={disabled}
+      onClick={() => onChange(!on)}
+      className="fhj-switch-row"
+      style={disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>
+      <span className="min-w-0">
+        <span className="text-sm font-medium block">{label}</span>
+        {desc && <span className="text-[11.5px] leading-relaxed block mt-0.5" style={{ color: C.subtle }}>{desc}</span>}
+      </span>
+      <span className={"fhj-switch" + (on ? " is-on" : "")} aria-hidden="true" />
+    </button>
+  );
+}
+
+function Badge({ tone = "neutral", children, ...rest }) {
+  return <span className={`fhj-badge fhj-badge-${tone}`} {...rest}>{children}</span>;
+}
+
+/** Bottom sheet on a phone, centred dialog on a laptop. Closes on Escape and
+    on a backdrop click, and traps initial focus on the panel itself. */
+function Modal({ title, children, onClose, labelledBy = "fhj-modal-title" }) {
+  const panelRef = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape" && onClose) onClose(); };
+    document.addEventListener("keydown", onKey);
+    panelRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fhj-scrim" onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
+      <div ref={panelRef} className="fhj-sheet" role="dialog" aria-modal="true"
+        aria-labelledby={title ? labelledBy : undefined} tabIndex={-1} style={{ outline: "none" }}>
+        {title && (
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <h2 id={labelledBy} className="font-display text-xl leading-snug">{title}</h2>
+            {onClose && (
+              <button type="button" onClick={onClose} aria-label="Close"
+                className="fhj-icon-btn" style={{ width: "2rem", height: "2rem" }}>
+                <Icon name="x" size={15} color={C.sub} />
+              </button>
+            )}
+          </div>
+        )}
+        {children}
+      </div>
     </div>
   );
 }
@@ -984,7 +1119,7 @@ function ScaleInput({ field, value, onChange }) {
     <div className="py-3" style={{ borderBottom: `1px solid ${C.line}` }}>
       <div className="flex items-baseline justify-between mb-2">
         <span className="text-sm font-medium">{field.label}</span>
-        <span className="font-display text-2xl leading-none" style={{ color: value != null ? colorFor(value, field.dir) : "#B8C2BC" }}>
+        <span className="font-display text-2xl leading-none" style={{ color: value != null ? colorFor(value, field.dir) : C.muted }}>
           {value != null ? value : "–"}
         </span>
       </div>
@@ -1021,7 +1156,7 @@ function ToggleInput({ field, value, onChange, tint }) {
         onClick={() => onChange(active ? null : val)}
         className="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
         style={{
-          background: active ? (val ? tint : "#8A958F") : C.faint,
+          background: active ? (val ? tint : C.subtle) : C.faint,
           color: active ? "#fff" : C.sub,
         }}>
         {label}
@@ -1243,7 +1378,10 @@ function RatingChips({ max = 10, dir = "sym", value, onChange, tint }) {
         return (
           <button key={n} onClick={() => onChange(active ? null : n)}
             className="w-9 h-9 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: active ? colorFor(Math.round((n / max) * 10) || 1, dir) : C.faint, color: active ? "#fff" : C.ink }}>
+            style={(() => {
+              const fill = colorFor(Math.round((n / max) * 10) || 1, dir);
+              return { background: active ? fill : C.faint, color: active ? readableInk(fill) : C.ink };
+            })()}>
             {n}
           </button>
         );
@@ -1469,8 +1607,8 @@ function PhotoInlineField({ field, meta, date, answers, tpl, entries, baselines,
           {src
             ? <img src={src} alt={field.label} className="w-full rounded-xl object-cover" style={{ maxHeight: 220 }} />
             : <div className="w-full rounded-xl flex items-center justify-center" style={{ height: 140, background: C.faint, color: C.sub }}>loading…</div>}
-          <div className="absolute top-2 left-2 px-2 py-1 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white" style={{ background: "#4E9A6C" }}>
-            <Icon name="check" size={12} color="#fff" /> Photo saved
+          <div className="absolute top-2 left-2 px-2 py-1 rounded-full flex items-center gap-1 text-[11px] font-semibold" style={{ background: C.good, color: readableInk(C.good) }}>
+            <Icon name="check" size={12} color={readableInk(C.good)} /> Photo saved
           </div>
         </div>
       )}
@@ -1585,7 +1723,7 @@ function PhotoSession({ tpl, entries, date, photos, answers, timer, onSetAnswer,
     return (
       <div className="mt-2">
         <div className="flex items-center gap-2 mb-1">
-          <Icon name="check" size={16} color="#4E9A6C" />
+          <Icon name="check" size={16} color={C.good} />
           <span className="text-sm font-semibold">{savedKeys.length} photo{savedKeys.length === 1 ? "" : "s"} saved</span>
         </div>
         <div className="text-xs mb-3" style={{ color: C.sub }}>
@@ -1649,8 +1787,8 @@ function PhotoSession({ tpl, entries, date, photos, answers, timer, onSetAnswer,
               {savedSrc
                 ? <img src={savedSrc} alt="saved" className="w-full rounded-xl object-cover" style={{ maxHeight: 260 }} />
                 : <div className="w-full rounded-xl flex items-center justify-center" style={{ height: 180, background: C.faint, color: C.sub }}>loading…</div>}
-              <div className="absolute top-2 left-2 px-2 py-1 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white" style={{ background: "#4E9A6C" }}>
-                <Icon name="check" size={12} color="#fff" /> Photo saved
+              <div className="absolute top-2 left-2 px-2 py-1 rounded-full flex items-center gap-1 text-[11px] font-semibold" style={{ background: C.good, color: readableInk(C.good) }}>
+                <Icon name="check" size={12} color={readableInk(C.good)} /> Photo saved
               </div>
             </div>
             {f.rated !== false && (
@@ -1666,7 +1804,7 @@ function PhotoSession({ tpl, entries, date, photos, answers, timer, onSetAnswer,
             )}
             <div className="flex gap-2">
               <button onClick={() => removePhoto(f)}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold" style={{ background: "#F6E9E7", color: "#8E3B2F" }}>Delete</button>
+                className="flex-1 py-3 rounded-xl text-sm font-semibold" style={{ background: C.dangerBg, color: C.dangerInk }}>Delete</button>
               <CaptureButtonInline label="Retake" tint={C.faint} textColor={C.ink} timer={timer} busy={busy}
                 onPick={(shot) => capture(f, shot)} />
               <button onClick={() => { clearTimeout(advanceTimer.current); setStep(step + 1); }}
@@ -1740,8 +1878,8 @@ function SummaryRow({ fld, tpl, meta, answers, cacheSrc, rating, onRate, onDelet
           {captionFieldFor(fld, tpl) && formatCaptionValue(fld, tpl, answers) && (
             <div className="text-[11px]" style={{ color: C.sub }}>{formatCaptionValue(fld, tpl, answers)}</div>
           )}
-          <div className="flex items-center gap-1 mt-1 text-[11px]" style={{ color: "#4E9A6C" }}>
-            <Icon name="check" size={12} color="#4E9A6C" /> saved
+          <div className="flex items-center gap-1 mt-1 text-[11px]" style={{ color: C.good }}>
+            <Icon name="check" size={12} color={C.good} /> saved
           </div>
         </div>
         <button onClick={onDelete} aria-label="delete photo" className="shrink-0 self-start">
@@ -1808,7 +1946,7 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
             <button key={lbl} onClick={() => tap(f.k, v === val ? null : val)}
               className="flex-1 py-5 rounded-2xl text-base font-semibold transition-all relative"
               style={{
-                ...bigBtn(v === val, val ? tint : "#8A958F"),
+                ...bigBtn(v === val, val ? tint : C.subtle),
                 ...(v == null && ghost === val ? { border: `2px dashed ${tint}` } : {}),
               }}>
               {lbl}
@@ -2129,7 +2267,7 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
             left: 4, transform: mode === "quick" ? "translateX(0)" : "translateX(calc(100% + 4px))",
             background: C.card, border: `1px solid ${C.line}`,
             transition: "transform 300ms cubic-bezier(0.34, 1.4, 0.64, 1)",
-            boxShadow: "0 1px 4px rgba(31,43,39,0.08)",
+            boxShadow: C.shadow,
           }} />
         {["quick", "detailed"].map((m) => (
           <button key={m} onClick={() => setMode(m)}
@@ -2143,7 +2281,7 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
       {sessionFields.length > 0 && !photoPhase && (
         <button onClick={() => setPhotoPhase(true)}
           className="w-full mb-2 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
-          style={{ border: `1.5px dashed #B8C2BC`, color: C.sub }}>
+          style={{ border: `1.5px dashed ${C.lineStrong}`, color: C.sub }}>
           Photo session ({sessionFields.length})
         </button>
       )}
@@ -2163,8 +2301,8 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
         <>
           <div className="flex items-center justify-between text-xs mb-1" style={{ color: C.sub }}>
             <span>{done ? "Logged for this day" : "Answer what applies — everything is optional"}</span>
-            <span className="flex items-center gap-1" style={{ color: "#4E9A6C" }}>
-              <Icon name="check" size={13} color="#4E9A6C" /> saves automatically
+            <span className="flex items-center gap-1" style={{ color: C.good }}>
+              <Icon name="check" size={13} color={C.good} /> saves automatically
             </span>
           </div>
 
@@ -2237,20 +2375,42 @@ function TrendArrow({ trend, dir }) {
   const up = trend.delta > 0.05, down = trend.delta < -0.05;
   const arrow = up ? "▲" : down ? "▼" : "→";
   const color =
-    trend.status === "improving" ? "#4E9A6C" :
-    trend.status === "worsening" ? "#B4433C" : C.sub;
+    trend.status === "improving" ? C.good :
+    trend.status === "worsening" ? C.bad : C.sub;
   const word =
     trend.status === "improving" ? "improving" :
     trend.status === "worsening" ? "worsening" :
     trend.status === "stable" ? "steady" : "change";
   return (
-    <span className="text-xs font-medium" style={{ color }}>
-      {arrow} {trend.delta == null ? "" : Math.abs(Math.round(trend.delta * 10) / 10)} {word}
+    <span className="text-[11.5px] font-medium inline-flex items-center gap-1 whitespace-nowrap" style={{ color }}>
+      <span aria-hidden="true">{arrow}</span>
+      {trend.delta == null ? null : <span className="tabular-nums">{Math.abs(Math.round(trend.delta * 10) / 10)}</span>}
+      {word}
     </span>
   );
 }
 
-const CHART_PALETTE = (tint) => [tint, "#C9A03C", "#4A8CC0", "#B4433C"];
+/* Four series colours that stay distinguishable in both themes and don't
+   collide with the severity ramp's meaning when they sit side by side. */
+const CHART_PALETTE = (tint) => [tint || C.accent, C.chart2, C.chart3, C.chart4];
+
+/* Recharts renders its tooltip on a hard-coded white panel, which reads as a
+   hole punched in a dark screen. These are applied to every chart in the app
+   so hovering feels like part of the same surface in either theme. */
+const tooltipProps = () => ({
+  cursor: { stroke: C.lineStrong, strokeWidth: 1 },
+  contentStyle: {
+    background: C.card,
+    border: `1px solid ${C.lineStrong}`,
+    borderRadius: 12,
+    boxShadow: C.shadowLg,
+    fontSize: 12,
+    padding: "8px 10px",
+  },
+  labelStyle: { color: C.ink, fontWeight: 600, marginBottom: 2 },
+  itemStyle: { color: C.sub, padding: 0 },
+});
+const axisTick = () => ({ fontSize: 10, fill: C.subtle });
 
 /* Overlay up to four metrics on one 30-day chart. Scale (1–10) metrics share a
    fixed axis; mixing in number metrics (steps, weight…) switches to an auto
@@ -2267,17 +2427,19 @@ function MultiMetricChart({ entries, fields, tint }) {
   const allScale = fields.every((f) => f.type === "scale");
   if (!anyData) {
     return (
-      <div className="flex items-center justify-center text-sm text-center px-6" style={{ height: 120, color: C.sub }}>
-        No answers for these metrics in the last 30 days yet.
+      <div className="flex flex-col items-center justify-center text-center px-6 rounded-xl"
+        style={{ height: 200, background: C.faint, color: C.sub }}>
+        <Icon name="trends" size={22} color={C.muted} />
+        <div className="text-sm mt-2">No answers for these metrics in the last 30 days.</div>
       </div>
     );
   }
   return (
     <>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
+      <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 mb-2.5">
         {fields.map((f, j) => (
           <span key={f.k} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.sub }}>
-            <span className="w-2.5 h-2.5 rounded-full" style={{ background: palette[j] }} />
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: palette[j] }} />
             {f.label}
           </span>
         ))}
@@ -2285,18 +2447,18 @@ function MultiMetricChart({ entries, fields, tint }) {
       <div style={{ width: "100%", height: 200 }}>
         <ResponsiveContainer>
           <LineChart data={data} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}>
-            <CartesianGrid stroke={C.line} vertical={false} />
+            <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 4" />
             <XAxis dataKey="d" tickFormatter={fmtShort} minTickGap={30}
-              tick={{ fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} />
+              tick={axisTick()} axisLine={false} tickLine={false} />
             <YAxis domain={allScale ? [1, 10] : ["auto", "auto"]}
-              tick={{ fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} width={32} />
+              tick={axisTick()} axisLine={false} tickLine={false} width={32} />
             <Tooltip
               labelFormatter={(d) => fmtNice(d)}
               formatter={(v, name) => {
                 const j = Number(String(name).slice(1));
                 return [v, fields[j] ? fields[j].label : name];
               }}
-              contentStyle={{ borderRadius: 12, border: `1px solid ${C.line}`, fontSize: 12 }} />
+              {...tooltipProps()} />
             {fields.map((f, j) => (
               <Line key={f.k} type="monotone" dataKey={"m" + j} stroke={palette[j]} strokeWidth={2}
                 dot={{ r: 2, fill: palette[j], strokeWidth: 0 }} connectNulls isAnimationActive={false} />
@@ -2319,10 +2481,14 @@ function MetricChart({ entries, field, color }) {
   const numeric = data.filter((p) => p.v != null).length;
   if (numeric < 3) {
     return (
-      <div className="flex items-center justify-center text-sm text-center px-6" style={{ height: 120, color: C.sub }}>
-        {numeric === 0
-          ? `No “${field.label}” answers in the last 30 days yet.`
-          : `Only ${numeric} day${numeric === 1 ? "" : "s"} logged — the trend line appears at 3.`}
+      <div className="flex flex-col items-center justify-center text-center px-6 rounded-xl"
+        style={{ height: 200, background: C.faint, color: C.sub }}>
+        <Icon name="trends" size={22} color={C.muted} />
+        <div className="text-sm mt-2">
+          {numeric === 0
+            ? `No “${field.label}” answers in the last 30 days.`
+            : `Only ${numeric} day${numeric === 1 ? "" : "s"} logged — the trend line appears at 3.`}
+        </div>
       </div>
     );
   }
@@ -2330,18 +2496,18 @@ function MetricChart({ entries, field, color }) {
     <div style={{ width: "100%", height: 200 }}>
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}>
-          <CartesianGrid stroke={C.line} vertical={false} />
+          <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 4" />
           <XAxis dataKey="d" tickFormatter={fmtShort} minTickGap={30}
-            tick={{ fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} />
+            tick={axisTick()} axisLine={false} tickLine={false} />
           <YAxis domain={isScale ? [1, 10] : ["auto", "auto"]}
-            tick={{ fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} width={32} />
+            tick={axisTick()} axisLine={false} tickLine={false} width={32} />
           <Tooltip
             labelFormatter={(d) => fmtNice(d)}
             formatter={(v, name) => [v, name === "v" ? field.label : "7-day avg"]}
-            contentStyle={{ borderRadius: 12, border: `1px solid ${C.line}`, fontSize: 12 }} />
+            {...tooltipProps()} />
           <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2}
             dot={{ r: 2.5, fill: color, strokeWidth: 0 }} connectNulls isAnimationActive={false} />
-          <Line type="monotone" dataKey="avg" stroke="#9AA6A0" strokeWidth={1.5}
+          <Line type="monotone" dataKey="avg" stroke={C.avgLine} strokeWidth={1.5} strokeOpacity={0.9}
             strokeDasharray="4 4" dot={false} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
@@ -2356,11 +2522,11 @@ function WeeklyBars({ entries, field, color }) {
     <div style={{ width: "100%", height: 110 }}>
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 4, right: 6, left: -14, bottom: 0 }}>
-          <XAxis dataKey="d" tick={{ fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="d" tick={axisTick()} axisLine={false} tickLine={false} />
           <YAxis domain={isScale ? [0, 10] : ["auto", "auto"]}
-            tick={{ fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} width={32} />
+            tick={axisTick()} axisLine={false} tickLine={false} width={32} />
           <Tooltip formatter={(v) => [v, "weekly avg"]}
-            contentStyle={{ borderRadius: 12, border: `1px solid ${C.line}`, fontSize: 12 }} />
+            {...tooltipProps()} />
           <Bar dataKey="v" fill={color} radius={[5, 5, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
@@ -2368,7 +2534,397 @@ function WeeklyBars({ entries, field, color }) {
   );
 }
 
-function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer }) {
+/* ============================================================
+   Possible patterns
+   Two sources, always visually distinct:
+   · locally calculated — median-split comparisons computed on this device,
+     available with no key, no network, no opt-in;
+   · AI-assisted — optional, off unless the user turned it on and supplied
+     their own Gemini key.
+   Neither is a diagnosis, and both say so.
+   ============================================================ */
+
+const AI_DISCLAIMER =
+  "AI-written observations about your own logs. Not a diagnosis, not medical advice, and not proof that one thing caused another.";
+
+function PatternSourceNote({ children }) {
+  return (
+    <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>{children}</p>
+  );
+}
+
+/** Shared card chrome for both kinds of pattern, so the only difference the
+    eye picks up is the source badge — not the layout. */
+function PatternCard({ badge, title, detail, footer, children }) {
+  return (
+    <Card>
+      <div className="mb-2">{badge}</div>
+      <div className="text-sm font-semibold leading-snug">{title}</div>
+      <p className="text-sm mt-1.5 leading-relaxed" style={{ color: C.sub }}>{detail}</p>
+      {children}
+      {footer}
+    </Card>
+  );
+}
+
+function AiPatternCard({ pattern, onDismiss }) {
+  const [open, setOpen] = useState(false);
+  const strength = strengthLabel(pattern.strength);
+  return (
+    <PatternCard
+      badge={
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="flex items-center gap-1.5">
+            <Badge tone="accent">
+              <Icon name="spark" size={11} color={C.accentText} /> AI observation
+            </Badge>
+            <Badge tone="neutral" title={strength.help}>{strength.label}</Badge>
+          </span>
+          <span className="text-[11px]" style={{ color: C.subtle }}>{pattern.range}</span>
+        </div>
+      }
+      title={pattern.title}
+      detail={pattern.detail}
+    >
+      {pattern.metrics.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {pattern.metrics.map((m) => (
+            <span key={m} className="fhj-badge fhj-badge-neutral">{m}</span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+        <Button variant="ghost" size="sm" icon="info" onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}>
+          {open ? "Hide reasoning" : "Why this was suggested"}
+        </Button>
+        <span className="flex-1" />
+        <Button variant="ghost" size="sm" onClick={() => onDismiss(pattern.id)}
+          aria-label={`Hide the observation: ${pattern.title}`}>
+          Hide
+        </Button>
+      </div>
+      {open && (
+        <div className="mt-3 p-3 rounded-xl text-[12.5px] leading-relaxed"
+          style={{ background: C.faint, color: C.sub }}>
+          <div className="fhj-eyebrow mb-1.5">What this is based on</div>
+          {pattern.evidence || "The model didn't explain this one — treat it as a prompt to look at the days yourself."}
+          <div className="mt-2 pt-2 text-[11px]" style={{ borderTop: `1px solid ${C.line}`, color: C.subtle }}>
+            {strength.help} Days without an entry are simply absent from the comparison.
+          </div>
+        </div>
+      )}
+    </PatternCard>
+  );
+}
+
+/** The confirmation step. Nothing leaves the device until this is accepted,
+    and it spells out the payload rather than describing it in the abstract. */
+function AiSendPreview({ summary, windowLabel, onCancel, onConfirm }) {
+  return (
+    <Modal title="Send this to Google?" onClose={onCancel}>
+      <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+        This is the only part of {APP_NAME} that uses the internet. Everything below is sent to
+        Google's Gemini API using the key you provided, analysed, and returned. Nothing else
+        leaves this device.
+      </p>
+      <div className="mt-4 rounded-xl p-3.5" style={{ background: C.faint }}>
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="fhj-eyebrow">What gets sent</div>
+          <span className="text-[11px]" style={{ color: C.subtle }}>{windowLabel}</span>
+        </div>
+        <ul className="text-sm leading-relaxed flex flex-col gap-1.5">
+          <li>· <b>{summary.days}</b> logged day{summary.days === 1 ? "" : "s"} of numeric answers ({summary.values} values, about {summary.approxKB} KB)</li>
+          <li>· the names of <b>{summary.metrics}</b> metric{summary.metrics === 1 ? "" : "s"} you track</li>
+        </ul>
+        <div className="fhj-eyebrow mt-4 mb-2">What never gets sent</div>
+        <ul className="text-sm leading-relaxed flex flex-col gap-1.5" style={{ color: C.sub }}>
+          <li>· your written notes</li>
+          <li>· any photo</li>
+          <li>· your name, or anything that identifies you</li>
+          <li>· any entry outside {windowLabel}</li>
+        </ul>
+      </div>
+      {summary.metricLabels.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-sm font-medium cursor-pointer" style={{ color: C.accentText }}>
+            See the exact metric names
+          </summary>
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
+            {summary.metricLabels.map((m) => (
+              <span key={m} className="fhj-badge fhj-badge-neutral">{m}</span>
+            ))}
+          </div>
+        </details>
+      )}
+      <p className="text-[11px] leading-relaxed mt-4" style={{ color: C.subtle }}>
+        Google's handling of API requests is governed by their terms, not by this app. If you'd
+        rather nothing left the device, the locally calculated patterns above keep working on
+        their own.
+      </p>
+      {/* Sticky so the decision is always one tap away, however long the
+          disclosure above runs on a short screen. */}
+      <div className="flex gap-2 mt-5 sticky bottom-0 pt-3 pb-0.5"
+        style={{ background: C.card, borderTop: `1px solid ${C.line}` }}>
+        <Button variant="secondary" block onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" block onClick={onConfirm} icon="spark">Send</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer }) {
+  const [keyPresent, setKeyPresent] = useState(null); // null = still checking
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [preview, setPreview] = useState(null); // { input, summary }
+  const abortRef = useRef(null);
+
+  const enabled = !viewer && ai?.enabled === true;
+  const analysis = ai?.analysis || null;
+  const dismissed = ai?.dismissed || [];
+
+  useEffect(() => {
+    let live = true;
+    if (!enabled) { setKeyPresent(false); return; }
+    loadKey().then((k) => { if (live) setKeyPresent(!!k); });
+    return () => { live = false; };
+  }, [enabled]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const visible = (analysis?.patterns || []).filter((p) => !dismissed.includes(p.id));
+
+  const start = addDays(todayStr(), -89); // a quarter is enough for "recurring"
+  const buildInput = () => buildAnalysisInput(tpl.fields, entries, start, todayStr());
+
+  const openPreview = () => {
+    setError(null);
+    const input = buildInput();
+    if (input.days.length < 5) {
+      setError({
+        title: "Not enough logged days yet",
+        body: `An observation needs at least 5 logged days to mean anything — there are ${input.days.length} in the last 90. Keep logging and try again.`,
+      });
+      return;
+    }
+    setPreview({
+      input,
+      summary: summariseInput(input),
+      windowLabel: `${fmtNice(input.startDate)} – ${fmtNice(input.endDate)}`,
+    });
+  };
+
+  const run = async (input) => {
+    setPreview(null);
+    setBusy(true);
+    setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const key = await loadKey();
+      if (!key) {
+        setKeyPresent(false);
+        setError({ title: "No API key", body: "Add your Gemini key in Settings to run an analysis." });
+        return;
+      }
+      const result = await runPatternAnalysis(key, input, { signal: controller.signal });
+      setAi((prev) => ({ ...prev, analysis: result }));
+      feedback("save");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      setError({
+        title: e?.kind === "auth" ? "Google rejected the key"
+          : e?.kind === "rate" ? "Rate limited"
+          : e?.kind === "network" ? "Couldn't reach Google"
+          : "The analysis didn't come back",
+        body: e?.message || "Something went wrong. Try again in a moment.",
+        showSettings: e?.kind === "auth",
+      });
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  };
+
+  return (
+    <>
+      <SectionTitle>Possible patterns</SectionTitle>
+
+      {/* --- locally calculated --- */}
+      <div className="flex flex-col gap-2">
+        {insights.length === 0 ? (
+          <Card>
+            <Badge tone="neutral">
+              <Icon name="device" size={11} color={C.sub} /> Calculated on this device
+            </Badge>
+            <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
+              Nothing stands out yet. These appear once a few weeks of days share enough answers
+              to compare — keep logging and they'll show up on their own.
+            </p>
+          </Card>
+        ) : (
+          insights.map((ins) => (
+            <PatternCard key={ins.id}
+              badge={
+                <Badge tone="neutral">
+                  <Icon name="device" size={11} color={C.sub} /> Calculated on this device
+                </Badge>
+              }
+              title={ins.title}
+              detail={ins.detail}
+            />
+          ))
+        )}
+      </div>
+      <PatternSourceNote>{PATTERN_NOTE}</PatternSourceNote>
+
+      {/* --- AI-assisted, only when switched on --- */}
+      {!viewer && (
+        <>
+          <SectionTitle
+            action={
+              enabled && keyPresent && !busy ? (
+                <Button variant="ghost" size="sm" icon="refresh" onClick={openPreview}>
+                  {analysis ? "Regenerate" : "Analyse"}
+                </Button>
+              ) : null
+            }
+          >
+            AI observations
+          </SectionTitle>
+
+          {!enabled ? (
+            <Card>
+              <Badge tone="accent"><Icon name="spark" size={11} color={C.accentText} /> Optional</Badge>
+              <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
+                You can have {AI_MODEL_LABEL} read a summary of your logged numbers and suggest
+                longitudinal observations the on-device maths doesn't look for — things repeatedly
+                appearing together, changes after certain days, sleep and mood relationships,
+                recurring timing, and drifts from your own baseline.
+              </p>
+              <p className="text-sm mt-2 leading-relaxed" style={{ color: C.sub }}>
+                It's off. Turning it on needs your own Google Gemini API key and sends a minimal
+                slice of your journal to Google each time you ask for an analysis.
+              </p>
+              <Button variant="outline" block className="mt-4" onClick={goSettings}>
+                Set this up in Settings
+              </Button>
+            </Card>
+          ) : keyPresent === false ? (
+            <Card>
+              <div className="flex items-center gap-2">
+                <Icon name="key" size={16} color={C.warn} />
+                <span className="text-sm font-semibold">No API key found</span>
+              </div>
+              <p className="text-sm mt-2 leading-relaxed" style={{ color: C.sub }}>
+                AI observations are switched on, but there's no key stored on this device — a
+                session-only key is forgotten when the tab closes.
+              </p>
+              <Button variant="outline" block className="mt-4" onClick={goSettings}>Add a key</Button>
+            </Card>
+          ) : busy ? (
+            <Card>
+              <div className="flex items-center gap-2.5" style={{ color: C.accentText }}>
+                <span className="fhj-dots" aria-hidden="true"><span /><span /><span /></span>
+                <span className="text-sm font-medium" role="status">Reading your last 90 days…</span>
+              </div>
+              <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
+                Sent to {AI_MODEL_LABEL}. This usually takes a few seconds.
+              </p>
+              <div className="mt-4 flex flex-col gap-2" aria-hidden="true">
+                <div className="fhj-shimmer h-3 rounded-full" style={{ width: "72%" }} />
+                <div className="fhj-shimmer h-3 rounded-full" style={{ width: "94%" }} />
+                <div className="fhj-shimmer h-3 rounded-full" style={{ width: "58%" }} />
+              </div>
+              <Button variant="ghost" size="sm" className="mt-4"
+                onClick={() => { abortRef.current?.abort(); setBusy(false); }}>
+                Cancel
+              </Button>
+            </Card>
+          ) : error ? (
+            <Card style={{ borderColor: C.dangerInk }}>
+              <div className="flex items-center gap-2">
+                <Icon name="warn" size={16} color={C.dangerInk} />
+                <span className="text-sm font-semibold">{error.title}</span>
+              </div>
+              <p className="text-sm mt-2 leading-relaxed" style={{ color: C.sub }}>{error.body}</p>
+              <div className="flex gap-2 mt-4">
+                <Button variant="secondary" block onClick={openPreview}>Try again</Button>
+                {error.showSettings && (
+                  <Button variant="ghost" block onClick={goSettings}>Settings</Button>
+                )}
+              </div>
+            </Card>
+          ) : !analysis ? (
+            <Card>
+              <Badge tone="accent"><Icon name="spark" size={11} color={C.accentText} /> Ready</Badge>
+              <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
+                Nothing has been analysed yet. You'll see exactly what would be sent before
+                anything leaves this device.
+              </p>
+              <Button variant="primary" block className="mt-4" icon="spark" onClick={openPreview}>
+                Analyse my last 90 days
+              </Button>
+            </Card>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                {visible.length === 0 ? (
+                  <Card>
+                    <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+                      {analysis.patterns.length === 0
+                        ? (analysis.note || "Nothing stood out this time. That's a real answer — it usually means your days have been fairly consistent.")
+                        : "You've hidden every observation from this run. Regenerate for a fresh look."}
+                    </p>
+                    {dismissed.length > 0 && (
+                      <Button variant="ghost" size="sm" className="mt-3"
+                        onClick={() => setAi((prev) => ({ ...prev, dismissed: [] }))}>
+                        Show hidden observations ({dismissed.length})
+                      </Button>
+                    )}
+                  </Card>
+                ) : (
+                  visible.map((p) => (
+                    <AiPatternCard key={p.id} pattern={p}
+                      onDismiss={(id) => setAi((prev) => ({
+                        ...prev, dismissed: [...(prev.dismissed || []), id],
+                      }))} />
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <span className="text-[11px]" style={{ color: C.subtle }}>
+                  {analysis.daysAnalysed} logged day{analysis.daysAnalysed === 1 ? "" : "s"} ·{" "}
+                  {new Date(analysis.generatedAt).toLocaleString(undefined, {
+                    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                  })}
+                </span>
+                <span className="flex-1" />
+                {dismissed.length > 0 && visible.length > 0 && (
+                  <Button variant="ghost" size="sm"
+                    onClick={() => setAi((prev) => ({ ...prev, dismissed: [] }))}>
+                    Unhide {dismissed.length}
+                  </Button>
+                )}
+              </div>
+              <PatternSourceNote>{AI_DISCLAIMER}</PatternSourceNote>
+            </>
+          )}
+        </>
+      )}
+
+      {preview && (
+        <AiSendPreview summary={preview.summary} windowLabel={preview.windowLabel}
+          onCancel={() => setPreview(null)}
+          onConfirm={() => run(preview.input)} />
+      )}
+    </>
+  );
+}
+
+function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
@@ -2378,6 +2934,23 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
     prev.includes(k)
       ? (prev.length > 1 ? prev.filter((x) => x !== k) : prev)          // keep at least one
       : (prev.length >= 4 ? [...prev.slice(0, 3), k] : [...prev, k])); // compare up to 4
+  /* Every chartable metric is offered, not just the first few that happen to
+     fit — the picker scrolls, and says so. */
+  const metricOptions = useMemo(
+    () => tpl.chartMetrics
+      .map((k) => {
+        const f = getField(tpl, k);
+        if (!f) return null;
+        const idx = metrics.indexOf(k);
+        return {
+          k,
+          label: f.label,
+          dot: idx >= 0 && metrics.length > 1 ? CHART_PALETTE(tpl.color)[idx] : null,
+        };
+      })
+      .filter(Boolean),
+    [tpl, metrics]
+  );
 
   const today = entryOn(entries, todayStr());
   const streak = calcStreak(entries);
@@ -2410,31 +2983,38 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
 
   return (
     <div className="px-4 pb-8 pt-3 fhj-stagger">
-      {/* today summary */}
-      <Card>
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-xs uppercase tracking-wider font-semibold" style={{ color: C.sub }}>
-              Today · {keyField.label}
+      {/* today summary — the one number the whole app is built around */}
+      <Card className="!p-5" style={{ padding: "1.25rem" }}>
+        <div className="flex items-start justify-between gap-3">
+          {/* Wraps rather than truncates: a long metric name is the whole
+              point of this line, and "Today · Overall skin sev…" helps nobody. */}
+          <div className="fhj-eyebrow min-w-0 leading-snug pt-0.5">Today · {keyField.label}</div>
+          <Badge tone={streak > 0 ? "accent" : "neutral"}>
+            {streak > 0 ? `${streak}-day streak` : "no streak yet"}
+          </Badge>
+        </div>
+        <div className="flex items-end justify-between gap-4 mt-2.5">
+          <div className="min-w-0">
+            <div className="font-display text-[3.25rem] leading-none tabular-nums"
+              style={{ color: keyToday != null ? colorFor(keyToday, keyField.dir) : C.muted }}>
+              {keyToday != null ? <CountUp value={keyToday} /> : "—"}
             </div>
-            <div className="font-display text-5xl mt-1 leading-none"
-              style={{ color: keyToday != null ? colorFor(keyToday, keyField.dir) : "#B8C2BC" }}>
-              {keyToday != null ? <CountUp value={keyToday} /> : "–"}
+            <div className="text-[11.5px] mt-2" style={{ color: C.subtle }}>
+              {keyToday != null ? "logged today" : "not logged yet"}
             </div>
           </div>
-          <div className="text-right">
-            <div className="px-3 py-1 rounded-full text-xs font-medium inline-block"
-              style={{ background: C.faint, color: C.ink }}>
-              {streak > 0 ? `${streak}-day streak` : "no streak yet"}
+          <div className="text-right shrink-0 flex flex-col gap-1.5">
+            <div className="text-xs" style={{ color: C.subtle }}>
+              7-day avg <b className="tabular-nums ml-0.5" style={{ color: C.ink }}>{fmt1(avg7)}</b>
             </div>
-            <div className="text-xs mt-2" style={{ color: C.sub }}>7-day avg <b style={{ color: C.ink }}>{fmt1(avg7)}</b></div>
-            <div className="text-xs mt-0.5" style={{ color: C.sub }}>30-day avg <b style={{ color: C.ink }}>{fmt1(avg30)}</b></div>
+            <div className="text-xs" style={{ color: C.subtle }}>
+              30-day avg <b className="tabular-nums ml-0.5" style={{ color: C.ink }}>{fmt1(avg30)}</b>
+            </div>
           </div>
         </div>
         {!today && (
           <button onClick={() => openLog(todayStr())}
-            className="mt-3 w-full py-2.5 rounded-xl text-sm font-semibold text-white"
-            style={{ background: tpl.color }}>
+            className="fhj-btn fhj-btn-primary fhj-btn-block mt-4">
             Log today
           </button>
         )}
@@ -2443,18 +3023,13 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
       {/* backup nudge — the one thing this app can't do for you */}
       {nudge.show && (
         <Card className="mt-3" style={{ borderLeft: `3px solid ${C.accent}` }}>
-          <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>
-            Keep a copy
-          </div>
-          <p className="text-sm leading-relaxed mb-3">
+          <div className="fhj-eyebrow mb-1.5">Keep a copy</div>
+          <p className="text-sm leading-relaxed mb-4" style={{ color: C.sub }}>
             {nudge.reason === "never"
               ? `${entries.length} days are logged here and nowhere else. Save a backup file so a lost or wiped phone doesn't take them with it.`
               : `Your last backup was ${nudge.ageDays} days ago, and you've logged since. A fresh one takes a couple of seconds.`}
           </p>
-          <button onClick={goSettings}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
-            Back up now
-          </button>
+          <Button variant="primary" block onClick={goSettings}>Back up now</Button>
         </Card>
       )}
 
@@ -2463,21 +3038,20 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         <>
           <SectionTitle>Photo progress</SectionTitle>
           {photoItems.length === 0 ? (
-            <Card className="mb-1">
-              <div className="text-sm mb-2" style={{ color: C.sub }}>No photos yet — capture your first in today's log.</div>
-              <button onClick={() => openLog(todayStr())}
-                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: tpl.color }}>
-                Go to today's log
-              </button>
+            <Card>
+              <div className="text-sm mb-3.5 leading-relaxed" style={{ color: C.sub }}>
+                No photos yet — capture your first in today's log.
+              </div>
+              <Button variant="secondary" block onClick={() => openLog(todayStr())}>Go to today's log</Button>
             </Card>
           ) : (
-            <button onClick={goGallery} className="w-full mb-1 text-left">
-              <Card className="!p-3" style={{ padding: "0.75rem" }}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>
+            <button onClick={goGallery} className="w-full text-left" aria-label="Open photo progress">
+              <Card tappable className="!p-3.5" style={{ padding: "0.875rem" }}>
+                <div className="flex items-center justify-between mb-2.5 gap-2">
+                  <div className="fhj-eyebrow">
                     {photoItems.length} photo{photoItems.length > 1 ? "s" : ""}
                   </div>
-                  <div className="text-xs" style={{ color: C.sub }}>last · {fmtNice(photoItems[0].date)}</div>
+                  <div className="text-[11px] shrink-0" style={{ color: C.subtle }}>last · {fmtNice(photoItems[0].date)}</div>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
                   {latestPerField(photoItems).slice(0, 4).map((it) => (
@@ -2503,26 +3077,26 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
             <div className="flex flex-col gap-2">
               {week && (
                 <button onClick={() => goReport("week")} className="w-full text-left">
-                  <Card className="!p-3" style={{ padding: "0.75rem", borderLeft: `4px solid ${tpl.color}` }}>
-                    <div className="flex items-center justify-between">
-                      <div>
+                  <Card tappable className="!p-3.5" style={{ padding: "0.875rem", borderLeft: `3px solid ${C.accent}` }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <div className="text-sm font-semibold">Your week is ready</div>
-                        <div className="text-[11px] mt-0.5" style={{ color: C.sub }}>{week.label}</div>
+                        <div className="text-[11px] mt-1" style={{ color: C.subtle }}>{week.label}</div>
                       </div>
-                      <Icon name="right" size={16} color={C.sub} />
+                      <Icon name="right" size={16} color={C.subtle} />
                     </div>
                   </Card>
                 </button>
               )}
               {month && (
                 <button onClick={() => goReport("month")} className="w-full text-left">
-                  <Card className="!p-3" style={{ padding: "0.75rem", borderLeft: `4px solid ${tpl.color}` }}>
-                    <div className="flex items-center justify-between">
-                      <div>
+                  <Card tappable className="!p-3.5" style={{ padding: "0.875rem", borderLeft: `3px solid ${C.accent}` }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <div className="text-sm font-semibold">Your month is ready</div>
-                        <div className="text-[11px] mt-0.5" style={{ color: C.sub }}>{month.label}</div>
+                        <div className="text-[11px] mt-1" style={{ color: C.subtle }}>{month.label}</div>
                       </div>
-                      <Icon name="right" size={16} color={C.sub} />
+                      <Icon name="right" size={16} color={C.subtle} />
                     </div>
                   </Card>
                 </button>
@@ -2541,12 +3115,10 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
           const f = getField(tpl, k);
           const t = trendFor(entries, k, f.dir);
           return (
-            <Card key={k} className="!p-3" style={{ padding: "0.75rem" }}>
+            <Card key={k} className="!p-3.5" style={{ padding: "0.875rem" }}>
               <div className="text-xs font-medium truncate" style={{ color: C.sub }}>{f.label}</div>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="font-display text-2xl leading-none">{fmt1(t.a)}</span>
-                <TrendArrow trend={t} dir={f.dir} />
-              </div>
+              <div className="font-display text-2xl leading-none mt-2 tabular-nums">{fmt1(t.a)}</div>
+              <div className="mt-1.5"><TrendArrow trend={t} dir={f.dir} /></div>
             </Card>
           );
         })}
@@ -2555,75 +3127,51 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
       {/* trend chart */}
       <SectionTitle>30-day trend</SectionTitle>
       <Card>
-        <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
-          {tpl.chartMetrics.map((k) => {
-            const f = getField(tpl, k);
-            const idx = metrics.indexOf(k);
-            const active = idx >= 0;
-            const dot = active && metrics.length > 1 ? CHART_PALETTE(tpl.color)[idx] : null;
-            return (
-              <button key={k} onClick={() => toggleMetric(k)}
-                className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1.5"
-                style={{ background: active ? tpl.color : C.faint, color: active ? "#fff" : C.ink }}>
-                {dot && <span className="w-2 h-2 rounded-full" style={{ background: dot, outline: "1.5px solid #fff" }} />}
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="text-[10px] mb-1" style={{ color: C.sub }}>Tap to compare up to 4 at once</div>
+        <MetricPicker
+          options={metricOptions}
+          selected={metrics}
+          onToggle={toggleMetric}
+          max={4}
+          label="Metrics to chart"
+        />
         {selFields.length > 1
           ? <MultiMetricChart entries={entries} fields={selFields} tint={tpl.color} />
           : <MetricChart entries={entries} field={metricField} color={tpl.color} />}
-        <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-          {selFields.length > 1 ? "One line per metric — dots mark logged days" : "Solid line: daily · dashed: 7-day average"}
+        <div className="fhj-caption mt-2">
+          {selFields.length > 1 ? "One line per metric — dots mark logged days" : "Solid line: daily · dashed line: 7-day average"}
         </div>
-        <div className="mt-3 text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>
+        <div className="fhj-eyebrow mt-5 mb-1">
           Weekly averages{selFields.length > 1 ? ` — ${metricField.label}` : ""}
         </div>
         <WeeklyBars entries={entries} field={metricField} color={tpl.color} />
       </Card>
 
-      {/* insights */}
-      <SectionTitle>Possible patterns</SectionTitle>
-      {insights.length === 0 ? (
-        <Card><div className="text-sm" style={{ color: C.sub }}>
-          Not enough data yet. Keep logging daily and possible patterns will show up here.
-        </div></Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {insights.map((ins) => (
-            <Card key={ins.id}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                  style={{ background: C.faint, color: tpl.color }}>possible pattern</span>
-              </div>
-              <div className="text-sm font-semibold">{ins.title}</div>
-              <div className="text-sm mt-1 leading-relaxed" style={{ color: C.sub }}>{ins.detail}</div>
-            </Card>
-          ))}
-        </div>
-      )}
-      <p className="text-[11px] mt-2 leading-relaxed" style={{ color: C.sub }}>{PATTERN_NOTE}</p>
+      {/* insights — locally calculated, plus optional AI observations */}
+      <PatternsSection tpl={tpl} entries={entries} insights={insights}
+        ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} />
 
       {/* recent entries */}
       <SectionTitle>Recent entries</SectionTitle>
       <Card className="!p-0" style={{ padding: 0 }}>
-        {recent.length === 0 && <div className="p-4 text-sm" style={{ color: C.sub }}>No entries yet.</div>}
+        {recent.length === 0 && (
+          <div className="p-5 text-sm leading-relaxed" style={{ color: C.sub }}>
+            No entries yet. Your last five days will appear here once you start logging.
+          </div>
+        )}
         {recent.map((e, i) => {
           const v = e.answers[tpl.keyMetric];
           return (
             <button key={e.id} onClick={() => openLog(e.date)}
-              className="w-full flex items-center justify-between px-4 py-3 text-left"
+              className="fhj-row w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left"
               style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none" }}>
-              <div>
+              <div className="min-w-0">
                 <div className="text-sm font-medium">{fmtNice(e.date)}</div>
-                {e.notes && <div className="text-xs truncate max-w-[13rem]" style={{ color: C.sub }}>{e.notes}</div>}
+                {e.notes && <div className="text-xs truncate mt-0.5" style={{ color: C.subtle }}>{e.notes}</div>}
               </div>
               <div className="flex items-center gap-2">
                 {v != null && (
-                  <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                    style={{ background: colorFor(v, keyField.dir) }}>{v}</span>
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                    style={{ background: colorFor(v, keyField.dir), color: readableInk(colorFor(v, keyField.dir)) }}>{v}</span>
                 )}
                 <Icon name="right" size={16} color={C.sub} />
               </div>
@@ -2632,11 +3180,9 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         })}
       </Card>
 
-      <button onClick={goExport}
-        className="mt-4 w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
-        style={{ background: C.card, border: `1.5px solid ${tpl.color}`, color: tpl.color }}>
-        <Icon name="download" size={17} color={tpl.color} /> Export data
-      </button>
+      <Button variant="outline" block icon="download" className="mt-6" onClick={goExport}>
+        Export data
+      </Button>
     </div>
   );
 }
@@ -2720,10 +3266,10 @@ function CalendarScreen({ profile, entries, openLog }) {
           Legend · {keyField.label}
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: C.sub }}>
-          {[["#4E9A6C", keyField.dir === "pos" ? "high (good)" : "low (mild)"],
-            ["#C9A03C", "moderate"],
-            ["#CE7038", "elevated"],
-            ["#B4433C", keyField.dir === "pos" ? "low" : "high (severe)"]].map(([c, l]) => (
+          {[[C.good, keyField.dir === "pos" ? "high (good)" : "low (mild)"],
+            [C.warn, "moderate"],
+            [C.alert, "elevated"],
+            [C.bad, keyField.dir === "pos" ? "low" : "high (severe)"]].map(([c, l]) => (
             <span key={l} className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: c }} />{l}
             </span>
@@ -2885,21 +3431,15 @@ function ExportScreen({ db, setDb }) {
       </Card>
 
       <div className="flex flex-col gap-2 mt-3">
-        <button onClick={exportCSV} disabled={!count}
-          className="w-full py-3.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40"
-          style={{ background: C.accent }}>
-          <Icon name="download" size={17} color="#fff" /> Download CSV
-        </button>
-        <button onClick={exportXLSX} disabled={!count}
-          className="w-full py-3.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40"
-          style={{ background: "#2F5D50" }}>
-          <Icon name="download" size={17} color="#fff" /> Download Excel (.xlsx)
-        </button>
-        <button onClick={exportJSON} disabled={!count}
-          className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40"
-          style={{ background: C.card, border: `1.5px solid ${C.accent}`, color: C.accent }}>
-          <Icon name="download" size={17} color={C.accent} /> Download JSON (data only)
-        </button>
+        <Button variant="primary" block icon="download" onClick={exportCSV} disabled={!count}>
+          Download CSV
+        </Button>
+        <Button variant="secondary" block icon="download" onClick={exportXLSX} disabled={!count}>
+          Download Excel (.xlsx)
+        </Button>
+        <Button variant="secondary" block icon="download" onClick={exportJSON} disabled={!count}>
+          Download JSON (data only)
+        </Button>
         <p className="text-[11px] leading-relaxed px-1" style={{ color: C.sub }}>
           For a restorable backup that includes your photos, use <b>Settings → Backup &amp; storage → Full backup</b>.
         </p>
@@ -3322,7 +3862,7 @@ function FitbitImportScreen({ db, setDb, goBack }) {
               {[["gfit", "Google Fit / Health"], ["fitbit", "Fitbit"]].map(([v, l]) => (
                 <button key={v} onClick={() => setGuide(v)}
                   className="px-3 py-1.5 rounded-full text-xs font-medium"
-                  style={{ background: guide === v ? C.ink : C.faint, color: guide === v ? "#fff" : C.sub }}>
+                  style={{ background: guide === v ? C.accent : C.faint, color: guide === v ? C.onAccent : C.sub }}>
                   {l}
                 </button>
               ))}
@@ -3331,7 +3871,7 @@ function FitbitImportScreen({ db, setDb, goBack }) {
               {(guide === "gfit" ? GFIT_STEPS : FITBIT_STEPS).map(([title, body], i) => (
                 <li key={i} className="flex gap-2.5">
                   <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5"
-                    style={{ background: C.faint, color: C.accent }}>{i + 1}</span>
+                    style={{ background: C.accentSoft, color: C.accentText }}>{i + 1}</span>
                   <span className="text-sm leading-relaxed">
                     <b>{title}.</b> <span style={{ color: C.sub }}>{body}</span>
                   </span>
@@ -3374,7 +3914,7 @@ function FitbitImportScreen({ db, setDb, goBack }) {
             {parsed.report.unknown.length ? ` · ${parsed.report.unknown.length} not recognized` : ""}
           </div>
           {parsed.report.errors.length > 0 && (
-            <div className="text-xs mt-1 leading-relaxed" style={{ color: "#8E3B2F" }}>
+            <div className="text-xs mt-1 leading-relaxed" style={{ color: C.dangerInk }}>
               Couldn't read: {parsed.report.errors.join("; ")}
             </div>
           )}
@@ -3386,7 +3926,7 @@ function FitbitImportScreen({ db, setDb, goBack }) {
                 {parsed.summary.conflicts} day{parsed.summary.conflicts === 1 ? " has" : "s have"} a value you entered
                 yourself. {overwrite ? "Fitbit values will replace them." : "Your values will be kept."}
               </span>
-              <span className="w-9 h-5 rounded-full relative shrink-0" style={{ background: overwrite ? C.accent : "#D8DED9" }}>
+              <span className="w-9 h-5 rounded-full relative shrink-0" style={{ background: overwrite ? C.accent : C.lineStrong }}>
                 <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: overwrite ? 18 : 2 }} />
               </span>
             </button>
@@ -3406,7 +3946,7 @@ function FitbitImportScreen({ db, setDb, goBack }) {
 
       {done && (
         <Card className="mt-3">
-          <div className="text-sm font-semibold mb-1" style={{ color: C.accent }}>Import complete</div>
+          <div className="text-sm font-semibold mb-1" style={{ color: C.good }}>Import complete</div>
           <div className="text-sm leading-relaxed" style={{ color: C.sub }}>
             {done.values} values added — {done.updated} existing day{done.updated === 1 ? "" : "s"} updated,{" "}
             {done.created} new day{done.created === 1 ? "" : "s"} created{done.kept ? `, ${done.kept} of your own values kept` : ""}.
@@ -3445,6 +3985,12 @@ async function buildFullBackup(db) {
     app: APP_NAME, kind: "full", schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(), disclaimer: DISCLAIMER,
     profile: db.profile, entries: db.entries, reports: db.reports || [],
+    // Past AI observations travel with the journal, but the opt-in does not:
+    // turning on a feature that talks to an external service is a decision
+    // made per device, by the person holding it, not inherited from a file.
+    // (The API key lives under its own storage key and is never in `db`, so
+    // there is nothing here that could carry it either.)
+    ai: { analysis: db.ai?.analysis || null, dismissed: db.ai?.dismissed || [] },
     photos,
   };
 }
@@ -3503,6 +4049,8 @@ async function restoreBackup(obj, setDb) {
   }
   const next = migrateDb({
     profile: obj.profile, entries: obj.entries, reports: Array.isArray(obj.reports) ? obj.reports : [],
+    // `enabled` is deliberately not restored — see buildFullBackup.
+    ai: { ...DEFAULT_AI, analysis: obj.ai?.analysis ?? null, dismissed: Array.isArray(obj.ai?.dismissed) ? obj.ai.dismissed : [] },
     ack: true, onboarded: true,
   });
   setDb(next);
@@ -3667,7 +4215,7 @@ function ReminderCard({ profile, onSave }) {
 
       {msg && (
         <div className="mt-3 px-3 py-2 rounded-xl text-sm"
-          style={{ background: msg.ok ? C.faint : "#F6E9E7", color: msg.ok ? C.ink : "#8E3B2F" }}>
+          style={{ background: msg.ok ? C.faint : C.dangerBg, color: msg.ok ? C.ink : C.dangerInk }}>
           {msg.text}
         </div>
       )}
@@ -3741,8 +4289,11 @@ function DataDurabilityCard({ db, setDb }) {
   const freeSpace = async (days, label) => {
     const cutoff = days === 0 ? "9999-12-31" : addDays(todayStr(), -days);
     const { ids, bytes } = photosOlderThan(ix, cutoff);
-    if (!ids.length) { setMsg({ ok: true, text: `No photos ${label} to delete.` }); return; }
-    if (!window.confirm(`Delete ${ids.length} photo${ids.length === 1 ? "" : "s"} ${label} (${fmtBytes(bytes)})? ` +
+    // "photos older than 1 year" reads straight through; "photos all of them"
+    // does not, so the all-photos case gets its own phrasing.
+    const phrase = days === 0 ? "— every one of them" : label;
+    if (!ids.length) { setMsg({ ok: true, text: `No photos ${phrase} to delete.` }); return; }
+    if (!window.confirm(`Delete ${ids.length} photo${ids.length === 1 ? "" : "s"} ${phrase} (${fmtBytes(bytes)})? ` +
       "Ratings and entries stay — only the pictures are removed. This cannot be undone. " +
       "Consider saving a full backup first.")) return;
     setBusy("free"); setMsg(null);
@@ -3801,7 +4352,7 @@ function DataDurabilityCard({ db, setDb }) {
         </div>
         {persist && persist.persisted ? (
           <p className="text-[12px] leading-relaxed" style={{ color: C.sub }}>
-            <b style={{ color: C.accent }}>Protected.</b> This browser has marked your journal as persistent —
+            <b style={{ color: C.good }}>Protected.</b> This browser has marked your journal as persistent —
             it won't be cleared to free up space. Clearing site data by hand still erases it, so keep a backup.
           </p>
         ) : (
@@ -3825,15 +4376,17 @@ function DataDurabilityCard({ db, setDb }) {
         <>
           <div className="text-xs font-semibold uppercase tracking-wider mt-4 mb-1.5" style={{ color: C.sub }}>Free up space</div>
           <div className="flex flex-col gap-1.5">
-            {[[180, "older than 6 months"], [365, "older than 1 year"], [0, "— all of them"]].map(([days, label]) => {
+            {[[180, "older than 6 months"], [365, "older than 1 year"], [0, "all of them"]].map(([days, label]) => {
               const { ids, bytes } = oldCounts(days);
               if (!ids.length) return null;
               return (
                 <button key={days} onClick={() => freeSpace(days, label)} disabled={!!busy}
-                  className="w-full py-2 rounded-xl text-xs font-medium text-left px-3 flex justify-between disabled:opacity-50"
+                  className="w-full py-2.5 px-3.5 rounded-xl text-left flex items-center justify-between gap-3 disabled:opacity-50"
                   style={{ background: C.faint }}>
-                  <span>Delete photos {label}</span>
-                  <span style={{ color: C.sub }}>{ids.length} · {fmtBytes(bytes)}</span>
+                  <span className="text-[13px] font-medium min-w-0">Delete photos {label}</span>
+                  <span className="text-[11.5px] shrink-0 tabular-nums whitespace-nowrap" style={{ color: C.subtle }}>
+                    {ids.length} · {fmtBytes(bytes)}
+                  </span>
                 </button>
               );
             })}
@@ -3845,7 +4398,7 @@ function DataDurabilityCard({ db, setDb }) {
       )}
       {msg && (
         <div className="mt-3 px-3 py-2 rounded-xl text-sm"
-          style={{ background: msg.ok ? C.faint : "#F6E9E7", color: msg.ok ? C.ink : "#8E3B2F" }}>
+          style={{ background: msg.ok ? C.faint : C.dangerBg, color: msg.ok ? C.ink : C.dangerInk }}>
           {msg.text}
         </div>
       )}
@@ -3853,7 +4406,232 @@ function DataDurabilityCard({ db, setDb }) {
   );
 }
 
-function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onSetupPin, onChangePin, onDisablePin }) {
+/* ---------- appearance ----------
+   The preference is kept in localStorage rather than in the journal, because
+   it has to be readable synchronously before the first paint (see the inline
+   script in index.html) — otherwise every cold start flashes white. */
+function AppearanceCard() {
+  const [pref, setPref] = useState(getThemePreference);
+  const choose = (next) => {
+    setPref(next);
+    setThemePreference(next);
+    feedback("select");
+  };
+  return (
+    <Card className="mt-3">
+      <div className="fhj-eyebrow mb-2.5">Appearance</div>
+      <Segmented
+        label="Theme"
+        value={pref}
+        onChange={choose}
+        options={[
+          { value: "dark", label: "Dark" },
+          { value: "light", label: "Light" },
+          { value: "system", label: "System" },
+        ]}
+      />
+      <p className="text-[11.5px] leading-relaxed mt-2.5" style={{ color: C.subtle }}>
+        {pref === "system"
+          ? "Following your device's light/dark setting, and switching with it."
+          : `Always ${pref}. Remembered on this device.`}
+      </p>
+    </Card>
+  );
+}
+
+/* ---------- optional AI ----------
+   Everything here is inert until someone deliberately turns it on. The key is
+   held outside the journal object so it cannot be exported, and the copy is
+   honest about what "stored locally" does and does not buy you. */
+function AiSettingsCard({ ai, setAi }) {
+  const [storedMask, setStoredMask] = useState(null); // null = none, string = masked key
+  const [mode, setMode] = useState("persist");
+  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [status, setStatus] = useState(null); // { ok, message }
+  const [testing, setTesting] = useState(false);
+
+  const enabled = ai?.enabled === true;
+
+  const refresh = () => loadKey().then((k) => setStoredMask(k ? maskKey(k) : null));
+  useEffect(() => { refresh(); }, []);
+
+  const save = async () => {
+    const key = draft.trim();
+    if (!looksLikeKey(key)) {
+      setStatus({ ok: false, message: "That doesn't look like a Google AI Studio key. Paste the whole thing." });
+      return;
+    }
+    await saveKey(key, mode);
+    setDraft("");
+    setEditing(false);
+    setStatus({ ok: true, message: mode === "persist" ? "Key saved on this device." : "Key held for this session only." });
+    await refresh();
+    feedback("save");
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setStatus(null);
+    try {
+      // Whatever is typed wins over whatever is stored — "Test" next to a
+      // filled field has to test that field, saved key or not.
+      const key = draft.trim() || (await loadKey());
+      if (!key) { setStatus({ ok: false, message: "There's no key to test yet." }); return; }
+      const res = await testApiKey(key);
+      setStatus(res.ok ? { ok: true, message: "The key works." } : { ok: false, message: res.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm("Remove the Gemini API key from this device? AI observations will stop until you add one again.")) return;
+    await clearKey();
+    setStatus({ ok: true, message: "Key removed from this device." });
+    await refresh();
+  };
+
+  return (
+    <Card className="mt-3">
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="fhj-eyebrow">AI observations</div>
+        <Badge tone="neutral">Optional</Badge>
+      </div>
+
+      <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
+        Off by default. When it's on, the Possible Patterns section gains a button that sends a
+        minimal summary of your logged <i>numbers</i> — no notes, no photos, no name — to{" "}
+        {AI_MODEL_LABEL} using your own API key, and shows what it noticed. You see exactly what
+        would be sent, and confirm, every single time.
+      </p>
+      <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
+        Nothing runs on its own, and everything else in {APP_NAME} stays on this device whether
+        this is on or off.
+      </p>
+
+      <div className="mt-3 pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+        <SwitchRow
+          on={enabled}
+          onChange={(on) => { setAi({ enabled: on }); feedback("select"); }}
+          label="Enable AI observations"
+          desc={enabled
+            ? "The analysis button appears on the dashboard. It still asks before sending anything."
+            : "Turn this on to add an optional AI section under Possible Patterns."}
+        />
+      </div>
+
+      {enabled && (
+        <div className="mt-2 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+          <div className="fhj-eyebrow mb-2">Your Gemini API key</div>
+
+          {storedMask && !editing ? (
+            <>
+              <div className="flex items-center gap-2.5 p-3 rounded-xl" style={{ background: C.faint }}>
+                <Icon name="key" size={16} color={C.good} />
+                <span className="text-sm font-medium flex-1 min-w-0 truncate">{storedMask}</span>
+                <Badge tone="good">Set</Badge>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                <Button variant="secondary" size="sm" onClick={test} disabled={testing}>
+                  {testing ? "Testing…" : "Test key"}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => { setEditing(true); setStatus(null); }}>
+                  Replace
+                </Button>
+                <Button variant="danger" size="sm" icon="trash" onClick={remove}>Remove</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="text-sm font-medium block mb-1.5" htmlFor="fhj-ai-key">
+                Paste your key
+              </label>
+              <input
+                id="fhj-ai-key"
+                type="password"
+                className="fhj-input"
+                value={draft}
+                onChange={(e) => { setDraft(e.target.value); setStatus(null); }}
+                placeholder="AIza…"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                /* A password field so it isn't shoulder-surfed, isn't captured
+                   by autofill heuristics, and isn't read aloud character by
+                   character in a screen reader by default. */
+              />
+              <p className="text-[11.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                Create one free at Google AI Studio (aistudio.google.com). It's your key and your
+                quota — this app never sees it leave your browser except in the request to Google.
+              </p>
+
+              <div className="mt-3">
+                <div className="fhj-eyebrow mb-1.5">Remember it?</div>
+                <Segmented
+                  label="How to store the key"
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: "persist", label: "On this device" },
+                    { value: "session", label: "This session" },
+                  ]}
+                />
+                <p className="text-[11.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                  {mode === "persist"
+                    ? "Stored in this browser's local database, separate from your journal so it can never end up inside an exported backup."
+                    : "Kept in memory only. Closing the tab forgets it — the right choice on a shared or borrowed computer."}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Button variant="primary" size="sm" onClick={save} disabled={!draft.trim()}>Save key</Button>
+                <Button variant="secondary" size="sm" onClick={test} disabled={testing || !draft.trim()}>
+                  {testing ? "Testing…" : "Test without saving"}
+                </Button>
+                {storedMask && (
+                  <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setDraft(""); setStatus(null); }}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+
+          {status && (
+            <div className="mt-3 p-3 rounded-xl text-[12.5px] leading-relaxed" role="status"
+              style={{
+                background: status.ok ? C.goodSoft : C.dangerBg,
+                color: status.ok ? C.good : C.dangerInk,
+              }}>
+              {status.message}
+            </div>
+          )}
+
+          {/* The honest part. A local-first app cannot promise a vault, so it
+              shouldn't imply one. */}
+          <div className="mt-3.5 p-3 rounded-xl" style={{ background: C.faint }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Icon name="warn" size={14} color={C.warn} />
+              <span className="text-[12px] font-semibold">What "stored locally" really means</span>
+            </div>
+            <p className="text-[11.5px] leading-relaxed" style={{ color: C.sub }}>
+              A key saved here sits in this browser's storage on this device. That keeps it out of
+              your backups and away from any server — but it is <b>not encrypted</b>, and it can't
+              be: there's no password in this app to encrypt it with that an attacker holding your
+              unlocked device wouldn't also have. Anyone who can use this browser profile can read
+              it. On a shared computer, choose "This session". Whatever you choose, you can revoke
+              the key at Google at any time, and that revocation is what actually stops it working.
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi }) {
   const prefs = db.profile.prefs || { sound: false, haptics: true };
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
@@ -3865,108 +4643,109 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
   const setReminder = (reminder) => setDb((prev) => ({
     ...prev, profile: { ...prev.profile, reminder, updatedAt: new Date().toISOString() },
   }));
-  const prefToggle = (on, onClick, label, desc) => (
-    <button onClick={onClick} className="w-full flex items-center justify-between py-2.5 text-left gap-3">
-      <span>
-        <span className="text-sm font-medium block">{label}</span>
-        {desc && <span className="text-[11px] block" style={{ color: C.sub }}>{desc}</span>}
-      </span>
-      <span className="w-10 h-6 rounded-full relative shrink-0 transition-colors" style={{ background: on ? C.accent : C.line }}>
-        <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" style={{ left: on ? "1.15rem" : "0.15rem" }} />
-      </span>
-    </button>
-  );
   return (
-    <div className="px-4 pb-8 pt-3 fhj-stagger">
+    <div className="px-4 pb-10 pt-3 fhj-stagger">
       <Card>
-        <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Your survey</div>
-        <button onClick={goSetup} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
-          Edit Survey / Tracking Setup
-        </button>
+        <div className="fhj-eyebrow mb-2.5">Your survey</div>
+        <Button variant="secondary" block icon="sliders" onClick={goSetup}>
+          Edit survey / tracking setup
+        </Button>
       </Card>
+
+      <AppearanceCard />
       <ReminderCard profile={db.profile} onSave={setReminder} />
+
       <Card className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>Taps & sounds</div>
-        {hapticsSupported() && prefToggle(prefs.haptics !== false,
-          () => { setPrefs({ haptics: prefs.haptics === false }); if (prefs.haptics === false) feedback("select"); },
-          "Vibration feedback", "A tiny buzz on taps and saves")}
-        {prefToggle(prefs.sound === true,
-          () => { const next = prefs.sound !== true; setPrefs({ sound: next }); if (next) { FB.prefs = { ...prefs, sound: true }; feedback("save"); } },
-          "Sounds", "Subtle ticks and chimes — off unless you turn them on")}
-        {prefToggle(prefs.backdrop === true,
-          () => setPrefs({ backdrop: prefs.backdrop !== true }),
-          "Ambient backdrop", "A soft moving background behind the app. Skipped automatically when your device prefers reduced motion.")}
+        <div className="fhj-eyebrow mb-1">Taps & sounds</div>
+        {hapticsSupported() && (
+          <SwitchRow
+            on={prefs.haptics !== false}
+            onChange={(on) => { setPrefs({ haptics: on }); if (on) feedback("select"); }}
+            label="Vibration feedback" desc="A tiny buzz on taps and saves" />
+        )}
+        <SwitchRow
+          on={prefs.sound === true}
+          onChange={(on) => { setPrefs({ sound: on }); if (on) { FB.prefs = { ...prefs, sound: true }; feedback("save"); } }}
+          label="Sounds" desc="Subtle ticks and chimes — off unless you turn them on" />
+        <SwitchRow
+          on={prefs.backdrop === true}
+          onChange={(on) => setPrefs({ backdrop: on })}
+          label="Ambient backdrop"
+          desc="A soft moving background behind the app. Skipped automatically when your device prefers reduced motion." />
       </Card>
+
+      <AiSettingsCard ai={db.ai} setAi={setAi} />
+
       <Card className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>Report cards</div>
-        <p className="text-[11px] mb-1" style={{ color: C.sub }}>Choose what appears in weekly and monthly reports.</p>
+        <div className="fhj-eyebrow mb-1.5">Report cards</div>
+        <p className="text-[11.5px] leading-relaxed mb-2" style={{ color: C.subtle }}>
+          Choose what appears in weekly and monthly reports.
+        </p>
         <ReportPrefsSettings profile={db.profile} onSavePrefs={setReportPrefs} />
       </Card>
+
       <Card className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Wearable data</div>
-        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+        <div className="fhj-eyebrow mb-2.5">Wearable data</div>
+        <p className="text-sm leading-relaxed mb-3.5" style={{ color: C.sub }}>
           Import steps, heart rate, sleep, and weight history from a Google Fit / Google Health or Fitbit export
           (Google Takeout). Read on this device only — nothing is uploaded.
         </p>
-        <button onClick={goImport} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
-          Import wearable data
-        </button>
+        <Button variant="secondary" block onClick={goImport}>Import wearable data</Button>
       </Card>
+
       <Card className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>App lock</div>
-        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+        <div className="fhj-eyebrow mb-2.5">App lock</div>
+        <p className="text-sm leading-relaxed mb-3.5" style={{ color: C.sub }}>
           {lockEnabled
             ? "A PIN is required to open the app on this device, and it re-locks whenever you leave the app."
             : "Off by default — the app opens straight to your journal, like today. Turn this on if this device is ever shared and you want a PIN before it opens."}
         </p>
         {lockEnabled ? (
           <div className="flex flex-col gap-2">
-            <button onClick={onChangePin} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
-              Change PIN
-            </button>
-            <button onClick={onDisablePin} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: "#F6E9E7", color: "#8E3B2F" }}>
-              Turn off PIN lock
-            </button>
+            <Button variant="secondary" block onClick={onChangePin}>Change PIN</Button>
+            <Button variant="danger" block onClick={onDisablePin}>Turn off PIN lock</Button>
           </div>
         ) : (
-          <button onClick={onSetupPin} className="w-full py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: C.accent }}>
-            Turn on PIN lock
-          </button>
+          <Button variant="primary" block onClick={onSetupPin}>Turn on PIN lock</Button>
         )}
       </Card>
+
       <Card className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Disclaimer</div>
-        <p className="text-sm leading-relaxed">{DISCLAIMER}</p>
+        <div className="fhj-eyebrow mb-2.5">Disclaimer</div>
+        <p className="text-sm leading-relaxed" style={{ color: C.sub }}>{DISCLAIMER}</p>
       </Card>
+
       <DataDurabilityCard db={db} setDb={setDb} />
+
       <Card className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Data</div>
-        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+        <div className="fhj-eyebrow mb-2.5">Data</div>
+        <p className="text-sm leading-relaxed mb-3.5" style={{ color: C.sub }}>
           Everything is stored privately on this device. Use the Export page for CSV, Excel, and JSON backups.
         </p>
         <div className="flex flex-col gap-2">
-          <button onClick={async () => {
+          <Button variant="secondary" block onClick={async () => {
             if (window.confirm("Replace your current setup and entries with the example Eczema + Carnivore setup? Saved photos will be deleted.")) {
               const ix = await loadPhotoIndex();
               await deletePhotos(Object.keys(ix));
               await loadSampleData(setDb); goHome();
             }
-          }} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
+          }}>
             Restore example data
-          </button>
-          <button onClick={async () => {
+          </Button>
+          <Button variant="danger" block icon="trash" onClick={async () => {
             if (window.confirm("Erase your setup, all entries, and all saved photos? This cannot be undone. You'll go back through first-time setup.")) {
               const ix = await loadPhotoIndex();
               await deletePhotos(Object.keys(ix));
-              setDb({ profile: blankProfile(), entries: [], reports: [], ack: false, onboarded: false, schemaVersion: SCHEMA_VERSION }); goHome();
+              setDb({ profile: blankProfile(), entries: [], reports: [], ack: false, onboarded: false, ai: DEFAULT_AI, schemaVersion: SCHEMA_VERSION }); goHome();
             }
-          }} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: "#F6E9E7", color: "#8E3B2F" }}>
+          }}>
             Erase all data
-          </button>
+          </Button>
         </div>
       </Card>
-      <PrivacyCard />
-      <p className="text-[11px] mt-3 text-center" style={{ color: C.sub }}>
+
+      <PrivacyCard aiEnabled={db.ai?.enabled === true} />
+      <p className="text-[11px] mt-4 text-center" style={{ color: C.subtle }}>
         {APP_NAME} {APP_VERSION} · your data stays on this device.
       </p>
     </div>
@@ -3977,13 +4756,18 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
    than taken on faith. Every line here is verifiable from the source: there is
    no analytics call, no fetch to a backend, and after first load no network
    request at all — the fonts are bundled, not fetched from a CDN. */
-function PrivacyCard() {
+function PrivacyCard({ aiEnabled = false }) {
   const [open, setOpen] = useState(false);
   const facts = [
     ["No account", "There's no sign-up, no email, no password. Nothing identifies you to anyone."],
     ["No server", "Your entries, photos, and reports are written to this browser's storage and never uploaded. There is no backend to upload them to."],
     ["No tracking", "No analytics, no cookies, no advertising or third-party scripts of any kind."],
-    ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode."],
+    // This claim has to track reality, not the ideal. Turning on AI
+    // observations adds exactly one outbound call — the card says so, on the
+    // card, rather than leaving a promise standing that is no longer true.
+    aiEnabled
+      ? ["One network call, on request", "AI observations are on. Nothing is sent automatically: each analysis you ask for sends a summary of your logged numbers to Google, and shows you exactly what before it goes. Everything else still stays here, and the rest of the app works offline."]
+      : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations in Settings is the one thing that changes this.)"],
     ["Your files, your move", "Exports and backups are ordinary files saved to your device. Where they go next is entirely up to you."],
   ];
   return (
@@ -3992,7 +4776,7 @@ function PrivacyCard() {
       <div className="flex flex-col gap-2.5">
         {facts.slice(0, open ? facts.length : 3).map(([title, body]) => (
           <div key={title} className="flex gap-2.5">
-            <span className="shrink-0 mt-0.5"><Icon name="check" size={15} color={C.accent} /></span>
+            <span className="shrink-0 mt-0.5"><Icon name="check" size={15} color={C.good} /></span>
             <span>
               <span className="text-sm font-medium block">{title}</span>
               <span className="text-[12px] leading-relaxed block" style={{ color: C.sub }}>{body}</span>
@@ -4001,7 +4785,7 @@ function PrivacyCard() {
         ))}
       </div>
       {!open && (
-        <button onClick={() => setOpen(true)} className="mt-3 text-sm font-medium" style={{ color: C.accent }}>
+        <button onClick={() => setOpen(true)} className="mt-3 text-sm font-medium" style={{ color: C.accentText }}>
           Read the rest
         </button>
       )}
@@ -4018,7 +4802,7 @@ function PrivacyCard() {
 
 function DisclaimerModal({ onAck }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(31,43,39,0.45)" }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: C.overlay, backdropFilter: "blur(3px)" }}>
       <div className="w-full max-w-md rounded-2xl p-5" style={{ background: C.card }}>
         <div className="font-display text-xl mb-2">Before you start</div>
         <p className="text-sm leading-relaxed mb-3">{DISCLAIMER}</p>
@@ -4088,7 +4872,7 @@ function AddCustomQuestion({ onAdd }) {
     return (
       <button onClick={() => setOpen(true)}
         className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
-        style={{ border: `1.5px dashed #B8C2BC`, color: C.sub }}>
+        style={{ border: `1.5px dashed ${C.lineStrong}`, color: C.sub }}>
         <Icon name="plus" size={14} color={C.sub} /> Add your own question
       </button>
     );
@@ -4239,39 +5023,42 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
 
   return (
     <div className="px-4 pb-10 pt-3">
-      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>Your name (optional)</label>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Connor"
-        className="w-full rounded-xl px-3 py-2.5 text-sm mt-1 mb-4 outline-none"
-        style={{ background: C.faint, border: `1px solid ${C.line}` }} />
+      <label className="fhj-eyebrow block" htmlFor="fhj-setup-name">Your name (optional)</label>
+      <input id="fhj-setup-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Connor"
+        className="fhj-input mt-2 mb-6" />
 
-      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>
-        Question packs — turn on everything that fits you
-      </label>
-      <div className="flex flex-col gap-1.5 mt-1 mb-2">
+      <div className="fhj-eyebrow">Question packs — turn on everything that fits you</div>
+      <div className="flex flex-col gap-2 mt-2.5 mb-3">
         {Object.entries(TEMPLATES).map(([k, t]) => {
           const on = modules.has(k);
           return (
-            <button key={k} onClick={() => toggleModule(k)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm text-left flex items-center justify-between"
-              style={{ background: on ? C.faint : "transparent", border: `1px solid ${on ? t.color : C.line}` }}>
+            <button key={k} onClick={() => toggleModule(k)} role="switch" aria-checked={on}
+              className="w-full px-3.5 py-3 rounded-xl text-sm text-left flex items-center justify-between gap-3"
+              style={{
+                background: on ? C.accentSoft : "transparent",
+                border: `1px solid ${on ? C.accentLine : C.line}`,
+              }}>
               <span className="font-medium">{t.label}</span>
-              <span className="w-5 h-5 rounded-full flex items-center justify-center"
-                style={{ background: on ? t.color : C.faint }}>
-                {on && <Icon name="check" size={12} color="#fff" />}
+              <span className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0"
+                style={on ? { background: C.accent } : { border: `1.5px solid ${C.lineStrong}` }}>
+                {on && <Icon name="check" size={13} color={C.onAccent} />}
               </span>
             </button>
           );
         })}
       </div>
-      <div className="text-xs leading-relaxed mb-5" style={{ color: C.sub }}>
+      <p className="text-[11.5px] leading-relaxed mb-7" style={{ color: C.subtle }}>
         Mix and match — shared questions (like sleep or stress) are only asked once.
-      </div>
+      </p>
 
-      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>
-        Questions — reorder, enable/disable, and choose where each one shows up
-      </label>
+      <div className="fhj-eyebrow mt-1">Questions</div>
+      <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+        Reorder with the arrows, use the checkbox to turn a question off entirely, and tap a pill
+        to control where it appears. A <b style={{ color: C.ink }}>filled</b> pill means the
+        question shows up there; a dashed one means it's hidden from that screen.
+      </p>
       {displayFields.filter((f) => !disabledFields.has(f.k)).length === 0 && (
-        <div className="mt-1.5 px-3 py-2.5 rounded-xl text-sm" style={{ background: "#F6E9E7", color: "#8E3B2F" }}>
+        <div className="mt-1.5 px-3 py-2.5 rounded-xl text-sm" style={{ background: C.dangerBg, color: C.dangerInk }}>
           No questions are enabled — logging, the dashboard, and reports will be empty until you turn a pack or question on.
         </div>
       )}
@@ -4282,47 +5069,72 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
         {displayFields.map((f, i) => {
           const on = !disabledFields.has(f.k);
           return (
-            <div key={f.k} className="rounded-xl mb-1.5 overflow-hidden" style={{ border: `1px solid ${C.line}`, opacity: on ? 1 : 0.5 }}>
-              <div className="flex items-center gap-1 px-2.5 py-2">
+            <div key={f.k} className="rounded-xl mb-2 overflow-hidden"
+              style={{
+                border: `1px solid ${C.line}`,
+                background: on ? C.card : "transparent",
+                opacity: on ? 1 : 0.55,
+              }}>
+              <div className="flex items-center gap-2 px-2.5 py-2.5">
                 <div className="flex flex-col shrink-0">
-                  <button onClick={() => moveField(f.k, -1)} disabled={i === 0} aria-label="move up"
-                    className="w-6 h-5 flex items-center justify-center disabled:opacity-20"><Icon name="up" size={13} color={C.sub} /></button>
-                  <button onClick={() => moveField(f.k, 1)} disabled={i === displayFields.length - 1} aria-label="move down"
-                    className="w-6 h-5 flex items-center justify-center disabled:opacity-20"><Icon name="down" size={13} color={C.sub} /></button>
+                  <button onClick={() => moveField(f.k, -1)} disabled={i === 0}
+                    aria-label={`move ${f.label} up`}
+                    className="w-7 h-6 flex items-center justify-center rounded-md disabled:opacity-20">
+                    <Icon name="up" size={14} color={C.sub} />
+                  </button>
+                  <button onClick={() => moveField(f.k, 1)} disabled={i === displayFields.length - 1}
+                    aria-label={`move ${f.label} down`}
+                    className="w-7 h-6 flex items-center justify-center rounded-md disabled:opacity-20">
+                    <Icon name="down" size={14} color={C.sub} />
+                  </button>
                 </div>
-                <button onClick={() => toggleField(f.k)} className="flex-1 min-w-0 text-left">
-                  <div className="text-sm truncate">{f.label}</div>
-                  <div className="text-[10px]" style={{ color: f.moduleColor }}>{f.moduleLabel}</div>
-                </button>
-                <button onClick={() => toggleField(f.k)} aria-label={on ? "disable question" : "enable question"}
-                  className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                  style={{ background: on ? C.accent : C.faint }}>
-                  {on && <Icon name="check" size={11} color="#fff" />}
+                <button onClick={() => toggleField(f.k)} role="switch" aria-checked={on}
+                  className="flex-1 min-w-0 text-left flex items-center gap-2.5 py-1">
+                  <span className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0"
+                    style={on
+                      ? { background: C.accent }
+                      : { background: "transparent", border: `1.5px solid ${C.lineStrong}` }}>
+                    {on && <Icon name="check" size={13} color={C.onAccent} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="text-sm block truncate">{f.label}</span>
+                    <span className="text-[10.5px] block" style={{ color: C.subtle }}>{f.moduleLabel}</span>
+                  </span>
                 </button>
                 {f.custom && (
-                  <button onClick={() => removeCustom(f.k)} aria-label="delete question" className="shrink-0">
-                    <Icon name="x" size={15} color={C.sub} />
+                  <button onClick={() => removeCustom(f.k)} aria-label={`delete ${f.label}`}
+                    className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                    <Icon name="x" size={15} color={C.subtle} />
                   </button>
                 )}
               </div>
-              <div className="flex flex-wrap gap-1 px-2.5 pb-2">
-                {VISIBILITY_FLAGS.map(([flag, label]) => {
-                  const flagOn = getFlag(f, flag);
-                  return (
-                    <button key={flag} onClick={() => toggleFlag(f, flag)}
-                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                      style={{ background: flagOn ? C.faint : "transparent", color: flagOn ? C.ink : C.sub, border: `1px solid ${flagOn ? C.line : "#D8DED9"}` }}>
-                      {label}
+              <div className="px-3 pb-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {VISIBILITY_FLAGS.map(([flag, label]) => {
+                    const flagOn = getFlag(f, flag);
+                    return (
+                      <button key={flag} onClick={() => toggleFlag(f, flag)}
+                        aria-pressed={flagOn}
+                        aria-label={`${f.label}: ${flagOn ? "shown in" : "hidden from"} ${label}`}
+                        className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                        style={flagOn
+                          ? { background: C.faint, color: C.ink, border: "1px solid transparent" }
+                          : { background: "transparent", color: C.subtle, border: `1px dashed ${C.lineStrong}` }}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                  {f.type === "photo" && (
+                    <button onClick={() => setPhotoOpen(photoOpen === f.k ? null : f.k)}
+                      aria-expanded={photoOpen === f.k}
+                      className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                      style={photoOpen === f.k
+                        ? { background: C.accent, color: C.onAccent, border: `1px solid ${C.accent}` }
+                        : { background: "transparent", color: C.sub, border: `1px solid ${C.lineStrong}` }}>
+                      Photo settings
                     </button>
-                  );
-                })}
-                {f.type === "photo" && (
-                  <button onClick={() => setPhotoOpen(photoOpen === f.k ? null : f.k)}
-                    className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                    style={{ background: photoOpen === f.k ? C.accent : "transparent", color: photoOpen === f.k ? "#fff" : C.accent, border: `1px solid ${C.accent}` }}>
-                    Photo settings
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
               {f.type === "photo" && photoOpen === f.k && (
                 <div className="px-2.5 pb-2.5 flex flex-col gap-2" style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
@@ -4948,7 +5760,7 @@ function DeltaBadge({ delta, dir }) {
   const rounded = Math.round(delta * 10) / 10;
   if (Math.abs(rounded) < 0.05) return <span className="text-xs font-medium" style={{ color: C.sub }}>±0</span>;
   const improving = dir === "neutral" ? null : (dir === "pos" ? rounded > 0 : rounded < 0);
-  const color = improving == null ? C.sub : improving ? "#4E9A6C" : "#B4433C";
+  const color = improving == null ? C.sub : improving ? C.good : C.bad;
   return (
     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: C.faint, color }}>
       {rounded > 0 ? "+" : ""}{rounded}
@@ -5007,18 +5819,18 @@ function ABSlider({ a, b, ratingLabel, onClose }) {
           <Icon name="sliders" size={15} color={C.ink} />
         </div>
         {(!srcA || !srcB) && (
-          <div className="absolute inset-0 flex items-center justify-center text-xs" style={{ color: "#9AA5A0" }}>
+          <div className="absolute inset-0 flex items-center justify-center text-xs" style={{ color: C.subtle }}>
             {srcA === undefined || srcB === undefined ? "Loading…" : "Photo missing"}
           </div>
         )}
       </div>
       <input type="range" min={0} max={100} value={pos} onChange={(e) => setPos(Number(e.target.value))}
         aria-label="comparison divider position" className="w-full mt-3" />
-      <div className="flex justify-between text-[11px] mt-2" style={{ color: "#C4CDC8" }}>
+      <div className="flex justify-between text-[11px] mt-2" style={{ color: C.muted }}>
         <span>Left: {fmtNice(a.date)}{a.rating != null ? `, rated ${a.rating}` : ""}</span>
         <span>Right: {fmtNice(b.date)}{b.rating != null ? `, rated ${b.rating}` : ""}</span>
       </div>
-      <p className="text-[10px] mt-2" style={{ color: "#8B968F" }}>{REPORT_COPY.photoFooter}</p>
+      <p className="text-[10px] mt-2" style={{ color: C.subtle }}>{REPORT_COPY.photoFooter}</p>
     </div>
   );
 }
@@ -5084,7 +5896,7 @@ function ReportCards({ cards, tint }) {
                title, range, and day count, and this card's white-on-tint text
                is unreadable once print styles flatten backgrounds to paper. */
             <Card key={i} className="mb-3 relative overflow-hidden no-print" style={{ background: tint, border: "none" }}>
-              <AmbientGlow tint="#FDFCF9" second="#C9A03C" opacity={0.3} />
+              <AmbientGlow tint={C.accent} second={C.warn} opacity={0.3} />
               <div className="text-[10px] font-semibold uppercase tracking-wider relative" style={{ color: "rgba(255,255,255,0.75)" }}>
                 {card.periodType === "week" ? "Weekly report" : "Monthly report"}
               </div>
@@ -5378,7 +6190,7 @@ function SwipeCard({ card, onDecide, tint, topmost, flingRef }) {
         <div className="absolute top-4 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
           style={{
             [opinion === "include" ? "left" : "right"]: "1rem",
-            background: opinion === "include" ? "#4E9A6C" : "#8A958F", color: "#fff",
+            background: opinion === "include" ? C.good : C.subtle, color: "#fff",
             transform: `rotate(${opinion === "include" ? -8 : 8}deg)`,
           }}>
           {opinion === "include" ? "Include" : "Skip"}
@@ -5900,7 +6712,7 @@ function CountUp({ value, duration = 650, decimals = 0, from = 0 }) {
 
 /* Two slow-drifting blurred color fields — an ambient, Vanta-like backdrop at
    ~zero cost. Parent needs position:relative + overflow:hidden. */
-function AmbientGlow({ tint, second = "#C9A03C", opacity = 0.4 }) {
+function AmbientGlow({ tint, second = C.warn, opacity = 0.4 }) {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true" style={{ opacity }}>
       <span className="fhj-glow" style={{ width: 190, height: 190, left: "-8%", top: "-30%", background: tint }} />
@@ -5962,7 +6774,7 @@ function FinishCelebration({ streak, tint, onDone }) {
           {Array.from({ length: milestone ? 26 : 18 }, (_, i) => (
             <span key={i} className="fhj-confetti" style={{
               left: `${(i * 53) % 100}%`,
-              background: [tint, "#C9A03C", "#4E9A6C", "#B4433C"][i % 4],
+              background: [tint, C.warn, C.good, C.bad][i % 4],
               animationDelay: `${(i % 6) * 0.12}s`,
             }} />
           ))}
@@ -6063,7 +6875,7 @@ async function loadSampleData(setDb) {
 }
 
 
-function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer }) {
+function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi }) {
   return (
     <div className="px-4 pb-10">
       <div className="flex items-start justify-between pt-6 pb-2">
@@ -6095,7 +6907,7 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
       </div>
       <TrendsScreen profile={profile} entries={entries} openLog={openLog} goExport={goExport} goGallery={goGallery}
         goReport={goReport} reports={reports} openSavedReport={openSavedReport} deleteSavedReport={deleteSavedReport}
-        goSetup={goSetup} goSettings={goSettings} viewer={viewer} />
+        goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} />
     </div>
   );
 }
@@ -6577,11 +7389,6 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
-      <style>{`
-        .font-display { font-family: 'Fraunces Variable', 'Fraunces', Georgia, serif; font-weight: 500; }
-        button:focus-visible, input:focus-visible { outline: 2px solid ${C.accent}; outline-offset: 2px; }
-        @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-      `}</style>
       <div ref={scrollRef} className="max-w-md mx-auto px-4" style={{ paddingBottom: "9.5rem" }}>
         <div className="sticky top-0 z-20 pt-4 pb-2 flex items-center gap-3" style={{ background: C.bg }}>
           {step > 0 ? (
@@ -6619,11 +7426,16 @@ const NAV = [
 
 /* Forward migration — safe to run on every load; only fills gaps. */
 const SCHEMA_VERSION = 2;
+/* Off, empty, nothing hidden. A journal that has never touched the AI feature
+   and one that has had it switched back off look identical from here. */
+const DEFAULT_AI = { enabled: false, analysis: null, dismissed: [] };
 function migrateDb(data) {
   const d = { ...data };
   if (!Array.isArray(d.reports)) d.reports = [];
   d.profile = { ...d.profile };
   if (!d.profile.prefs) d.profile.prefs = { sound: false, haptics: true };
+  d.ai = { ...DEFAULT_AI, ...(d.ai || {}) };
+  if (!Array.isArray(d.ai.dismissed)) d.ai.dismissed = [];
   d.schemaVersion = SCHEMA_VERSION;
   return d;
 }
@@ -6672,6 +7484,13 @@ export default function App({ viewer = false }) {
   const saveTimer = useRef(null);
   const loaded = useRef(false);
   const screenRef = useRef(null);
+
+  /* Colours live in a module-level token object (src/lib/theme.ts) that every
+     `C.x` read resolves against, so a theme swap only needs the tree to render
+     again — no context threading through several thousand lines of markup.
+     This also picks up an OS light/dark flip while "Match system" is selected. */
+  const [, setThemeTick] = useState(getTheme);
+  useEffect(() => onThemeChange(setThemeTick), []);
 
   // real motion layer: Lenis smooth scrolling (no-op under reduced motion)
   useEffect(() => { initSmoothScroll(); }, []);
@@ -7021,19 +7840,27 @@ export default function App({ viewer = false }) {
   const goReport = (type) => { setReportParams({ type }); setScreen("report"); };
   const openSavedReport = (savedId) => { setReportParams({ savedId }); setScreen("report"); };
   const deleteSavedReport = (id) => setDb((prev) => ({ ...prev, reports: (prev.reports || []).filter((r) => r.id !== id) }));
+  /* The AI slice holds the opt-in flag, the last analysis, and which
+     observations the user hid. The API key is deliberately NOT in here — it
+     lives under its own storage key so it can never ride along in a backup. */
+  const setAi = (updater) => setDb((prev) => {
+    const cur = prev.ai || DEFAULT_AI;
+    return { ...prev, ai: typeof updater === "function" ? updater(cur) : { ...cur, ...updater } };
+  });
   const dashProps = {
     profile, entries, openLog: goToLog,
     viewer,
     goExport: () => setScreen("export"), goSettings: () => setScreen("settings"),
     goSetup: () => setScreen("setup"), goGallery: () => setScreen("gallery"),
     goReport, reports: db.reports, openSavedReport, deleteSavedReport,
+    ai: db.ai, setAi,
   };
 
   let content = null;
   if (screen === "dashboard") {
     content = <DashboardScreen {...dashProps} />;
   } else if (screen === "settings") {
-    content = <SettingsScreen db={db} setDb={setDb} goHome={goHome} goSetup={() => setScreen("setup")}
+    content = <SettingsScreen db={db} setDb={setDb} setAi={setAi} goHome={goHome} goSetup={() => setScreen("setup")}
       goImport={() => setScreen("fitbit")} lockEnabled={!!lock}
       onSetupPin={() => setLockFlow("setup")} onChangePin={() => setLockFlow("change-verify")}
       onDisablePin={() => setLockFlow("disable-verify")} />;
@@ -7063,159 +7890,30 @@ export default function App({ viewer = false }) {
   const screenTitle = { log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings", setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report") }[screen];
 
   return (
-    <div className="min-h-screen" style={{ background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
-      <style>{`
-        .font-display { font-family: 'Fraunces Variable', 'Fraunces', Georgia, serif; font-weight: 500; }
-        button:focus-visible, input:focus-visible, textarea:focus-visible,
-        select:focus-visible, a:focus-visible, [role="button"]:focus-visible,
-        [tabindex]:not([tabindex="-1"]):focus-visible { outline: 2px solid ${C.accent}; outline-offset: 2px; border-radius: 6px; }
-        @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-        input[type=date], input[type=time] { -webkit-appearance: none; }
-
-        /* Skip link: off-canvas until a keyboard reaches it. */
-        .fhj-skip {
-          position: fixed; left: 50%; top: 0; transform: translate(-50%, -140%);
-          z-index: 60; padding: 0.6rem 1.1rem; border-radius: 0 0 0.75rem 0.75rem;
-          background: ${C.accent}; color: #fff; font-size: 0.85rem; font-weight: 600;
-          transition: transform 160ms ease;
-        }
-        .fhj-skip:focus { transform: translate(-50%, 0); }
-
-        /* Honour a system request for more contrast rather than keeping the
-           soft palette that makes this app calm but low-contrast. */
-        @media (prefers-contrast: more) {
-          body { color: #111A17; }
-          .fhj-card { border-color: #8FA096 !important; }
-        }
-
-        /* motion system — CSS layer; Lenis + GSAP add smooth scroll and screen transitions */
-        html { scroll-behavior: smooth; }
-        body { overscroll-behavior-y: none; }
-        * { -webkit-tap-highlight-color: transparent; }
-        .overflow-x-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: none; }
-        .overflow-x-auto::-webkit-scrollbar { display: none; }
-        button {
-          transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
-            background-color 160ms ease, color 160ms ease,
-            opacity 140ms ease, box-shadow 220ms ease, border-color 160ms ease;
-        }
-        button:active:not(:disabled) { transform: scale(0.965); }
-
-        .fhj-screen { animation: fhjIn 280ms cubic-bezier(0.22, 1, 0.36, 1); }
-        @keyframes fhjIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-        .fhj-stagger > * { animation: fhjRise 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-        .fhj-stagger > *:nth-child(2) { animation-delay: 45ms; }
-        .fhj-stagger > *:nth-child(3) { animation-delay: 90ms; }
-        .fhj-stagger > *:nth-child(4) { animation-delay: 135ms; }
-        .fhj-stagger > *:nth-child(5) { animation-delay: 180ms; }
-        .fhj-stagger > *:nth-child(6) { animation-delay: 225ms; }
-        .fhj-stagger > *:nth-child(7) { animation-delay: 270ms; }
-        .fhj-stagger > *:nth-child(n+8) { animation-delay: 310ms; }
-        @keyframes fhjRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-
-        .fhj-shimmer {
-          background: linear-gradient(100deg, ${C.faint} 40%, #FDFCF9 50%, ${C.faint} 60%);
-          background-size: 200% 100%;
-          animation: fhjShimmer 1.4s ease infinite;
-        }
-        @keyframes fhjShimmer { to { background-position: -200% 0; } }
-
-        .fhj-glow {
-          position: absolute; border-radius: 50%; filter: blur(42px); opacity: 0.5;
-          animation: fhjDrift 9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
-          will-change: transform;
-        }
-        @keyframes fhjDrift {
-          from { transform: translate(-8%, -6%) scale(1); }
-          to { transform: translate(12%, 10%) scale(1.18); }
-        }
-
-        .fhj-confetti { position: absolute; top: -10px; width: 7px; height: 11px; border-radius: 2px; opacity: 0;
-          animation: fhjConfetti 1.4s ease-out forwards; }
-        @keyframes fhjConfetti { 0% { opacity: 1; transform: translateY(0) rotate(0deg); }
-          100% { opacity: 0; transform: translateY(230px) rotate(280deg); } }
-        @keyframes fhjPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(51,104,90,0.45); } 50% { box-shadow: 0 0 0 7px rgba(51,104,90,0); } }
-        .fhj-pulse { animation: fhjPulse 1.1s ease infinite; }
-        /* Blocks that exist only on paper. Kept out of the screen layout
-           entirely rather than visually hidden, so they never affect flow. */
-        .print-only { display: none; }
-
-        /* A printed report is the version that gets handed to a clinician, so
-           it is treated as its own document: no app chrome, ink-friendly
-           surfaces, and cards that don't get sliced across a page break. */
-        @media print {
-          @page { margin: 14mm 12mm; }
-          nav, header, .no-print, .fhj-glow { display: none !important; }
-          .print-only { display: block !important; }
-          html, body, .min-h-screen { background: #fff !important; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print-area { padding: 0 !important; }
-          /* The app is a 28rem phone column on screen; paper is not. */
-          .max-w-md { max-width: none !important; }
-          * { box-shadow: none !important; text-shadow: none !important;
-              animation: none !important; transition: none !important; }
-          /* Report cards are revealed by a GSAP ScrollTrigger, which leaves
-             everything below the fold at opacity 0 with a translate still
-             applied. Printing does not scroll, so without this the second
-             half of the report comes out as blank paper. */
-          .print-area, .print-area * {
-            opacity: 1 !important; visibility: visible !important;
-            transform: none !important; filter: none !important;
-          }
-          /* Cards keep a hairline rule instead of a fill — cheaper to print,
-             and the boundaries still read. */
-          .fhj-card, .print-area .rounded-2xl {
-            border: 1px solid #C9D2CC !important;
-            background: #fff !important;
-            break-inside: avoid; page-break-inside: avoid;
-          }
-          /* Horizontal pagers have no meaning on paper — anything past the
-             first page would simply be cut off. Stack them instead. */
-          .print-area .overflow-x-auto { overflow: visible !important; }
-          .fhj-photo-pager { display: block !important; }
-          .fhj-photo-page {
-            width: 100% !important; margin-bottom: 14px;
-            break-inside: avoid; page-break-inside: avoid;
-          }
-          .print-masthead {
-            border-bottom: 2px solid #1F2B27; padding-bottom: 8px; margin-bottom: 14px;
-          }
-          .print-title { font-family: 'Fraunces Variable', Georgia, serif; font-size: 18pt; }
-          .print-meta {
-            display: flex; flex-wrap: wrap; gap: 4px 16px;
-            font-size: 9pt; color: #46534E; margin-top: 4px;
-          }
-          .print-footnote {
-            margin-top: 18px; padding-top: 8px; border-top: 1px solid #C9D2CC;
-            font-size: 8pt; line-height: 1.45; color: #46534E;
-          }
-          .print-footnote p { margin-bottom: 4px; }
-        }
-      `}</style>
-
+    <div className="min-h-screen" style={{ background: C.bg, color: C.ink }}>
       <VantaBackdrop enabled={db.profile?.prefs?.backdrop === true} />
       {/* Keyboard and screen-reader users land on the nav-skip before the
           header controls; it stays out of the way until it's focused. */}
       <a href="#main" className="fhj-skip">Skip to main content</a>
-      <div className="max-w-md mx-auto relative" style={{ paddingBottom: "5.5rem", zIndex: 1 }}>
+      <div className="max-w-md mx-auto relative" style={{ paddingBottom: "6rem", zIndex: 1 }}>
         {showHeader && (
           <header className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
-            style={{ background: C.bg, borderBottom: `1px solid ${C.line}` }}>
-            <button onClick={goHome} aria-label="Back to dashboard"
-              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-              style={{ background: C.card, border: `1px solid ${C.line}` }}>
+            style={{
+              background: C.bg,
+              borderBottom: `1px solid ${C.line}`,
+              /* The header sits over scrolling content; a light blur keeps the
+                 title legible without a hard bar across the screen. */
+              backdropFilter: "saturate(140%) blur(8px)",
+            }}>
+            <button onClick={goHome} aria-label="Back to dashboard" className="fhj-icon-btn"
+              style={{ width: "2.25rem", height: "2.25rem" }}>
               <Icon name="home" size={17} color={C.sub} />
             </button>
             <div className="flex-1 min-w-0">
-              <h1 className="font-display text-lg">{screenTitle}</h1>
-              <div className="text-[11px]" style={{ color: tpl.color }}>{tpl.label}</div>
+              <h1 className="font-display text-lg leading-tight truncate">{screenTitle}</h1>
+              <div className="text-[11px] truncate" style={{ color: C.subtle }}>{tpl.label}</div>
             </div>
-            {viewer && (
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0"
-                style={{ background: C.card, border: `1px solid ${C.line}`, color: C.sub }}>
-                Read-only
-              </span>
-            )}
+            {viewer && <span className="fhj-badge fhj-badge-neutral">Read-only</span>}
           </header>
         )}
 
@@ -7228,17 +7926,26 @@ export default function App({ viewer = false }) {
         )}
 
         <nav className="fixed bottom-0 left-0 right-0 z-30" aria-label="Main">
-          <div className="max-w-md mx-auto px-3 pb-3">
+          <div className="max-w-md mx-auto px-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
             <div className="flex rounded-2xl overflow-hidden"
-              style={{ background: C.card, border: `1px solid ${C.line}`, boxShadow: "0 6px 24px rgba(31,43,39,0.10)" }}>
+              style={{ background: C.card, border: `1px solid ${C.line}`, boxShadow: C.shadowLg }}>
               {(viewer ? NAV.filter((n) => n.id !== "log") : NAV).map((n) => {
                 const active = screen === n.id;
-                const color = active ? tpl.color : C.sub;
+                const color = active ? C.accentText : C.sub;
                 return (
                   <button key={n.id}
                     onClick={() => setScreen(n.id)}
                     aria-current={active ? "page" : undefined}
-                    className="flex-1 py-2.5 flex flex-col items-center gap-0.5">
+                    className="flex-1 flex flex-col items-center justify-center gap-1 relative"
+                    style={{ minHeight: 56, background: active ? C.accentSoft : "transparent" }}>
+                    {/* A 2px cap rather than a filled pill: the active tab is
+                        obvious without the nav turning into a block of colour. */}
+                    <span aria-hidden="true" className="absolute top-0 rounded-full"
+                      style={{
+                        height: 2, width: active ? "1.75rem" : 0,
+                        background: C.accent,
+                        transition: "width 220ms cubic-bezier(0.22,1,0.36,1)",
+                      }} />
                     <Icon name={n.icon} size={19} color={color} />
                     <span className="text-[10px] font-medium" style={{ color }}>{n.label}</span>
                   </button>

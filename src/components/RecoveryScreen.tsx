@@ -3,16 +3,7 @@
    download the raw stored data first, then explicitly choose to start fresh. */
 
 import React from "react";
-
-const C = {
-  bg: "#F2F4F1",
-  card: "#FFFFFF",
-  ink: "#1F2B27",
-  sub: "#66736D",
-  line: "#E2E7E2",
-  accent: "#33685A",
-  danger: "#B4433C",
-};
+import { C } from "../lib/theme";
 
 export default function RecoveryScreen({
   raw,
@@ -75,7 +66,7 @@ export default function RecoveryScreen({
           <button
             onClick={startFresh}
             className="w-full py-3 rounded-xl text-sm font-semibold"
-            style={{ background: C.bg, color: C.danger, border: `1px solid ${C.line}` }}
+            style={{ background: C.bg, color: C.bad, border: `1px solid ${C.line}` }}
           >
             Start fresh
           </button>

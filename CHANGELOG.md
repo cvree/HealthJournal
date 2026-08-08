@@ -1,5 +1,87 @@
 # Changelog
 
+## 1.1.0
+
+A visual and interaction pass over the whole app, a proper fix for the 30-day trend selector,
+and an optional AI layer on Possible Patterns that you own the key to.
+
+### Design system
+
+- **Dark mode, and it's the default.** A deep charcoal/slate ground with soft elevated
+  surfaces, hairline borders, and one restrained indigo accent. Question packs no longer each
+  carry their own tint — ten hues made the interface change colour depending on which packs you
+  had enabled.
+- **Light mode is a real design, not an inversion**, plus a "match system" option. The choice is
+  remembered on the device and applied by an inline script *before the first paint*, so a cold
+  start in dark mode never flashes white.
+- **Colours moved out of the components.** `src/lib/theme.ts` owns both palettes and a live
+  token object; a theme switch mutates it in place and mirrors every token onto `:root` as a
+  `--fhj-*` custom property. The lock, recovery, and viewer-landing screens each carried a
+  private copy of the old palette and were light-mode islands the theme could never reach —
+  they now read the same tokens as everything else, as does the ambient backdrop.
+- **Shared primitives** (`Button`, `Segmented`, `SwitchRow`, `Badge`, `Modal`, `Card`) and a
+  component layer in `src/styles/index.css`, so screens compose instead of restating padding,
+  radius, and hover behaviour inline. More breathing room throughout, one type scale, one
+  motion vocabulary of two durations and two curves.
+- Hover, focus, active, and disabled states on everything interactive; a heavier focus ring;
+  tap targets floored at 44px.
+
+### Fixed
+
+- **The 30-day trend selector couldn't reach most of its metrics.** It was a bare
+  `overflow-x` strip with the global stylesheet hiding every scrollbar, so past the first few
+  chips the rest were reachable only by a horizontal trackpad gesture with nothing on screen to
+  suggest it. Now a real component: edge fades and arrows that appear only when there's more to
+  see, vertical wheel translated to horizontal scroll, roving-tabindex keyboard navigation
+  (←/→/Home/End), the selection always scrolled into view, and a live "n of m selected" count.
+  Nothing is clipped — the strip bleeds past the card's padding so a chip is never half-hidden
+  by a rounded corner.
+- **Contrast failures across both themes**, found by auditing computed styles on every screen
+  rather than by eye: caption and eyebrow text was being used for real body copy at 3.1:1, the
+  accent fill was used as a text colour in five places, and the severity ramp put white labels
+  on its pale-green step. The ramp now picks its own label colour by luminance, and
+  `tests/theme.test.ts` fails the build if any token pair drops below WCAG AA.
+- Visibility pills in Edit Setup looked identical on and off — the only difference was a
+  hairline border, which in dark mode is no difference at all. Filled vs dashed now carries the
+  state, and the pack toggles and per-question checkboxes got real tap targets.
+- Chart tooltips rendered on Recharts' hard-coded white panel, punching a hole in a dark screen.
+- A shadow tuned for a pale background, invisible in dark; a modal scrim that ignored the theme;
+  "Delete photos — all of them" wrapping around its own byte count.
+- The dashboard hero put a two-line label beside a badge, pushing the number down and leaving a
+  hole; the week-over-week tiles collided their value with their trend wording.
+
+### AI observations (optional, off by default)
+
+- Bring your own **Google Gemini** key and Possible Patterns gains a second, clearly-labelled
+  source alongside the on-device maths: symptoms recurring together, changes after certain days,
+  sleep/mood relationships, timing patterns, improving and worsening trends, and drifts from
+  your own baseline. Locally calculated patterns are unchanged and keep working with no key.
+- **Nothing runs on its own, and nothing is sent without a preview you confirm** that states the
+  day count, value count, payload size, and metric names going out — and what never goes: notes,
+  photos, your name, and anything outside the window.
+- Only numeric answers leave the device, with days numbered from the window start rather than
+  dated. Enforced by tests, not just by intent.
+- **The key is never hard-coded, never logged, and never in a backup** — it lives under its own
+  storage key outside the journal object, the same arrangement as the PIN record. Add, replace,
+  test, and remove it; keep it on the device or for the session only. Settings states the real
+  limitation instead of implying a vault: a locally stored key is not encrypted and cannot be.
+- Findings are phrased as observations, never conclusions; output that ignores that instruction
+  is softened on the way in rather than rendered as-is. Metric names the app never sent are
+  dropped, day ranges are clamped to the window, and strength is described in words because a
+  language model's confidence is not a p-value.
+- Every pattern card carries its evidence behind a "why this was suggested" disclosure, a date
+  range, and a dismiss control. Loading, empty, error, no-key, and rate-limited states are all
+  designed rather than defaulted.
+- The Privacy card's "no network requests" claim now tracks reality: it says so when AI is off,
+  and states the single on-request call when it's on.
+
+### Tests
+
+167 across 12 suites, up from 92 across 9. New: `ai.test.ts` (payload minimisation, key
+handling, causal-language scrubbing, error mapping), `theme.test.ts` (persistence, token parity,
+WCAG AA on every pair the UI uses), `metricPicker.test.tsx` (every option reachable, one tab
+stop, full keyboard traversal).
+
 ## 1.0.0
 
 The release that makes this a product someone else can actually use: it can be deployed and

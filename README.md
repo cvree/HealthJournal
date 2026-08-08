@@ -7,8 +7,12 @@ experiment, whatever you're actually tracking — answer it in about a minute a 
 the trends come out over weeks. When you have an appointment, you print a summary and take it
 with you.
 
-There is no account, no server, and no tracking. After the app has loaded once it makes **no
-network requests at all**. It installs to a phone's Home Screen and works completely offline.
+There is no account, no server, and no tracking. Out of the box, after the app has loaded once
+it makes **no network requests at all** — it installs to a phone's Home Screen and works
+completely offline. The one exception is opt-in: if you add your own Google Gemini API key in
+Settings, the AI observations feature will send a minimal summary of your logged numbers to
+Google *when you ask it to*, and shows you exactly what it's about to send first. It ships off,
+and everything else keeps working whether you turn it on or not.
 
 > **Not medical advice.** This is a personal tracking tool. It does not diagnose, treat, cure, or
 > prevent any condition. It surfaces *possible patterns* in your own logs and never claims a cause.
@@ -32,7 +36,22 @@ long form when you want it. Any past day stays editable from the calendar.
 **See what's happening.** Dashboard with today's key metric, streak, 7/30-day averages,
 week-over-week comparisons, a 30-day trend chart comparing up to four metrics at once, weekly
 bars, and cautiously-worded "possible pattern" cards that need at least six paired days before
-they'll say anything.
+they'll say anything. Every chartable metric is reachable in the trend picker — it scrolls, it
+says so, and it works from a keyboard.
+
+**Dark and light.** Dark by default, with a light theme that's a proper design rather than an
+inversion, and a "match system" option. The choice is remembered on the device and applied
+before the first paint, so a cold start never flashes white. Both themes are contrast-audited:
+`tests/theme.test.ts` fails the build if a token pair drops below WCAG AA.
+
+**AI observations (optional, off by default).** Bring your own Google Gemini API key and the
+Possible Patterns section gains a second, clearly-labelled source: longitudinal observations a
+median split doesn't look for — symptoms that recur together, changes after certain days,
+sleep/mood relationships, timing patterns, drifts from your own baseline. Every finding carries
+its evidence, an in-plain-words strength, a date range, and a "why this was suggested"
+disclosure, and can be dismissed. Nothing runs automatically, nothing is sent without a preview
+you confirm, and only numeric answers go — never notes, photos, or your name. Locally
+calculated patterns stay exactly as they were and keep working with no key at all.
 
 **Photo progress.** In-app camera with a self-timer, per-body-area tracking, thumbnails, an
 A/B comparison slider, and baseline pinning. Photos are blobs in local storage — they never
@@ -140,6 +159,34 @@ how much they help:
 
 Clearing site data by hand still erases everything. Export a backup first.
 
+### Optional AI observations, and your API key
+
+Off by default, and everything else works identically whether it's on or off. Turning it on in
+**Settings → AI observations** needs a Google Gemini API key you create yourself at
+[Google AI Studio](https://aistudio.google.com/) — the app ships with none, hard-codes none, and
+reads none from the environment.
+
+What actually leaves the device, only after you confirm a preview that spells it out:
+
+- the labels of the metrics you track, and
+- one row per logged day of **numeric answers** in the window, with days numbered from the start
+  of the window rather than dated.
+
+What never leaves: written notes, photos, your name, anything identifying, any entry outside the
+window, and any question you've excluded from charts. `tests/ai.test.ts` asserts each of those.
+
+The key is stored under its own storage key, outside the journal object, so it cannot end up in
+an export or a backup — the same arrangement as the PIN record. You can add, replace, test, and
+remove it, and choose between remembering it on the device and holding it only for the session.
+Settings states the limitation plainly rather than implying a vault: **a locally stored key is
+not encrypted and cannot be**, because a local-first app has no secret to encrypt it with that
+someone holding your unlocked device wouldn't also have. Revoking the key at Google is what
+actually stops it working.
+
+Findings are phrased as observations, never conclusions, and output that ignores that
+instruction is softened on the way in (`scrubCausalLanguage`) rather than rendered as-is.
+AI-generated cards are visually distinct from the locally calculated ones at a glance.
+
 ### Optional PIN lock
 
 Off by default — the app opens straight to your journal. If the device is ever shared, turn on
@@ -169,8 +216,11 @@ health-journal/
 ├── src/
 │   ├── main.tsx                # storage polyfill, mounts App
 │   ├── App.tsx                 # the app (migrated single-file artifact)
-│   ├── components/             # Vanta backdrop, lock, recovery, viewer landing
+│   ├── components/             # Vanta backdrop, lock, recovery, viewer landing,
+│   │                           #   metric picker
 │   ├── lib/
+│   │   ├── theme.ts            # design tokens, dark/light, contrast helpers
+│   │   ├── ai.ts               # optional Gemini analysis (key, payload, parsing)
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
@@ -187,8 +237,15 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 92 tests across 9 suites
+└── tests/                      # 167 tests across 12 suites
 ```
+
+Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
+object that `App.tsx` reads as `C.something` at render time; a theme switch mutates it in place
+and mirrors every token onto `:root` as a `--fhj-*` custom property, so the stylesheet and the
+markup stay in sync from one source. `src/styles/index.css` holds the shared component classes
+(buttons, chips, cards, segmented controls, switches, sheets) so screens compose rather than
+restating padding and hover behaviour inline.
 
 `App.tsx` is deliberately still one file (its artifact heritage) under `// @ts-nocheck`, but the
 data model lives in `src/types/models.ts` and is enforced at runtime by `src/lib/validate.ts`,
@@ -207,6 +264,11 @@ download before any reset, never a silent wipe.
 - Every animation, sound, and haptic respects `prefers-reduced-motion` and the in-app toggles.
 - Keyboard users get a skip link, a `main` landmark, visible focus rings, and `aria-current` on
   the active tab. `prefers-contrast: more` darkens text and card borders.
+- The 30-day trend metric picker is a single tab stop with roving focus: ←/→/Home/End move
+  between metrics, the selection is always scrolled into view, edge fades and arrows show that
+  more exist, and a vertical wheel scrolls it horizontally on a desktop.
+- Both themes are contrast-audited in CI (`tests/theme.test.ts`), and the severity ramp picks
+  its own label colour by luminance so a swatch is never white-on-pale.
 
 ## Native iOS app + Home Screen widget
 
