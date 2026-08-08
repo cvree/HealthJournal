@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   buildAnalysisInput, summariseInput, normaliseAnalysis, scrubCausalLanguage,
   maskKey, looksLikeKey, redact, strengthLabel, testApiKey, runPatternAnalysis,
-  saveKey, loadKey, clearKey, hasStoredKey, AiError, AI_ENDPOINT,
+  saveKey, loadKey, clearKey, hasStoredKey, AiError,
 } from "../src/lib/ai";
 import { __internals as I } from "../src/App";
 
@@ -191,14 +191,28 @@ describe("the key is handled like a credential", () => {
   afterEach(async () => { await clearKey(); vi.unstubAllGlobals(); });
 
   it("only ever shows a masked form", () => {
-    expect(maskKey(KEY)).toBe("AIza…1234");
+    expect(maskKey(KEY)).toBe("AIzaS…1234");
     expect(maskKey(KEY)).not.toContain("EXAMPLE");
     expect(maskKey("short")).not.toContain("short");
+  });
+
+  it("masks the newer AQ. key format too", () => {
+    const aq = "AQ.Ab8RN6JexampleEXAMPLEexample1234wxyz";
+    expect(maskKey(aq)).toBe("AQ.Ab…wxyz");
+    expect(maskKey(aq)).not.toContain("example");
   });
 
   it("redacts key-shaped strings out of anything headed for the screen", () => {
     expect(redact(`bad request for key=${KEY}`)).not.toContain(KEY);
     expect(redact("quota exceeded", KEY)).toBe("quota exceeded");
+  });
+
+  it("redacts every credential format the app can be given, not just Google's old one", () => {
+    const aq = "AQ.Ab8RN6JexampleEXAMPLEexample1234wxyz";
+    const sk = "sk-or-v1-exampleEXAMPLEexampleEXAMPLE1234";
+    expect(redact(`failed with ${aq}`)).not.toContain(aq);
+    expect(redact(`failed with ${sk}`)).not.toContain(sk);
+    expect(redact("Authorization: Bearer abcdefghijklmnopqrstuvwx")).toContain("[key hidden]");
   });
 
   it("rejects obvious non-keys before making a request", async () => {
@@ -237,6 +251,9 @@ describe("the key is handled like a credential", () => {
     const calls: any[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
       calls.push({ url, init });
+      if (String(url).endsWith("/models")) {
+        return { ok: true, json: async () => ({ models: [{ name: "models/gemini-9-flash" }] }) } as any;
+      }
       return {
         ok: true,
         json: async () => ({ candidates: [{ content: { parts: [{ text: '{"patterns":[]}' }] } }] }),
@@ -248,10 +265,12 @@ describe("the key is handled like a credential", () => {
       "2026-06-01", "2026-06-30"
     );
     await runPatternAnalysis(KEY, input);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(AI_ENDPOINT);
-    expect(calls[0].url).not.toContain(KEY);
-    expect(calls[0].init.headers["x-goog-api-key"]).toBe(KEY);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(c.url).toContain("generativelanguage.googleapis.com");
+      expect(c.url).not.toContain(KEY);
+      expect(c.init.headers["x-goog-api-key"]).toBe(KEY);
+    }
   });
 });
 
@@ -263,6 +282,15 @@ describe("analysis error paths stay useful and quiet", () => {
     "2026-06-01", "2026-06-30"
   );
   afterEach(() => vi.unstubAllGlobals());
+
+  /** Model discovery always succeeds; the chat call behaves as the test wants. */
+  const stubChat = (chatResponse: any) =>
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).endsWith("/models")) {
+        return { ok: true, json: async () => ({ models: [{ name: "models/gemini-9-flash" }] }) } as any;
+      }
+      return typeof chatResponse === "function" ? chatResponse() : chatResponse;
+    }));
 
   it("refuses to spend a request on too little data", async () => {
     const fetchSpy = vi.fn();
@@ -278,28 +306,24 @@ describe("analysis error paths stay useful and quiet", () => {
   });
 
   it("maps rate limiting separately, so the advice differs", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 429, text: async () => "slow down" }) as any));
+    stubChat({ ok: false, status: 429, text: async () => "slow down" });
     await expect(runPatternAnalysis(KEY, enoughDays())).rejects.toMatchObject({ kind: "rate" });
   });
 
   it("never leaks the key through an error body", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({
-      ok: false, status: 500, text: async () => `internal error processing key=${KEY}`,
-    }) as any));
+    stubChat({ ok: false, status: 500, text: async () => `internal error processing key=${KEY}` });
     await expect(runPatternAnalysis(KEY, enoughDays())).rejects.toSatisfy(
       (e: AiError) => !e.message.includes(KEY) && e.message.includes("[key hidden]")
     );
   });
 
   it("turns a network failure into plain language, not a stack trace", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+    stubChat(() => { throw new TypeError("Failed to fetch"); });
     await expect(runPatternAnalysis(KEY, enoughDays())).rejects.toMatchObject({ kind: "network" });
   });
 
   it("reports unparseable output rather than rendering it", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({
-      ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }),
-    }) as any));
+    stubChat({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }) });
     await expect(runPatternAnalysis(KEY, enoughDays())).rejects.toMatchObject({ kind: "response" });
   });
 });

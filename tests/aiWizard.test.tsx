@@ -42,16 +42,24 @@ function mountApp(entryCount?: number, aiEnabled = false) {
   return render(<App />);
 }
 
-/** Google says yes to everything unless a test says otherwise. */
-function stubGoogle(opts: { keyOk?: boolean; patterns?: unknown[] } = {}) {
-  const { keyOk = true, patterns = [] } = opts;
-  const fetchMock = vi.fn(async (_url: string, init: any) => {
+/** The provider says yes to everything unless a test says otherwise. Model
+    discovery and the chat call are separate round trips, so both are answered. */
+function stubGoogle(opts: { keyOk?: boolean; patterns?: unknown[]; models?: string[] } = {}) {
+  const { keyOk = true, patterns = [], models = ["gemini-3.5-flash"] } = opts;
+  const fetchMock = vi.fn(async (url: string) => {
     if (!keyOk) return { ok: false, status: 403, text: async () => "denied" } as any;
-    const body = String(init?.body || "");
-    const text = /Reply with the single word/.test(body)
-      ? "ready"
-      : JSON.stringify({ patterns });
-    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }) } as any;
+    if (String(url).endsWith("/models")) {
+      return {
+        ok: true,
+        json: async () => ({ models: models.map((m) => ({ name: `models/${m}` })) }),
+      } as any;
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ patterns }) }] } }],
+      }),
+    } as any;
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -65,7 +73,15 @@ const openWizard = async () => {
   return screen.findByRole("dialog", { name: /Set up AI observations/i });
 };
 
-const step = (n: number) => screen.findByText(new RegExp(`Step ${n} of 4`));
+const STEPS = 5;
+const step = (n: number) => screen.findByText(new RegExp(`Step ${n} of ${STEPS}`));
+/** Step 1 → 2 (intro) → 3 (provider) — the shared run-up to the key steps. */
+async function toKeyIntro() {
+  fireEvent.click(btn(/^Get started$/));
+  await step(2);
+  fireEvent.click(btn(/^Use Google Gemini$/));
+  await step(3);
+}
 const btn = (name: RegExp) => screen.getByRole("button", { name });
 
 beforeEach(async () => { cleanup(); await clearKey(); });
@@ -100,13 +116,66 @@ describe("getting in", () => {
   });
 });
 
-describe("the key step can't be skipped or fumbled", () => {
-  async function reachKeyStep() {
+describe("choosing a provider", () => {
+  it("offers a choice, with the easiest one preselected", async () => {
+    stubGoogle();
+    mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
-    fireEvent.click(btn(/I've copied my key/i));
+    const options = screen.getAllByRole("radio");
+    expect(options.length).toBeGreaterThanOrEqual(3);
+    expect(options.find((o) => o.getAttribute("aria-checked") === "true")!.textContent)
+      .toMatch(/Google Gemini/);
+  });
+
+  it("answers the ChatGPT question in place instead of letting people hit a wall", async () => {
+    stubGoogle();
+    mountApp();
+    await openWizard();
+    fireEvent.click(btn(/^Get started$/));
+    await step(2);
+    expect(document.body.textContent).toMatch(/What about ChatGPT\?/);
+    expect(document.body.textContent).toMatch(/browser/i);
+  });
+
+  it("carries the choice into the steps that follow", async () => {
+    stubGoogle();
+    mountApp();
+    await openWizard();
+    fireEvent.click(btn(/^Get started$/));
+    await step(2);
+    fireEvent.click(screen.getByRole("radio", { name: /OpenRouter/i }));
+    fireEvent.click(btn(/^Use OpenRouter$/));
     await step(3);
+    expect(document.body.textContent).toMatch(/Open OpenRouter/);
+    fireEvent.click(btn(/I've copied my key/i));
+    await step(4);
+    expect(screen.getByLabelText(/Your OpenRouter API key/i)).toBeTruthy();
+  });
+
+  it("asks a custom provider for an endpoint as well as a key", async () => {
+    stubGoogle();
+    mountApp();
+    await openWizard();
+    fireEvent.click(btn(/^Get started$/));
+    await step(2);
+    fireEvent.click(screen.getByRole("radio", { name: /Something else/i }));
+    fireEvent.click(btn(/^Use Something else$/));
+    await step(3);
+    fireEvent.click(btn(/I've copied my key/i));
+    await step(4);
+    expect(screen.getByLabelText(/Endpoint address/i)).toBeTruthy();
+    expect(document.body.textContent).toMatch(/Enter the endpoint address and your key/);
+  });
+});
+
+describe("the key step can't be skipped or fumbled", () => {
+  async function reachKeyStep() {
+    await openWizard();
+    await toKeyIntro();
+    fireEvent.click(btn(/I've copied my key/i));
+    await step(4);
   }
 
   it("blocks Continue until a key is verified, and says why", async () => {
@@ -121,7 +190,7 @@ describe("the key step can't be skipped or fumbled", () => {
     const fetchMock = stubGoogle();
     mountApp();
     await reachKeyStep();
-    fireEvent.change(screen.getByLabelText(/Your Gemini API key/i), { target: { value: "AIza-short" } });
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: "AIza-short" } });
     await waitFor(() => expect(document.body.textContent).toMatch(/doesn't look like a full key/));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(btn(/Save and continue/i)).toHaveProperty("disabled", true);
@@ -132,8 +201,8 @@ describe("the key step can't be skipped or fumbled", () => {
     mountApp();
     await reachKeyStep();
     expect(screen.queryByRole("button", { name: /^Test/i })).toBeNull();
-    fireEvent.change(screen.getByLabelText(/Your Gemini API key/i), { target: { value: GOOD_KEY } });
-    await waitFor(() => expect(document.body.textContent).toContain("That key works."), { timeout: 5000 });
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
+    await waitFor(() => expect(document.body.textContent).toMatch(/Connected\. Using/), { timeout: 5000 });
     expect(fetchMock).toHaveBeenCalled();
     expect(btn(/Save and continue/i)).toHaveProperty("disabled", false);
   });
@@ -142,8 +211,8 @@ describe("the key step can't be skipped or fumbled", () => {
     stubGoogle({ keyOk: false });
     mountApp();
     await reachKeyStep();
-    fireEvent.change(screen.getByLabelText(/Your Gemini API key/i), { target: { value: GOOD_KEY } });
-    await waitFor(() => expect(document.body.textContent).toMatch(/Google rejected that key/), { timeout: 5000 });
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
+    await waitFor(() => expect(document.body.textContent).toMatch(/rejected that key/i), { timeout: 5000 });
     expect(btn(/Save and continue/i)).toHaveProperty("disabled", true);
 
     // A flaky network or a key Google hasn't propagated yet must not trap anyone.
@@ -156,20 +225,20 @@ describe("the key step can't be skipped or fumbled", () => {
     stubGoogle();
     mountApp();
     await reachKeyStep();
-    fireEvent.change(screen.getByLabelText(/Your Gemini API key/i), { target: { value: GOOD_KEY } });
-    await waitFor(() => expect(document.body.textContent).toContain("That key works."), { timeout: 5000 });
-    expect(kv.has("fhj_ai_key_v1")).toBe(false); // typed, not committed
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
+    await waitFor(() => expect(document.body.textContent).toMatch(/Connected\. Using/), { timeout: 5000 });
+    expect(kv.has("fhj_ai_conn_v1")).toBe(false); // typed, not committed
     fireEvent.click(btn(/Save and continue/i));
-    await waitFor(() => expect(kv.get("fhj_ai_key_v1")).toBe(GOOD_KEY));
+    await waitFor(() => expect(kv.get("fhj_ai_conn_v1")).toContain(GOOD_KEY));
   });
 
   it("never renders the key back in full", async () => {
     stubGoogle();
     mountApp();
     await reachKeyStep();
-    const field = screen.getByLabelText(/Your Gemini API key/i) as HTMLInputElement;
+    const field = screen.getByLabelText(/Your Google Gemini API key/i) as HTMLInputElement;
     fireEvent.change(field, { target: { value: GOOD_KEY } });
-    await waitFor(() => expect(document.body.textContent).toContain("That key works."), { timeout: 5000 });
+    await waitFor(() => expect(document.body.textContent).toMatch(/Connected\. Using/), { timeout: 5000 });
     expect(field.type).toBe("password");
     expect(document.body.textContent).not.toContain(GOOD_KEY);
   });
@@ -179,14 +248,13 @@ describe("the last step", () => {
   async function reachReview(entries?: number) {
     mountApp(entries);
     await openWizard();
-    fireEvent.click(btn(/^Get started$/));
-    await step(2);
+    await toKeyIntro();
     fireEvent.click(btn(/I've copied my key/i));
-    await step(3);
-    fireEvent.change(screen.getByLabelText(/Your Gemini API key/i), { target: { value: GOOD_KEY } });
-    await waitFor(() => expect(document.body.textContent).toContain("That key works."), { timeout: 5000 });
-    fireEvent.click(btn(/Save and continue/i));
     await step(4);
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
+    await waitFor(() => expect(document.body.textContent).toMatch(/Connected\. Using/), { timeout: 5000 });
+    fireEvent.click(btn(/Save and continue/i));
+    await step(5);
   }
 
   it("shows the payload before anything is sent", async () => {
@@ -230,6 +298,45 @@ describe("the last step", () => {
     expect(JSON.parse(kv.get("fhj_v1")!).ai?.enabled).not.toBe(true);
     fireEvent.click(btn(/^Done$/));
     await waitFor(() => expect(JSON.parse(kv.get("fhj_v1")!).ai?.enabled).toBe(true));
+  });
+});
+
+describe("the model is discovered, never assumed", () => {
+  it("picks a model the key can actually reach and shows which", async () => {
+    // A key issued today cannot see gemini-2.5-flash; the old build hard-coded
+    // it and 404'd for every new user.
+    stubGoogle({ models: ["gemini-3.5-flash", "gemini-3.5-pro", "text-embedding-004"] });
+    mountApp();
+    await openWizard();
+    fireEvent.click(btn(/^Get started$/));
+    await step(2);
+    fireEvent.click(btn(/^Use Google Gemini$/));
+    await step(3);
+    fireEvent.click(btn(/I've copied my key/i));
+    await step(4);
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
+    await waitFor(
+      () => expect(document.body.textContent).toContain("Connected. Using gemini-3.5-flash."),
+      { timeout: 5000 }
+    );
+  });
+
+  it("blocks the step when a key works but has no usable model behind it", async () => {
+    stubGoogle({ models: ["text-embedding-004"] });
+    mountApp();
+    await openWizard();
+    fireEvent.click(btn(/^Get started$/));
+    await step(2);
+    fireEvent.click(btn(/^Use Google Gemini$/));
+    await step(3);
+    fireEvent.click(btn(/I've copied my key/i));
+    await step(4);
+    fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
+    await waitFor(
+      () => expect(document.body.textContent).toMatch(/no usable chat model/i),
+      { timeout: 5000 }
+    );
+    expect(btn(/Save and continue/i)).toHaveProperty("disabled", true);
   });
 });
 

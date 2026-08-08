@@ -1,9 +1,14 @@
-/* Optional AI-assisted pattern analysis (Google Gemini).
+/* Optional AI-assisted pattern analysis.
 
    Everything in this file is off unless the user turns it on. The app ships
    with no key, makes no request at import time, and the locally-computed
    "possible patterns" on the dashboard keep working exactly as before whether
    or not any of this is configured.
+
+   Which services are reachable, and how to talk to them, lives in
+   ./aiProviders — including why OpenAI is not among them. This file owns the
+   parts that are the same whoever is answering: what leaves the device, how
+   the credential is held, and how untrusted output is made safe to render.
 
    Design rules this module exists to enforce:
 
@@ -14,7 +19,7 @@
       key, outside the `fhj_v1` blob, so it cannot ride along in a JSON backup,
       a CSV export, or the report model. Same reasoning as the PIN record.
    3. **The key never gets logged.** Nothing here console-logs, and error paths
-      scrub the key out of any message before it is surfaced, because Google's
+      scrub the key out of any message before it is surfaced, because provider
       error envelopes echo request context.
    4. **Only the minimum leaves the device.** `buildAnalysisInput` reduces the
       journal to daily numeric/boolean answers plus field labels for the
@@ -24,30 +29,45 @@
    5. **Correlation is not cause.** The prompt forbids causal and diagnostic
       language, and `scrubCausalLanguage` re-checks the model's output on the
       way back in — a model that ignores the instruction gets softened rather
-      than shown as-is. */
+      than shown as-is.
+   6. **No model ID is load-bearing.** Hard-coding one is what broke this
+      feature for every new user when Google retired `gemini-2.5-flash` early:
+      a build that worked last week started returning 404. Models are
+      discovered from the user's own key and re-resolved if one disappears. */
+
+import {
+  PROVIDERS, providerOf, listModels, chat, pickModel, isModelGone,
+  type Connection, type ProviderId,
+} from "./aiProviders";
+
+export {
+  PROVIDERS, providerOf, pickModel, scoreModel, OPENAI_NOTE,
+  type Connection, type ProviderId, type ProviderDef,
+} from "./aiProviders";
 
 export type StoredKeyMode = "persist" | "session";
 
-export const AI_MODEL = "gemini-2.5-flash";
-export const AI_MODEL_LABEL = "Google Gemini 2.5 Flash";
-export const AI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/" + AI_MODEL + ":generateContent";
+/* Kept so older callers and saved journals still resolve; the label shown in
+   the UI now comes from the live connection, not a constant. */
+export const AI_MODEL_LABEL = "your chosen AI";
 
-const KEY_STORAGE = "fhj_ai_key_v1";
+const CONN_STORAGE = "fhj_ai_conn_v1";
+/** Pre-provider installs stored a bare Gemini key here. Read once, migrated. */
+const LEGACY_KEY_STORAGE = "fhj_ai_key_v1";
 
-/* ---------- key storage ----------
+/* ---------- connection storage ----------
 
-   Persisted keys go to the same IndexedDB store the journal uses, under their
-   own key. That is genuinely better than localStorage (it is not readable by a
-   stray synchronous script, and it is not in the export path) and genuinely
-   *not* encryption — there is no secret on a local-first device to encrypt it
-   with that an attacker with the same device access wouldn't also have. The
-   Settings copy says exactly that rather than implying a vault.
+   Persisted connections go to the same IndexedDB store the journal uses, under
+   their own key. That is genuinely better than localStorage (it is not
+   readable by a stray synchronous script, and it is not in the export path)
+   and genuinely *not* encryption — there is no secret on a local-first device
+   to encrypt it with that an attacker with the same device access wouldn't
+   also have. The Settings copy says exactly that rather than implying a vault.
 
-   "Session" mode keeps the key in a module variable only: it dies with the tab
-   and is the honest choice on a shared computer. */
+   "Session" mode keeps it in a module variable only: it dies with the tab and
+   is the honest choice on a shared computer. */
 
-let sessionKey: string | null = null;
+let sessionConn: Connection | null = null;
 const mem: Record<string, string> = {};
 
 const store = {
@@ -88,50 +108,85 @@ const store = {
   },
 };
 
-/** Shape check only — this never contacts Google. Gemini keys are `AIza` +
-    35 URL-safe characters; we stay lenient so a format change doesn't lock
-    anyone out, and reject only what is obviously not a key. */
+/** Shape check only — this never contacts anyone. Deliberately lenient: key
+    formats change (Google moved from `AIza…` to `AQ.…` mid-life and the strict
+    check would have locked those users out), so this rejects only what is
+    obviously not a credential. */
 export function looksLikeKey(raw: string): boolean {
   const k = raw.trim();
-  return k.length >= 20 && k.length <= 200 && !/\s/.test(k);
+  return k.length >= 20 && k.length <= 400 && !/\s/.test(k);
 }
 
-/** `AIza…4kQ8` — enough to tell two keys apart, not enough to use one. */
+/** `AQ.A…4kQ8` — enough to tell two keys apart, not enough to use one. */
 export function maskKey(raw: string): string {
   const k = String(raw || "").trim();
   if (k.length <= 10) return "•".repeat(Math.max(4, k.length));
-  return `${k.slice(0, 4)}…${k.slice(-4)}`;
+  return `${k.slice(0, 5)}…${k.slice(-4)}`;
 }
 
-export async function saveKey(raw: string, mode: StoredKeyMode): Promise<void> {
-  const key = raw.trim();
-  sessionKey = key;
-  if (mode === "persist") await store.set(KEY_STORAGE, key);
-  else await store.del(KEY_STORAGE);
+export async function saveConnection(conn: Connection, mode: StoredKeyMode): Promise<void> {
+  const clean: Connection = { ...conn, key: conn.key.trim() };
+  sessionConn = clean;
+  if (mode === "persist") await store.set(CONN_STORAGE, JSON.stringify(clean));
+  else await store.del(CONN_STORAGE);
+  await store.del(LEGACY_KEY_STORAGE);
 }
 
-export async function loadKey(): Promise<string | null> {
-  if (sessionKey) return sessionKey;
-  const stored = await store.get(KEY_STORAGE);
-  return stored && stored.trim() ? stored.trim() : null;
+export async function loadConnection(): Promise<Connection | null> {
+  if (sessionConn) return sessionConn;
+  const raw = await store.get(CONN_STORAGE);
+  if (raw) {
+    try {
+      const c = JSON.parse(raw);
+      if (c && typeof c.key === "string" && c.key.trim()) {
+        return { provider: (c.provider as ProviderId) || "gemini", key: c.key, baseUrl: c.baseUrl, model: c.model };
+      }
+    } catch {
+      /* corrupt record — fall through to the legacy path, then to null */
+    }
+  }
+  // Installs from before providers existed stored a bare Gemini key.
+  const legacy = await store.get(LEGACY_KEY_STORAGE);
+  if (legacy && legacy.trim()) return { provider: "gemini", key: legacy.trim() };
+  return null;
+}
+
+/** Remember a model choice without re-prompting for anything else. */
+export async function rememberModel(model: string): Promise<void> {
+  const conn = await loadConnection();
+  if (!conn) return;
+  const next = { ...conn, model };
+  if (sessionConn) sessionConn = next;
+  if (await store.get(CONN_STORAGE)) await store.set(CONN_STORAGE, JSON.stringify(next));
 }
 
 export async function hasStoredKey(): Promise<boolean> {
-  return !!(await store.get(KEY_STORAGE));
+  return !!(await store.get(CONN_STORAGE)) || !!(await store.get(LEGACY_KEY_STORAGE));
 }
 
 export async function clearKey(): Promise<void> {
-  sessionKey = null;
-  await store.del(KEY_STORAGE);
+  sessionConn = null;
+  await store.del(CONN_STORAGE);
+  await store.del(LEGACY_KEY_STORAGE);
 }
 
-/** Strip anything key-shaped out of text headed for a UI surface. Google's
-    error bodies quote request metadata, and this app should never be the thing
-    that puts a credential on screen. */
+/* Back-compat wrappers over the connection API, for callers that only ever
+   cared about a Gemini key. */
+export const saveKey = (raw: string, mode: StoredKeyMode) =>
+  saveConnection({ provider: "gemini", key: raw }, mode);
+export const loadKey = async (): Promise<string | null> => (await loadConnection())?.key ?? null;
+
+/** Strip anything credential-shaped out of text headed for a UI surface.
+    Providers quote request metadata in error bodies, and this app should never
+    be the thing that puts a credential on screen. */
 export function redact(text: string, key?: string | null): string {
   let out = String(text ?? "");
   if (key) out = out.split(key).join("[key hidden]");
-  return out.replace(/AIza[0-9A-Za-z_\-]{10,}/g, "[key hidden]");
+  return out
+    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, "[key hidden]")   // Google, legacy
+    .replace(/AQ\.[0-9A-Za-z_\-]{10,}/g, "[key hidden]")   // Google, current
+    .replace(/sk-[0-9A-Za-z_\-]{10,}/g, "[key hidden]")     // OpenAI-compatible
+    .replace(/Bearer\s+[0-9A-Za-z._\-]{16,}/gi, "Bearer [key hidden]");
 }
 
 /* ---------- the payload ---------- */
@@ -275,37 +330,6 @@ export type AiAnalysis = {
   note?: string;
 };
 
-const RESPONSE_SCHEMA = {
-  type: "object",
-  properties: {
-    patterns: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          detail: { type: "string" },
-          evidence: { type: "string" },
-          metrics: { type: "array", items: { type: "string" } },
-          strength: { type: "string", enum: ["weak", "moderate", "strong"] },
-          kind: {
-            type: "string",
-            enum: [
-              "co-occurrence", "after-activity", "sleep-mood", "timing",
-              "trend", "association", "deviation", "other",
-            ],
-          },
-          dayFrom: { type: "integer" },
-          dayTo: { type: "integer" },
-        },
-        required: ["title", "detail", "evidence", "metrics", "strength", "kind"],
-      },
-    },
-    note: { type: "string" },
-  },
-  required: ["patterns"],
-};
-
 const SYSTEM_PROMPT = `You are helping someone read their own health self-tracking journal. You are not a clinician and this is not a clinical setting.
 
 You receive a compact table: a list of tracked metrics (with a label, a type, and a direction where "sym" means higher is worse and "pos" means higher is better) and one row per logged day. Days are numbered from the start of the window; weekday names are given. Values are numbers; booleans are 0 or 1. Days the person did not log are simply absent.
@@ -368,55 +392,102 @@ export class AiError extends Error {
 
 /** One cheap round-trip that proves the key works, without sending journal
     data. Used by the "Test key" button in Settings. */
-export async function testApiKey(key: string): Promise<{ ok: true } | { ok: false; message: string }> {
-  const trimmed = key.trim();
-  if (!looksLikeKey(trimmed)) {
-    return { ok: false, message: "That doesn't look like a Google AI Studio key." };
-  }
-  try {
-    const res = await fetch(AI_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": trimmed },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: "Reply with the single word: ready" }] }],
-        generationConfig: { maxOutputTokens: 16, temperature: 0 },
-      }),
-    });
-    if (res.ok) return { ok: true };
-    const body = await res.text().catch(() => "");
-    if (res.status === 400 || res.status === 401 || res.status === 403) {
-      return {
-        ok: false,
-        message:
-          "Google rejected that key. Check you copied all of it, and that the Generative Language API is enabled for the project it belongs to.",
-      };
-    }
-    if (res.status === 429) {
-      return { ok: false, message: "The key works, but Google is rate-limiting it right now. Try again in a minute." };
-    }
-    return { ok: false, message: redact(`Google returned ${res.status}. ${body.slice(0, 160)}`, trimmed) };
-  } catch (e) {
+/** Turn a provider's failure into something the user can act on. Never
+    includes the key: provider error bodies quote request context. */
+function describeFailure(status: number, body: string, key: string): { kind: AiError["kind"]; message: string } {
+  const clean = redact(body, key);
+  if (status === 401 || status === 403) {
     return {
-      ok: false,
-      message: "Couldn't reach Google. Check your connection — this is the one part of the app that needs one.",
+      kind: "auth",
+      message: "The provider rejected that key. Check you copied all of it, and that the key hasn't been revoked.",
     };
   }
+  if (status === 429) {
+    return { kind: "rate", message: "You've hit the provider's rate limit. Try again in a minute." };
+  }
+  if (status === 402) {
+    return { kind: "auth", message: "The provider says this key has no credit or quota left." };
+  }
+  if (status === 404) {
+    return {
+      kind: "response",
+      message: "The provider couldn't find that model. It may have been retired — try again and a current one will be picked.",
+    };
+  }
+  return { kind: "response", message: `The provider returned an error (${status}). ${clean.slice(0, 160)}` };
 }
 
-function extractText(payload: any): string {
-  const parts = payload?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) return "";
-  return parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
+/** A browser CORS refusal and a dead network both surface as a bare TypeError,
+    so this can't tell them apart — but for a custom endpoint the former is by
+    far the likelier of the two, and saying so saves a long hunt. */
+function networkMessage(conn: Connection): string {
+  if (conn.provider === "custom") {
+    return "Couldn't reach that endpoint from the browser. Either the address is wrong, or the service doesn't allow requests directly from a web page (CORS) — which this app needs, since it has no server to relay through.";
+  }
+  return "Couldn't reach the provider. Check your connection — this is the one part of the app that needs one.";
 }
 
-/** Send one analysis request. Throws AiError; never throws a raw fetch error
-    or anything containing the key. */
+/** Verify a connection and choose a model for it, in one round trip.
+
+    Listing models proves four things at once: the endpoint is reachable, the
+    browser is allowed to call it, the key is accepted, and something usable is
+    actually available to it. That last one is what the first version of this
+    feature missed — the key was fine, the hard-coded model had been retired. */
+/* One shape rather than a discriminated union: this project compiles with
+   `strict: false`, and without strictNullChecks TypeScript will not narrow a
+   `{ok:true}|{ok:false}` union, so every read of `.message` would error. */
+export interface ConnectionCheck {
+  ok: boolean;
+  /** Set when ok — the model chosen for this connection. */
+  model?: string;
+  /** Set when ok — everything the key can reach, for diagnostics. */
+  models?: string[];
+  /** Set when not ok — already redacted, safe to show. */
+  message?: string;
+}
+
+export async function testConnection(conn: Connection): Promise<ConnectionCheck> {
+  if (!looksLikeKey(conn.key)) {
+    return { ok: false, message: "That doesn't look like a full API key yet." };
+  }
+  if (providerOf(conn.provider).needsBaseUrl && !String(conn.baseUrl || "").trim()) {
+    return { ok: false, message: "This provider needs an endpoint address as well as a key." };
+  }
+  let models: string[];
+  try {
+    models = await listModels(conn);
+  } catch (e: any) {
+    if (typeof e?.status === "number") {
+      return { ok: false, message: describeFailure(e.status, String(e.message || ""), conn.key).message };
+    }
+    return { ok: false, message: networkMessage(conn) };
+  }
+  const model = pickModel(models);
+  if (!model) {
+    return {
+      ok: false,
+      message: "That key works, but no usable chat model is available to it. If the provider has a model list, check one is enabled.",
+    };
+  }
+  return { ok: true, model, models };
+}
+
+/** Back-compat: verify a bare Gemini key. */
+export async function testApiKey(key: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const res = await testConnection({ provider: "gemini", key });
+  return res.ok ? { ok: true } : { ok: false, message: res.message || "That key didn't work." };
+}
+
 export async function runPatternAnalysis(
-  key: string,
+  connOrKey: Connection | string,
   input: AnalysisInput,
   opts: { signal?: AbortSignal } = {}
 ): Promise<AiAnalysis> {
-  if (!key || !key.trim()) throw new AiError("no-key", "No API key is set.");
+  const conn: Connection = typeof connOrKey === "string"
+    ? { provider: "gemini", key: connOrKey }
+    : { ...connOrKey };
+
+  if (!conn.key || !conn.key.trim()) throw new AiError("no-key", "No API key is set.");
   if (input.days.length < 5) {
     throw new AiError(
       "not-enough-data",
@@ -424,75 +495,57 @@ export async function runPatternAnalysis(
     );
   }
 
-  let res: Response;
-  try {
-    res = await fetch(AI_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key.trim() },
-      signal: opts.signal,
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text:
-                  "Here is the journal window. Metrics, then one row per logged day.\n\n" +
-                  JSON.stringify({
-                    windowDays: input.windowDays,
-                    metrics: input.fields,
-                    days: input.days,
-                  }),
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 2400,
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      }),
-    });
-  } catch (e: any) {
-    if (e?.name === "AbortError") throw e;
-    throw new AiError("network", "Couldn't reach Google. Check your connection and try again.");
-  }
+  const userText =
+    "Here is the journal window. Metrics, then one row per logged day.\n\n" +
+    JSON.stringify({ windowDays: input.windowDays, metrics: input.fields, days: input.days });
 
-  if (!res.ok) {
-    if (res.status === 400 || res.status === 401 || res.status === 403) {
-      throw new AiError("auth", "Google rejected the API key. You can replace it in Settings.");
+  /* One retry, and only for "that model is gone" — the exact failure that took
+     this feature down for every new user when a hard-coded model was retired.
+     Re-resolving from the live list fixes it without anyone touching Settings. */
+  const attempt = async (c: Connection, allowRetry: boolean): Promise<string> => {
+    if (!c.model) {
+      const picked = await testConnection(c);
+      if (!picked.ok || !picked.model) throw new AiError("auth", picked.message || "No usable model.");
+      c.model = picked.model;
+      await rememberModel(picked.model).catch(() => {});
     }
-    if (res.status === 429) {
-      throw new AiError("rate", "Google is rate-limiting this key right now. Try again in a minute.");
+
+    try {
+      return await chat(c, { system: SYSTEM_PROMPT, user: userText, signal: opts.signal });
+    } catch (e: any) {
+      if (e?.name === "AbortError") throw e;
+      if (typeof e?.status !== "number") throw new AiError("network", networkMessage(c));
+      if (allowRetry && isModelGone(e.status, String(e.body || e.message || ""))) {
+        c.model = undefined;
+        return attempt(c, false);
+      }
+      const { kind, message } = describeFailure(e.status, String(e.body || e.message || ""), c.key);
+      throw new AiError(kind, message);
     }
-    const body = await res.text().catch(() => "");
-    throw new AiError("response", redact(`Google returned an error (${res.status}). ${body.slice(0, 160)}`, key));
-  }
+  };
 
-  let payload: any;
-  try {
-    payload = await res.json();
-  } catch {
-    throw new AiError("response", "Google's reply couldn't be read.");
-  }
+  const text = await attempt(conn, true);
 
-  const text = extractText(payload);
   let parsed: any;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(stripFence(text));
   } catch {
     throw new AiError("response", "The analysis came back in an unexpected shape. Try regenerating.");
   }
+  return normaliseAnalysis(parsed, input, conn.model);
+}
 
-  return normaliseAnalysis(parsed, input);
+/** Some OpenAI-compatible models wrap JSON in a markdown fence despite being
+    asked not to. Cheaper to unwrap than to fail the run over punctuation. */
+function stripFence(text: string): string {
+  const t = String(text ?? "").trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t);
+  return fenced ? fenced[1] : t;
 }
 
 /** Validate + soften + shape the model's reply. Exported for tests: this is
     the boundary where untrusted output becomes something the UI renders. */
-export function normaliseAnalysis(parsed: any, input: AnalysisInput): AiAnalysis {
+export function normaliseAnalysis(parsed: any, input: AnalysisInput, model?: string): AiAnalysis {
   const labelFor = new Map(input.fields.map((f) => [f.label.toLowerCase(), f.label]));
   const raw = Array.isArray(parsed?.patterns) ? parsed.patterns : [];
 
@@ -522,7 +575,7 @@ export function normaliseAnalysis(parsed: any, input: AnalysisInput): AiAnalysis
 
   return {
     generatedAt: new Date().toISOString(),
-    model: AI_MODEL_LABEL,
+    model: model || AI_MODEL_LABEL,
     startDate: input.startDate,
     endDate: input.endDate,
     daysAnalysed: input.days.length,

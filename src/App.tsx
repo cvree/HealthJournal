@@ -31,8 +31,9 @@ import {
 } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
 import {
-  AI_MODEL_LABEL, hasStoredKey, loadKey, saveKey, clearKey, maskKey, testApiKey,
+  hasStoredKey, loadConnection, saveConnection, clearKey, maskKey, testConnection,
   buildAnalysisInput, summariseInput, runPatternAnalysis, strengthLabel, looksLikeKey,
+  PROVIDERS, providerOf, OPENAI_NOTE,
 } from "./lib/ai";
 
 /* ============================================================
@@ -45,7 +46,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -2623,12 +2624,12 @@ function AiPatternCard({ pattern, onDismiss }) {
 
 /** The confirmation step. Nothing leaves the device until this is accepted,
     and it spells out the payload rather than describing it in the abstract. */
-function AiSendPreview({ summary, windowLabel, onCancel, onConfirm }) {
+function AiSendPreview({ summary, windowLabel, providerLabel, onCancel, onConfirm }) {
   return (
-    <Modal title="Send this to Google?" onClose={onCancel}>
+    <Modal title={`Send this to ${providerLabel}?`} onClose={onCancel}>
       <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
         This is the only part of {APP_NAME} that uses the internet. Everything below is sent to
-        Google's Gemini API using the key you provided, analysed, and returned. Nothing else
+        {" "}{providerLabel} using the key you provided, analysed, and returned. Nothing else
         leaves this device.
       </p>
       <div className="mt-4 rounded-xl p-3.5" style={{ background: C.faint }}>
@@ -2661,9 +2662,9 @@ function AiSendPreview({ summary, windowLabel, onCancel, onConfirm }) {
         </details>
       )}
       <p className="text-[11px] leading-relaxed mt-4" style={{ color: C.subtle }}>
-        Google's handling of API requests is governed by their terms, not by this app. If you'd
-        rather nothing left the device, the locally calculated patterns above keep working on
-        their own.
+        Your provider's handling of API requests is governed by their terms, not by this app. If
+        you'd rather nothing left the device, the locally calculated patterns above keep working
+        on their own.
       </p>
       {/* Sticky so the decision is always one tap away, however long the
           disclosure above runs on a short screen. */}
@@ -2690,10 +2691,9 @@ function AiSendPreview({ summary, windowLabel, onCancel, onConfirm }) {
    last step runs the analysis — so finishing setup and getting a result are
    the same action rather than two things to remember. */
 
-const AI_STUDIO_URL = "https://aistudio.google.com/app/apikey";
-
 const WIZARD_STEPS = [
   { id: "intro", label: "What it does" },
+  { id: "provider", label: "Choose" },
   { id: "key", label: "Get a key" },
   { id: "paste", label: "Connect" },
   { id: "review", label: "Review" },
@@ -2701,31 +2701,22 @@ const WIZARD_STEPS = [
 
 function WizardProgress({ index }) {
   return (
-    <ol className="flex items-center gap-1.5" aria-label="Setup progress">
+    <ol className="flex items-center gap-1.5 shrink-0" aria-label="Setup progress">
       {WIZARD_STEPS.map((s, i) => {
         const done = i < index;
         const current = i === index;
         return (
-          <li key={s.id} className="flex items-center gap-1.5"
-            aria-current={current ? "step" : undefined}>
+          <li key={s.id} aria-current={current ? "step" : undefined}>
             <span
               className="flex items-center justify-center rounded-full text-[10px] font-bold shrink-0"
               style={{
-                width: 20, height: 20,
+                width: 18, height: 18,
                 background: done || current ? C.accent : C.faint,
                 color: done || current ? C.onAccent : C.subtle,
                 transition: "background-color 220ms ease, color 220ms ease",
               }}>
-              {done ? <Icon name="check" size={11} color={C.onAccent} /> : i + 1}
+              {done ? <Icon name="check" size={10} color={C.onAccent} /> : i + 1}
             </span>
-            {i < WIZARD_STEPS.length - 1 && (
-              <span aria-hidden="true" className="rounded-full"
-                style={{
-                  width: 14, height: 2,
-                  background: done ? C.accent : C.line,
-                  transition: "background-color 220ms ease",
-                }} />
-            )}
           </li>
         );
       })}
@@ -2734,14 +2725,10 @@ function WizardProgress({ index }) {
 }
 
 /** Numbered, literal instructions for the one part of this that happens on
-    someone else's website. Written as what you will see, not what to think. */
-function AiStudioSteps() {
-  const steps = [
-    ["Sign in", "with any Google account. It's the same account you already use — nothing new to create."],
-    ["Press “Create API key”", "on the page that opens. If it asks which project, any of them is fine."],
-    ["Copy the key", "with the copy button next to it. It starts with “AIza”."],
-    ["Come back here", "and paste it on the next step. That's the whole thing."],
-  ];
+    someone else's website. Written as what you will see, not what to think.
+    Each provider supplies its own, because "create an API key" looks different
+    on every console and a generic instruction helps nobody. */
+function AiStudioSteps({ steps }) {
   return (
     <ol className="flex flex-col gap-3 mt-4">
       {steps.map(([title, body], i) => (
@@ -2762,29 +2749,36 @@ function AiStudioSteps() {
 
 function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
   const [step, setStep] = useState(0);
+  const [providerId, setProviderId] = useState("gemini");
   const [draft, setDraft] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [mode, setMode] = useState("persist");
   // "idle" | "checking" | "ok" | "bad"
-  const [check, setCheck] = useState({ state: "idle", message: "" });
+  const [check, setCheck] = useState({ state: "idle", message: "", model: null });
   const [overrode, setOverrode] = useState(false); // continued past a failed check
-  const [existing, setExisting] = useState(null);  // masked key already on device
-  const [opened, setOpened] = useState(false);     // AI Studio was opened at least once
+  const [existing, setExisting] = useState(null);  // { mask, provider } already on device
+  const [opened, setOpened] = useState(false);     // the console was opened at least once
   const [canPaste, setCanPaste] = useState(false);
   const inputRef = useRef(null);
   const checkSeq = useRef(0);
 
+  const provider = providerOf(providerId);
+  const REVIEW = WIZARD_STEPS.length - 1;
+  const PASTE = REVIEW - 1;
+
   /* Someone who already has a key should not be walked through getting one. */
   useEffect(() => {
     let live = true;
-    loadKey().then((k) => {
-      if (!live || !k) return;
-      setExisting(maskKey(k));
-      setCheck({ state: "ok", message: "Using the key already on this device." });
-      setStep(3);
+    loadConnection().then((conn) => {
+      if (!live || !conn) return;
+      setProviderId(conn.provider || "gemini");
+      setExisting({ mask: maskKey(conn.key), provider: conn.provider || "gemini" });
+      setCheck({ state: "ok", message: "Using the connection already on this device.", model: conn.model || null });
+      setStep(REVIEW);
     });
     setCanPaste(typeof navigator !== "undefined" && !!navigator.clipboard?.readText);
     return () => { live = false; };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -2798,22 +2792,30 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
   useEffect(() => {
     const key = draft.trim();
     setOverrode(false);
-    if (!key) { setCheck({ state: "idle", message: "" }); return; }
+    if (!key) { setCheck({ state: "idle", message: "", model: null }); return; }
     if (!looksLikeKey(key)) {
-      setCheck({ state: "bad", message: "That doesn't look like a full key yet — it should be one long line starting with “AIza”." });
+      setCheck({ state: "bad", message: "That doesn't look like a full key yet — it should be one long line with no spaces.", model: null });
+      return;
+    }
+    if (provider.needsBaseUrl && !baseUrl.trim()) {
+      setCheck({ state: "idle", message: "", model: null });
       return;
     }
     const seq = ++checkSeq.current;
-    setCheck({ state: "checking", message: "Checking with Google…" });
+    setCheck({ state: "checking", message: `Checking with ${provider.label}…`, model: null });
     const t = setTimeout(async () => {
-      const res = await testApiKey(key);
+      /* Listing the models is the check: it proves the endpoint is reachable,
+         the browser is allowed to call it, the key is accepted, *and* that
+         something usable sits behind it. Verifying only the key is what let a
+         retired model reach every new user as a 404. */
+      const res = await testConnection({ provider: providerId, key, baseUrl: baseUrl.trim() || undefined });
       if (seq !== checkSeq.current) return; // a newer keystroke won
       setCheck(res.ok
-        ? { state: "ok", message: "That key works." }
-        : { state: "bad", message: res.message });
+        ? { state: "ok", message: `Connected. Using ${res.model}.`, model: res.model }
+        : { state: "bad", message: res.message, model: null });
     }, 450);
     return () => clearTimeout(t);
-  }, [draft]);
+  }, [draft, baseUrl, providerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pasteFromClipboard = async () => {
     try {
@@ -2826,18 +2828,19 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
   };
 
   const keyReady = existing || check.state === "ok" || overrode;
-  const canContinue =
-    step === 0 ? true :
-    step === 1 ? true :
-    step === 2 ? keyReady :
-    true;
+  const canContinue = step === PASTE ? keyReady : true;
 
   const advance = async () => {
-    if (step === 2 && !existing) {
-      await saveKey(draft.trim(), mode);
+    if (step === PASTE && !existing) {
+      await saveConnection({
+        provider: providerId,
+        key: draft.trim(),
+        baseUrl: baseUrl.trim() || undefined,
+        model: check.model || undefined,
+      }, mode);
       feedback("save");
     }
-    setStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1));
+    setStep((s) => Math.min(REVIEW, s + 1));
   };
 
   const finish = async (andRun) => {
@@ -2888,7 +2891,7 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
                   against your lower ones. That catches pairs, and misses everything else.
                 </p>
                 <p className="text-sm leading-relaxed mt-2.5" style={{ color: C.sub }}>
-                  {AI_MODEL_LABEL} can read the same numbers and look for what that maths can't:
+                  An AI can read the same numbers and look for what that maths can't:
                   symptoms that keep turning up together, changes in the days after something,
                   sleep and mood relationships, recurring timing, and drifts from your own
                   baseline.
@@ -2898,7 +2901,7 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
                   <div className="fhj-eyebrow mb-2.5">Before you start, the honest version</div>
                   <ul className="flex flex-col gap-2.5">
                     {[
-                      ["It's free, but it's your account", `You'll create a Google API key — it takes about a minute and costs nothing at normal use. We'll walk you through it.`],
+                      ["It's free, but it's your account", "You'll create an API key with a provider you choose — it takes about a minute and costs nothing at normal use. We'll walk you through it."],
                       ["Only numbers leave this device", "Your ratings and the names of what you track. Never your notes, never a photo, never your name."],
                       ["Nothing sends by itself", "You press a button, see exactly what's going, and confirm. Every single time."],
                       ["You can undo all of it", "Remove the key whenever you like and the app goes back to working entirely offline."],
@@ -2923,29 +2926,91 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
 
             {step === 1 && (
               <>
-                <h2 className="font-display text-2xl leading-snug">Get your free key</h2>
+                <h2 className="font-display text-2xl leading-snug">Which AI should read it?</h2>
                 <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
-                  This is the one part that happens on Google's site. It opens in a new tab, so
-                  this page stays exactly where it is — nothing you've done so far is lost.
+                  All of these are your own account and your own key. If you have no preference,
+                  the first one is the shortest path.
                 </p>
 
-                <Button variant="primary" block className="mt-5" icon="link"
-                  onClick={() => {
-                    setOpened(true);
-                    window.open(AI_STUDIO_URL, "_blank", "noopener,noreferrer");
-                  }}>
-                  Open Google AI Studio
-                </Button>
-
-                <AiStudioSteps />
-
-                <div className="rounded-xl p-3.5 mt-5" style={{ background: C.faint }}>
-                  <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
-                    <b style={{ color: C.ink }}>Can't open a new tab?</b> Go to{" "}
-                    <span style={{ color: C.accentText, wordBreak: "break-all" }}>aistudio.google.com/app/apikey</span>{" "}
-                    on any device, then come back and paste the key on the next step.
-                  </p>
+                <div className="flex flex-col gap-2.5 mt-5" role="radiogroup" aria-label="AI provider">
+                  {Object.values(PROVIDERS).map((p) => {
+                    const on = p.id === providerId;
+                    return (
+                      <button key={p.id} type="button" role="radio" aria-checked={on}
+                        onClick={() => { setProviderId(p.id); setDraft(""); setBaseUrl(""); feedback("select"); }}
+                        className="w-full text-left rounded-xl p-3.5"
+                        style={{
+                          background: on ? C.accentSoft : "transparent",
+                          border: `1px solid ${on ? C.accentLine : C.line}`,
+                          transition: "background-color 130ms ease, border-color 130ms ease",
+                        }}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold">{p.label}</span>
+                              {p.recommended && <Badge tone="accent">Easiest</Badge>}
+                            </div>
+                            <div className="text-[12.5px] leading-relaxed mt-1" style={{ color: C.sub }}>
+                              {p.blurb}
+                            </div>
+                            <div className="text-[11.5px] mt-1.5" style={{ color: C.good }}>{p.free}</div>
+                          </div>
+                          <span className="w-[22px] h-[22px] rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                            style={on ? { background: C.accent } : { border: `1.5px solid ${C.lineStrong}` }}>
+                            {on && <Icon name="check" size={13} color={C.onAccent} />}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {/* Asked often enough that leaving it out just means people go
+                    looking, try it, and hit an unexplained wall. */}
+                <div className="rounded-xl p-3.5 mt-5" style={{ background: C.faint }}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Icon name="info" size={14} color={C.subtle} />
+                    <span className="text-[12px] font-semibold">What about ChatGPT?</span>
+                  </div>
+                  <p className="text-[11.5px] leading-relaxed" style={{ color: C.sub }}>{OPENAI_NOTE}</p>
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <h2 className="font-display text-2xl leading-snug">
+                  {provider.keyUrl ? "Get your free key" : "Get a key from your provider"}
+                </h2>
+                <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
+                  {provider.keyUrl
+                    ? `This is the one part that happens on ${provider.keyUrlLabel}'s site. It opens in a new tab, so this page stays exactly where it is — nothing you've done so far is lost.`
+                    : "Whichever service you're using, create a key on its own site and copy its endpoint address. Then come back here."}
+                </p>
+
+                {provider.keyUrl && (
+                  <Button variant="primary" block className="mt-5" icon="link"
+                    onClick={() => {
+                      setOpened(true);
+                      window.open(provider.keyUrl, "_blank", "noopener,noreferrer");
+                    }}>
+                    Open {provider.keyUrlLabel}
+                  </Button>
+                )}
+
+                <AiStudioSteps steps={provider.steps} />
+
+                {provider.keyUrl && (
+                  <div className="rounded-xl p-3.5 mt-5" style={{ background: C.faint }}>
+                    <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
+                      <b style={{ color: C.ink }}>Can't open a new tab?</b> Go to{" "}
+                      <span style={{ color: C.accentText, wordBreak: "break-all" }}>
+                        {provider.keyUrl.replace(/^https?:\/\//, "")}
+                      </span>{" "}
+                      on any device, then come back and paste the key on the next step.
+                    </p>
+                  </div>
+                )}
 
                 {opened && (
                   <p className="text-[12.5px] leading-relaxed mt-4" style={{ color: C.good }}>
@@ -2955,16 +3020,39 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
               </>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <>
                 <h2 className="font-display text-2xl leading-snug">Paste it here</h2>
                 <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
-                  We'll check it with Google as soon as you paste, so you find out now rather than
-                  later.
+                  We'll check it with {provider.label} as soon as you paste — including which
+                  model your key can actually use — so you find out now rather than later.
                 </p>
 
+                {provider.needsBaseUrl && (
+                  <>
+                    <label className="fhj-eyebrow block mt-5 mb-2" htmlFor="fhj-wizard-base">
+                      Endpoint address
+                    </label>
+                    <input
+                      id="fhj-wizard-base"
+                      type="url"
+                      className="fhj-input"
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      placeholder="https://api.example.com/v1"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                    />
+                    <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+                      {provider.baseUrlHint}
+                    </p>
+                  </>
+                )}
+
                 <label className="fhj-eyebrow block mt-5 mb-2" htmlFor="fhj-wizard-key">
-                  Your Gemini API key
+                  Your {provider.label} API key
                 </label>
                 <input
                   id="fhj-wizard-key"
@@ -2973,7 +3061,7 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
                   className="fhj-input"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="AIza…"
+                  placeholder={provider.id === "gemini" ? "AQ.…" : provider.id === "openrouter" ? "sk-or-…" : "your API key"}
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
@@ -2985,6 +3073,10 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
                     Paste from clipboard
                   </Button>
                 )}
+
+                <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+                  {provider.keyHint}
+                </p>
 
                 <div id="fhj-wizard-key-status" role="status" className="mt-3 min-h-[1.25rem]">
                   {check.state === "checking" && (
@@ -3042,25 +3134,31 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
               </>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <>
                 <h2 className="font-display text-2xl leading-snug">
                   {enoughDays ? "Here's exactly what gets sent" : "You're set up"}
                 </h2>
 
-                {existing && (
-                  <div className="flex items-center gap-2.5 p-3 rounded-xl mt-4" style={{ background: C.faint }}>
-                    <Icon name="key" size={16} color={C.good} />
-                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{existing}</span>
-                    <Badge tone="good">Ready</Badge>
-                  </div>
-                )}
+                <div className="flex items-center gap-2.5 p-3 rounded-xl mt-4" style={{ background: C.faint }}>
+                  <Icon name="key" size={16} color={C.good} />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-sm font-medium block truncate">
+                      {providerOf(existing?.provider || providerId).label}
+                    </span>
+                    <span className="text-[11.5px] block truncate" style={{ color: C.subtle }}>
+                      {existing ? existing.mask : maskKey(draft)}
+                      {check.model ? ` · ${check.model}` : ""}
+                    </span>
+                  </span>
+                  <Badge tone="good">Ready</Badge>
+                </div>
 
                 {enoughDays ? (
                   <>
                     <p className="text-sm leading-relaxed mt-3" style={{ color: C.sub }}>
                       Nothing has left this device yet. Press the button below and this — and only
-                      this — goes to Google.
+                      this — goes to {providerOf(existing?.provider || providerId).label}.
                     </p>
                     <div className="rounded-xl p-4 mt-4" style={{ background: C.faint }}>
                       <div className="flex items-center justify-between gap-2 mb-2.5">
@@ -3109,8 +3207,8 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
                 )}
 
                 <p className="text-[11.5px] leading-relaxed mt-4" style={{ color: C.subtle }}>
-                  Google's handling of API requests is governed by their terms, not by this app.
-                  Everything else in {APP_NAME} stays on this device either way.
+                  Your provider's handling of API requests is governed by their terms, not by this
+                  app. Everything else in {APP_NAME} stays on this device either way.
                 </p>
               </>
             )}
@@ -3126,12 +3224,15 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
           paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
         }}>
         <div className="max-w-md mx-auto flex gap-2">
-          {step > 0 && !(step === 3 && existing) && (
+          {step > 0 && !(step === REVIEW && existing) && (
             <Button variant="ghost" onClick={() => setStep((s) => Math.max(0, s - 1))}>Back</Button>
           )}
-          {step < 3 ? (
+          {step < REVIEW ? (
             <Button variant="primary" block onClick={advance} disabled={!canContinue}>
-              {step === 0 ? "Get started" : step === 1 ? "I've copied my key" : "Save and continue"}
+              {step === 0 ? "Get started"
+                : step === 1 ? `Use ${provider.label}`
+                : step === 2 ? "I've copied my key"
+                : "Save and continue"}
             </Button>
           ) : enoughDays ? (
             <Button variant="primary" block icon="spark" onClick={() => finish(true)}>
@@ -3141,9 +3242,11 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
             <Button variant="primary" block onClick={() => finish(false)}>Done</Button>
           )}
         </div>
-        {step === 2 && !keyReady && (
+        {step === PASTE && !keyReady && (
           <p className="max-w-md mx-auto text-[11.5px] text-center mt-2" style={{ color: C.subtle }}>
-            Paste your key to continue
+            {provider.needsBaseUrl && !baseUrl.trim()
+              ? "Enter the endpoint address and your key to continue"
+              : "Paste your key to continue"}
           </p>
         )}
       </div>
@@ -3157,6 +3260,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null); // { input, summary }
   const [wizard, setWizard] = useState(null);   // { input, summary, windowLabel }
+  const [conn, setConn] = useState(null);       // stored connection, for labels
   const abortRef = useRef(null);
 
   const enabled = !viewer && ai?.enabled === true;
@@ -3165,9 +3269,11 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
 
   useEffect(() => {
     let live = true;
-    loadKey().then((k) => { if (live) setKeyPresent(!!k); });
+    loadConnection().then((c) => { if (!live) return; setConn(c); setKeyPresent(!!c); });
     return () => { live = false; };
   }, [enabled]);
+
+  const providerLabel = providerOf(conn?.provider).label;
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -3217,13 +3323,14 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const key = await loadKey();
-      if (!key) {
+      const active = await loadConnection();
+      if (!active) {
         setKeyPresent(false);
-        setError({ title: "No API key", body: "Add your Gemini key in Settings to run an analysis." });
+        setError({ title: "No API key", body: "Set up an AI provider to run an analysis." });
         return;
       }
-      const result = await runPatternAnalysis(key, input, { signal: controller.signal });
+      setConn(active);
+      const result = await runPatternAnalysis(active, input, { signal: controller.signal });
       setAi((prev) => ({ ...prev, analysis: result }));
       feedback("save");
     } catch (e) {
@@ -3231,7 +3338,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
       setError({
         title: e?.kind === "auth" ? "Google rejected the key"
           : e?.kind === "rate" ? "Rate limited"
-          : e?.kind === "network" ? "Couldn't reach Google"
+          : e?.kind === "network" ? "Couldn't reach the provider"
           : "The analysis didn't come back",
         body: e?.message || "Something went wrong. Try again in a moment.",
         showSettings: e?.kind === "auth",
@@ -3293,8 +3400,9 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
             <Card>
               <Badge tone="accent"><Icon name="spark" size={11} color={C.accentText} /> Optional</Badge>
               <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
-                You can have {AI_MODEL_LABEL} read a summary of your logged numbers and suggest
-                longitudinal observations the on-device maths doesn't look for — things repeatedly
+                You can have an AI of your choosing — Google Gemini, OpenRouter, or any
+                OpenAI-compatible service — read a summary of your logged numbers and suggest
+                longitudinal observations the on-device maths doesn't look for: things repeatedly
                 appearing together, changes after certain days, sleep and mood relationships,
                 recurring timing, and drifts from your own baseline.
               </p>
@@ -3338,7 +3446,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
                 <span className="text-sm font-medium" role="status">Reading your last 90 days…</span>
               </div>
               <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
-                Sent to {AI_MODEL_LABEL}. This usually takes a few seconds.
+                Sent to {providerLabel}. This usually takes a few seconds.
               </p>
               <div className="mt-4 flex flex-col gap-2" aria-hidden="true">
                 <div className="fhj-shimmer h-3 rounded-full" style={{ width: "72%" }} />
@@ -3426,6 +3534,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
 
       {preview && (
         <AiSendPreview summary={preview.summary} windowLabel={preview.windowLabel}
+          providerLabel={providerLabel}
           onCancel={() => setPreview(null)}
           onConfirm={() => run(preview.input)} />
       )}
@@ -3435,7 +3544,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
           input={wizard.input} summary={wizard.summary} windowLabel={wizard.windowLabel}
           setAi={setAi}
           onRun={(input) => { setKeyPresent(true); run(input); }}
-          onClose={() => { setWizard(null); loadKey().then((k) => setKeyPresent(!!k)); }} />
+          onClose={() => { setWizard(null); loadConnection().then((c) => { setConn(c); setKeyPresent(!!c); }); }} />
       )}
     </>
   );
@@ -4961,15 +5070,15 @@ function AppearanceCard() {
    held outside the journal object so it cannot be exported, and the copy is
    honest about what "stored locally" does and does not buy you. */
 function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
-  const [storedMask, setStoredMask] = useState(null); // null = none, string = masked key
+  const [conn, setConn] = useState(null); // null = nothing stored
   const [status, setStatus] = useState(null);         // { ok, message }
   const [testing, setTesting] = useState(false);
   const [wizard, setWizard] = useState(null);
 
   const enabled = ai?.enabled === true;
-  const configured = enabled && !!storedMask;
+  const configured = enabled && !!conn;
 
-  const refresh = () => loadKey().then((k) => setStoredMask(k ? maskKey(k) : null));
+  const refresh = () => loadConnection().then((c) => setConn(c));
   useEffect(() => { refresh(); }, []);
 
   /* Setup — including replacing a key — always runs through the guided flow.
@@ -4990,17 +5099,19 @@ function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
     setTesting(true);
     setStatus(null);
     try {
-      const key = await loadKey();
-      if (!key) { setStatus({ ok: false, message: "There's no key to test yet." }); return; }
-      const res = await testApiKey(key);
-      setStatus(res.ok ? { ok: true, message: "The key works." } : { ok: false, message: res.message });
+      const active = await loadConnection();
+      if (!active) { setStatus({ ok: false, message: "There's no key to test yet." }); return; }
+      const res = await testConnection(active);
+      setStatus(res.ok
+        ? { ok: true, message: `Connected. Using ${res.model}.` }
+        : { ok: false, message: res.message });
     } finally {
       setTesting(false);
     }
   };
 
   const remove = async () => {
-    if (!window.confirm("Remove the Gemini API key from this device? AI observations will stop until you add one again.")) return;
+    if (!window.confirm("Remove the API key from this device? AI observations will stop until you add one again.")) return;
     await clearKey();
     setStatus({ ok: true, message: "Key removed from this device." });
     await refresh();
@@ -5016,7 +5127,7 @@ function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
       <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
         Off by default. When it's on, the Possible Patterns section gains a button that sends a
         minimal summary of your logged <i>numbers</i> — no notes, no photos, no name — to{" "}
-        {AI_MODEL_LABEL} using your own API key, and shows what it noticed. You see exactly what
+        an AI provider you choose, using your own API key, and shows what it noticed. You see exactly what
         would be sent, and confirm, every single time.
       </p>
 
@@ -5041,7 +5152,12 @@ function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
         <>
           <div className="flex items-center gap-2.5 p-3 rounded-xl mt-4" style={{ background: C.faint }}>
             <Icon name="key" size={16} color={C.good} />
-            <span className="text-sm font-medium flex-1 min-w-0 truncate">{storedMask}</span>
+            <span className="min-w-0 flex-1">
+              <span className="text-sm font-medium block truncate">{providerOf(conn?.provider).label}</span>
+              <span className="text-[11.5px] block truncate" style={{ color: C.subtle }}>
+                {conn ? maskKey(conn.key) : ""}{conn?.model ? ` · ${conn.model}` : ""}
+              </span>
+            </span>
             <Badge tone="good">Connected</Badge>
           </div>
           <div className="flex flex-wrap gap-2 mt-2.5">

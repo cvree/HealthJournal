@@ -79,6 +79,32 @@
 > switched off" offers a one-tap re-enable rather than a first-run walkthrough.
 > Tests: 182 across 13 suites (new `tests/aiWizard.test.tsx`).
 
+> **2026-08-08 addendum 10 — 1.3: multi-provider AI + the model-rot fix.**
+> **The bug:** `AI_MODEL = "gemini-2.5-flash"` was hard-coded. Google retired it for
+> newly-issued keys ~3 months before the published Oct 2026 shutdown, so every new user got a
+> 404 after a clean setup. Google also moved key format from `AIza…` to `AQ.Ab…`, which the old
+> strict prefix check would have rejected.
+> **The fix — never hard-code a model.** New `src/lib/aiProviders.ts`: provider catalogue
+> (`gemini` | `openrouter` | `custom`), `listModels()`, `scoreModel()`/`pickModel()`, `chat()`,
+> `isModelGone()`. Setup calls `testConnection()` → lists models → picks one → stores it on the
+> connection. `runPatternAnalysis` re-resolves and retries **once** when `isModelGone` matches
+> (guard `allowRetry`; a bare "not found" without the word "model" deliberately does *not* match,
+> or a 404 "user not found" would burn a second request).
+> **Storage change:** `fhj_ai_key_v1` (bare string) → `fhj_ai_conn_v1` (JSON `Connection`
+> `{provider,key,baseUrl,model}`). `loadConnection()` falls back to the legacy key and treats it
+> as Gemini, so existing installs keep working; `saveConnection` deletes the legacy key.
+> **CORS is the binding constraint** — no backend means the provider must send CORS headers.
+> OpenAI does not, so ChatGPT cannot be offered; `OPENAI_NOTE` is rendered in the picker so this
+> is answered rather than discovered. A `TypeError` from fetch is indistinguishable from a CORS
+> refusal, so `networkMessage()` names CORS specifically for `custom` providers.
+> **Wizard is 5 steps now** (provider inserted at index 1). `REVIEW`/`PASTE` are derived from
+> `WIZARD_STEPS.length` — don't reintroduce hard-coded step numbers. Progress dots dropped their
+> connector lines at 5 steps or the header title truncates at 390px.
+> **Verified in-browser** against the real retired-model 404 body and the real `AQ.` key shape;
+> could not verify OpenRouter/Groq CORS from the sandbox (egress-blocked) — the runtime check is
+> what proves it on the user's machine.
+> Tests: 217 across 14 suites (new `tests/aiProviders.test.ts`).
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

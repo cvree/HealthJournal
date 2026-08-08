@@ -163,23 +163,53 @@ Clearing site data by hand still erases everything. Export a backup first.
 
 Off by default, and everything else works identically whether it's on or off.
 
-Setup is a **four-step guided walkthrough** launched by one button on the dashboard — you never
+Setup is a **five-step guided walkthrough** launched by one button on the dashboard — you never
 have to work out what to do next, and you never leave the screen you started on:
 
 1. **What it does**, and exactly what would and wouldn't leave the device.
-2. **Get a key** — opens Google AI Studio in a new tab, with the four things to click on that
+2. **Choose a provider** (below). Gemini is preselected as the shortest path.
+3. **Get a key** — opens that provider's console in a new tab, with the things to click on that
    page written out, because "create an API key" is where most people stop.
-3. **Paste it** — the key is verified against Google the moment it's pasted, so a wrong one is
-   caught immediately rather than four steps later. Continue stays disabled until it checks out
+4. **Paste it** — verified the moment it's pasted. Continue stays disabled until it checks out
    (with an explicit override so a flaky connection isn't a dead end).
-4. **Review and run** — the exact payload, then the analysis, landing straight on the results.
+5. **Review and run** — the exact payload, then the analysis, landing straight on the results.
 
-The key is one you create yourself at [Google AI Studio](https://aistudio.google.com/) — the app
-ships with none, hard-codes none, and reads none from the environment. **Settings → AI
-observations** is for managing it afterwards (test, replace, remove); replacing runs the same
-guided flow rather than a second, subtly different form.
+**Settings → AI observations** manages it afterwards (test, replace, remove); replacing runs the
+same guided flow rather than a second, subtly different form.
 
-What actually leaves the device, only after you confirm a preview that spells it out:
+#### Which providers, and why not ChatGPT
+
+This app has no backend, so every request goes straight from your browser to the provider. That
+makes browser CORS support a hard requirement, not a preference:
+
+| Provider | Free tier | Notes |
+|---|---|---|
+| **Google Gemini** | Yes, no card | The default. Keys start `AQ.` (older ones `AIza`); both work. |
+| **OpenRouter** | Free models, no card | OpenAI-compatible; one key reaches many makers' models. |
+| **Anything OpenAI-compatible** | Depends | Groq, Mistral, or a model on your own machine — you supply the endpoint. |
+
+**OpenAI (ChatGPT) is not on that list**, and the app says so in the picker rather than letting
+you find out the hard way: their API sends no CORS headers, so calling it from a web page is
+impossible without a server to relay through — which is the one thing this app refuses to have.
+OpenRouter can reach OpenAI's models on your behalf if you want them.
+
+#### No model ID is load-bearing
+
+The first version hard-coded `gemini-2.5-flash`. Google retired it for newly-created keys months
+ahead of the published shutdown date, and every new user got a 404 from a build that had worked
+the week before. So models are never assumed:
+
+- **Setup asks your key what it can reach** (`GET /models`) and scores the results — newer over
+  older, small and fast over frontier, free over paid, stable over preview. One round trip
+  proves the endpoint is reachable, the browser is allowed to call it, the key is accepted, *and*
+  something usable sits behind it.
+- **A model that disappears repairs itself.** If a request comes back "no longer available", the
+  app re-resolves from the live list, retries once, and remembers the new choice. Exactly one
+  retry — a broken provider shouldn't become a loop.
+
+#### What leaves the device
+
+Only after you confirm a preview that spells it out:
 
 - the labels of the metrics you track, and
 - one row per logged day of **numeric answers** in the window, with days numbered from the start
@@ -193,8 +223,8 @@ an export or a backup — the same arrangement as the PIN record. You can add, r
 remove it, and choose between remembering it on the device and holding it only for the session.
 Settings states the limitation plainly rather than implying a vault: **a locally stored key is
 not encrypted and cannot be**, because a local-first app has no secret to encrypt it with that
-someone holding your unlocked device wouldn't also have. Revoking the key at Google is what
-actually stops it working.
+someone holding your unlocked device wouldn't also have. Revoking the key at your provider is
+what actually stops it working.
 
 Findings are phrased as observations, never conclusions, and output that ignores that
 instruction is softened on the way in (`scrubCausalLanguage`) rather than rendered as-is.
@@ -233,7 +263,8 @@ health-journal/
 │   │                           #   metric picker
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light, contrast helpers
-│   │   ├── ai.ts               # optional Gemini analysis (key, payload, parsing)
+│   │   ├── ai.ts               # optional AI analysis (credential, payload, parsing)
+│   │   ├── aiProviders.ts      # provider catalogue, model discovery + scoring
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
@@ -250,7 +281,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 167 tests across 12 suites
+└── tests/                      # 217 tests across 14 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

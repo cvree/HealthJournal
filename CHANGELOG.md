@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.3.0
+
+### Fixed
+
+- **AI observations were broken for every new user.** The build hard-coded
+  `gemini-2.5-flash`; Google retired that model for newly-created keys months ahead of its
+  published shutdown date, so setup completed and then every analysis returned
+  `404 — this model is no longer available to new users`. No model ID is hard-coded any more:
+  setup asks the user's own key what it can reach and scores the results (newer over older,
+  small and fast over frontier, free over paid, stable over preview). A model that disappears
+  later repairs itself — the app re-resolves from the live list, retries exactly once, and
+  remembers the new choice.
+- **Google's newer `AQ.` API keys are handled properly.** Key-format checks are deliberately
+  lenient now (a strict `AIza` prefix test would have locked out everyone issued a key after the
+  format changed), masking handles both, and redaction covers `AQ.`, `sk-`, and bearer tokens as
+  well as the old `AIza` shape.
+- Verifying a key now lists models rather than sending a throwaway prompt, so it proves the
+  endpoint is reachable, CORS allows it, the key is accepted, *and* something usable is behind
+  it — the last of which is what the old check missed.
+
+### Choose your own AI
+
+- A provider step in the setup walkthrough: **Google Gemini** (default, free, no card),
+  **OpenRouter** (free models, no card, one key for many makers), or **any OpenAI-compatible
+  endpoint** — Groq, Mistral, or a model running on your own machine.
+- **The ChatGPT question is answered in the picker instead of being left to fail.** OpenAI's API
+  sends no CORS headers, so a browser can't call it without a server to relay through, which is
+  the one thing this app refuses to have. The note says so, and points at OpenRouter as the way
+  to reach OpenAI's models anyway.
+- A custom endpoint that won't answer now says CORS is the likely cause rather than reporting a
+  bare network failure — the difference between a five-minute fix and an afternoon.
+- Every provider brings its own console instructions, key hint, and key URL, so step 3 describes
+  the page the user is actually looking at.
+- Settings shows which provider and model are connected, and testing reports the model in use.
+
+50 new tests (`tests/aiProviders.test.ts`, plus provider coverage in the wizard suite); 217
+total across 14 suites.
+
 ## 1.2.0
 
 ### Guided AI setup
