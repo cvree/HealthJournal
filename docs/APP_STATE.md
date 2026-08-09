@@ -175,6 +175,56 @@
 > screen-reader pass not done.
 
 
+> **2026-08-09 addendum 12 — 1.5: food tracking that keeps up, sectioned questions, many reminders.**
+> **The food library (`db.foods`).** MFP's speed is "you never type a food twice", which is a
+> server-side database this app cannot have. The substitute is a library grown from the user's
+> own logs — `rememberFood()` runs on every food save, storing figures **per single serving**
+> (a "3 × 1 slice" log must not teach it that a slice is 3 slices). `browseFoods(lib, tab, query)`
+> backs Recent/Frequent/Favourites/All; **a non-empty query overrides the tab on purpose**.
+> `logFromFoodItem()` scales and **writes the figures onto the log**, so editing a saved food
+> never rewrites history.
+> **Provenance gotcha, and the reason `FoodAiResult.source` gained `"library"`:** an item whose
+> numbers were an unconfirmed estimate carries `estimated: true`, and logging it writes into
+> `log.ai`, not `log.nutrition`. Without that, saving a food is a laundering step that turns a
+> guess into a measurement one tap later. Correcting the figures clears the flag — one fix
+> propagates to every future log.
+> **Goals** live at `profile.goals`, every field optional. `goalProgress()` returns *nothing* when
+> nothing is set (no default calorie target is ever invented), and an unrecorded nutrient yields
+> `ratio: null` rather than 0 — "didn't record" ≠ "ate none". Bars are deliberately unjudged: no
+> red for over, no green for under.
+>
+> **FoodScreen** is a new nav destination (`screen === "food"`, also in `DEEP_LINK_SCREENS`):
+> date pager, `CalorieRing`, `GoalBar`s, and one `MealSection` per meal with subtotals.
+> `FoodPicker` is the fast path; the long `FoodLogSheet` sits behind "Something new". **Quick Add's
+> Food tile opens the picker, not the sheet** — the tests walk that route via `openFoodForm()`.
+> **Gotcha:** `DashboardScreen` forwards props to `TrendsScreen` but must destructure them itself;
+> `@ts-nocheck` hides a missing one until it throws at runtime (`foods is not defined`).
+>
+> **EditSetupScreen** groups questions into collapsible sections keyed by **pack label** (the
+> grouping the user chose), not by `sec`. Sections carry `{field, index}` where `index` is into the
+> *whole* ordered list, so reorder arrows still move a question through the real order. A live
+> filter query forces matching sections open. **Test gotcha:** the question-pack checkboxes are
+> also `role="switch"`, so any switch query inside this screen must be scoped to the section.
+>
+> **Reminders are a list** (`profile.reminders`), migrated from the single `profile.reminder` by
+> `readReminders()` on every load. `nextReminderDue()` drives **one** timer rather than one per
+> reminder. `alreadyDone()` suppresses a nudge whose job is done — food reminders check for a log
+> **within ±2h of that reminder's time**, since breakfast being logged says nothing about dinner.
+> `buildRemindersICS()` writes one VEVENT per enabled reminder with index-suffixed UIDs (two at the
+> same time would otherwise collide on import); still floating-time.
+>
+> **CSS fix:** `.fhj-switch` never set `display`, so as an inline element its width/height
+> collapsed and only the knob drew — invisible anywhere it wasn't a flex item.
+> **UX fix:** nutrition fields were behind a collapsed `<details>`; the four headline figures are
+> always visible now, the rest behind "More nutrients". Typing calories is the most common action
+> in a food tracker and must never be one click away.
+>
+> Tests: **407 across 18 suites** (new: `setupSections`; big additions to `tracking`,
+> `reminders`, `foodBowelUi`).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done. Food logs are not yet reachable from the Calendar screen.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

@@ -21,10 +21,11 @@
       only shapes what goes in and what comes back out. */
 
 import type {
-  BowelAiResult, BowelLog, FoodAiResult, FoodLog, MealCategory, NutritionValues,
+  BowelAiResult, BowelLog, FoodAiResult, FoodItem, FoodLog, MealCategory,
+  NamedReminder, NutritionGoals, NutritionValues,
 } from "../types/models";
 
-export type { BowelLog, FoodLog, MealCategory, NutritionValues };
+export type { BowelLog, FoodItem, FoodLog, MealCategory, NutritionGoals, NutritionValues };
 
 /* ---------- ids & clocks ---------- */
 
@@ -241,6 +242,224 @@ export function discardEstimate(log: FoodLog): FoodLog {
   const { ai, ...rest } = log;
   return { ...rest, updatedAt: stamp() } as FoodLog;
 }
+
+/* ---------- the food library ----------
+
+   MyFitnessPal's speed comes from one thing above all others: you almost never
+   type a food twice. That is a database of two million foods on a server, and
+   this app has no server and no account, so it cannot have that.
+
+   What it can have is the part that actually does the work. People eat the
+   same thirty or forty things on repeat; a library built from the user's own
+   logs covers nearly every meal after the first week, and unlike a shared
+   database its serving sizes are already the ones they actually use.
+
+   Provenance survives re-use. An item whose figures began as an unconfirmed
+   model estimate is marked `estimated`, and logging it writes into the log's
+   `ai` block rather than its `nutrition` — otherwise saving a food would be a
+   laundering step that turns a guess into a measurement one tap later. */
+
+/** Fold a name for matching: case, spacing and punctuation don't count. */
+export const foodKey = (name: string, brand?: string): string =>
+  `${String(name || "").trim().toLowerCase()}|${String(brand || "").trim().toLowerCase()}`
+    .replace(/[^a-z0-9|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export function newFoodItem(partial: Partial<FoodItem> & { name: string }): FoodItem {
+  const { name, serving, brand, ...rest } = partial;
+  return {
+    id: `fi_${Date.now().toString(36)}${rand()}`,
+    useCount: 0,
+    lastUsedAt: stamp(),
+    createdAt: stamp(),
+    updatedAt: stamp(),
+    nutrition: {},
+    ...rest,
+    // After the spread: these three come straight from input fields, and a
+    // stray space in a name breaks matching for good.
+    name: name.trim(),
+    brand: brand?.trim() || undefined,
+    serving: serving?.trim() || "1 serving",
+  };
+}
+
+/** Multiply a set of figures by a serving count. Micros are dropped rather
+    than scaled: "Iron: 2.1 mg" is a string, and doubling it by string surgery
+    is how you end up displaying "Iron: 4.2 mg" for something that said
+    "trace". */
+export function scaleNutrition(n: NutritionValues, servings: number): NutritionValues {
+  const mult = isFinite(servings) && servings > 0 ? servings : 1;
+  const out: NutritionValues = {};
+  for (const k of NUTRIENT_KEYS) {
+    const v = n?.[k];
+    if (typeof v === "number" && isFinite(v)) out[k] = Math.round(v * mult * 10) / 10;
+  }
+  if (mult === 1 && n?.micros?.length) out.micros = n.micros.slice();
+  return out;
+}
+
+/** Build a log from a saved food. The figures are scaled and written down on
+    the log itself, so later edits to the library item never rewrite history. */
+export function logFromFoodItem(
+  item: FoodItem,
+  opts: { date: string; time?: string; meal?: MealCategory; servings?: number }
+): FoodLog {
+  const servings = isFinite(opts.servings as number) && (opts.servings as number) > 0 ? (opts.servings as number) : 1;
+  const time = opts.time || localTime();
+  const scaled = scaleNutrition(item.nutrition, servings);
+
+  const base = newFoodLog({
+    date: opts.date,
+    time,
+    meal: opts.meal || mealForTime(time),
+    description: item.brand ? `${item.name} (${item.brand})` : item.name,
+    serving: servings === 1 ? item.serving : `${trimNum(servings)} × ${item.serving}`,
+    foodId: item.id,
+    servings,
+  });
+
+  return item.estimated
+    ? {
+        ...base,
+        ai: {
+          at: stamp(),
+          model: "",
+          source: "library",
+          nutrition: scaled,
+          confidence: "low",
+          note: "Carried over from a saved food whose figures were an estimate.",
+        },
+      }
+    : { ...base, nutrition: scaled };
+}
+
+/** Drop a trailing ".0" so "2 × 1 bowl" doesn't read as "2.0 × 1 bowl". */
+const trimNum = (n: number): string => String(Math.round(n * 100) / 100);
+
+/** Turn a saved log into a library item, or update the one it came from.
+
+    Called on save, so the library grows by using the app rather than by being
+    curated. Figures are stored per *one* serving, so a "3 × 1 slice" log
+    doesn't teach the library that a slice is 3 slices. */
+export function rememberFood(library: FoodItem[], log: FoodLog): FoodItem[] {
+  const name = (log.description || "").trim();
+  if (!name) return library; // nothing to call it; a photo-only log stays a log
+  const resolved = effectiveNutrition(log);
+  if (!resolved.some((n) => n.value != null)) return library; // no figures worth saving
+
+  const servings = isFinite(log.servings as number) && (log.servings as number) > 0 ? (log.servings as number) : 1;
+  const perServing: NutritionValues = {};
+  for (const n of resolved) {
+    if (n.value != null) perServing[n.k] = Math.round((n.value / servings) * 10) / 10;
+  }
+  const estimated = resolved.some((n) => n.source === "ai");
+  const serving = log.serving && servings === 1
+    ? log.serving
+    : log.quantity != null
+      ? `${log.quantity}${log.unit ? ` ${log.unit}` : ""}`
+      : "1 serving";
+
+  const key = foodKey(name);
+  const i = library.findIndex((f) => (log.foodId && f.id === log.foodId) || foodKey(f.name, f.brand) === key);
+
+  if (i < 0) {
+    return [
+      ...library,
+      newFoodItem({ name, serving, nutrition: perServing, estimated: estimated || undefined, useCount: 1, lastUsedAt: stamp() }),
+    ];
+  }
+  const prev = library[i];
+  const next: FoodItem = {
+    ...prev,
+    // A saved food's figures follow the most recent time it was logged, which
+    // is what makes correcting an estimate once fix it everywhere after.
+    nutrition: perServing,
+    serving: serving || prev.serving,
+    estimated: estimated || undefined,
+    useCount: (prev.useCount || 0) + 1,
+    lastUsedAt: stamp(),
+    updatedAt: stamp(),
+  };
+  return library.map((f, j) => (j === i ? next : f));
+}
+
+/** Score a library item against a query. Higher is better; -1 means no match.
+    A prefix match beats a word-start match beats a substring, so typing "chi"
+    surfaces "Chicken" above "Zucchini". */
+export function searchScore(item: FoodItem, query: string): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const name = item.name.toLowerCase();
+  const brand = (item.brand || "").toLowerCase();
+  if (name.startsWith(q)) return 100;
+  if (name.split(/\s+/).some((w) => w.startsWith(q))) return 80;
+  if (name.includes(q)) return 60;
+  if (brand.startsWith(q)) return 50;
+  if (brand.includes(q)) return 30;
+  return -1;
+}
+
+export type LibraryTab = "recent" | "frequent" | "favorite" | "all";
+
+/** The list behind each tab of the picker. Search always wins: once someone is
+    typing, they are looking for one specific thing and the tab is noise. */
+export function browseFoods(library: FoodItem[], tab: LibraryTab, query = ""): FoodItem[] {
+  const rows = library || [];
+  if (query.trim()) {
+    return rows
+      .map((f) => ({ f, s: searchScore(f, query) }))
+      .filter((r) => r.s >= 0)
+      .sort((a, b) => b.s - a.s || (b.f.useCount || 0) - (a.f.useCount || 0) || a.f.name.localeCompare(b.f.name))
+      .map((r) => r.f);
+  }
+  const byName = (a: FoodItem, b: FoodItem) => a.name.localeCompare(b.name);
+  if (tab === "favorite") return rows.filter((f) => f.favorite).sort(byName);
+  if (tab === "frequent") {
+    return rows.filter((f) => (f.useCount || 0) > 0)
+      .sort((a, b) => (b.useCount || 0) - (a.useCount || 0) || byName(a, b));
+  }
+  if (tab === "all") return rows.slice().sort(byName);
+  return rows.slice().sort((a, b) => String(b.lastUsedAt).localeCompare(String(a.lastUsedAt)) || byName(a, b));
+}
+
+export const toggleFavorite = (library: FoodItem[], id: string): FoodItem[] =>
+  library.map((f) => (f.id === id ? { ...f, favorite: !f.favorite, updatedAt: stamp() } : f));
+
+/* ---------- goals ---------- */
+
+export type GoalProgress = {
+  k: NutrientKey;
+  goal: number;
+  eaten: number | null;
+  /** 0–1, clamped. Null when nothing has been recorded. */
+  ratio: number | null;
+  remaining: number | null;
+};
+
+/** Progress toward whichever targets the user actually set. Returns nothing at
+    all when they set none, which is the default — this app does not decide
+    that someone should have a calorie goal. */
+export function goalProgress(goals: NutritionGoals | undefined, totals: DayTotals): GoalProgress[] {
+  if (!goals) return [];
+  const out: GoalProgress[] = [];
+  for (const k of NUTRIENT_KEYS) {
+    const goal = goals[k];
+    if (typeof goal !== "number" || !isFinite(goal) || goal <= 0) continue;
+    const eaten = totals[k];
+    out.push({
+      k,
+      goal,
+      eaten,
+      ratio: eaten == null ? null : Math.max(0, Math.min(1, eaten / goal)),
+      remaining: eaten == null ? goal : Math.round((goal - eaten) * 10) / 10,
+    });
+  }
+  return out;
+}
+
+export const hasGoals = (goals: NutritionGoals | undefined): boolean =>
+  goalProgress(goals, {} as DayTotals).length > 0;
 
 /* ---------- daily aggregates ---------- */
 
@@ -463,7 +682,7 @@ function cleanFoodAi(v: any): FoodAiResult | undefined {
   if (!v || typeof v !== "object") return undefined;
   const nutrition = cleanNutrition(v.nutrition);
   if (!nutrition) return undefined;
-  const source = ["text", "photo", "photo+text"].includes(v.source) ? v.source : "text";
+  const source = ["text", "photo", "photo+text", "library"].includes(v.source) ? v.source : "text";
   return {
     at: str(v.at, 40) || stamp(),
     model: str(v.model, 80),
@@ -505,6 +724,8 @@ export function sanitizeFoodLogs(rows: unknown): FoodLog[] {
       meal,
       description: str(r.description, 400),
       serving: str(r.serving, 80) || undefined,
+      foodId: str(r.foodId, 64) || undefined,
+      servings: num(r.servings) != null && num(r.servings)! > 0 ? num(r.servings) : undefined,
       quantity: num(r.quantity),
       unit: str(r.unit, 20) || undefined,
       notes: str(r.notes, 2000) || undefined,
@@ -516,6 +737,46 @@ export function sanitizeFoodLogs(rows: unknown): FoodLog[] {
     });
   }
   return out;
+}
+
+export function sanitizeFoodItems(rows: unknown): FoodItem[] {
+  if (!Array.isArray(rows)) return [];
+  const out: FoodItem[] = [];
+  const seen = new Set<string>();
+  for (const r of rows as any[]) {
+    if (!r || typeof r !== "object") continue;
+    const name = str(r.name, 120).trim();
+    if (!name) continue;
+    // A library with two entries for the same food is worse than one with none
+    // — every search shows a pair and the counts split between them.
+    const key = foodKey(name, r.brand);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: str(r.id, 64) || `fi_${Date.now().toString(36)}${rand()}`,
+      name,
+      brand: str(r.brand, 80).trim() || undefined,
+      serving: str(r.serving, 80).trim() || "1 serving",
+      nutrition: cleanNutrition(r.nutrition) || {},
+      estimated: r.estimated === true || undefined,
+      favorite: r.favorite === true || undefined,
+      useCount: Math.max(0, Math.round(num(r.useCount) ?? 0)),
+      lastUsedAt: str(r.lastUsedAt, 40) || stamp(),
+      createdAt: str(r.createdAt, 40) || stamp(),
+      updatedAt: str(r.updatedAt, 40) || stamp(),
+    });
+  }
+  return out;
+}
+
+export function sanitizeGoals(v: unknown): NutritionGoals | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const out: NutritionGoals = {};
+  for (const k of NUTRIENT_KEYS) {
+    const n = num((v as any)[k]);
+    if (n != null && n > 0 && n < 1e6) out[k] = Math.round(n);
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 export function sanitizeBowelLogs(rows: unknown): BowelLog[] {

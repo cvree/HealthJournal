@@ -23,6 +23,8 @@ import { createPinRecord, verifyPin } from "./lib/lock";
 import {
   DEFAULT_REMINDER_TIME, isValidTime, formatTime, msUntilNext, buildReminderICS,
   notificationPermission, requestNotificationPermission, showReminderNotification,
+  readReminders, sortReminders, nextReminderDue, newReminder, reminderMessage,
+  buildRemindersICS, REMINDER_PRESETS,
 } from "./lib/reminders";
 import {
   storageStatus, requestPersistentStorage, backupNudge, describeBackupAge,
@@ -41,7 +43,10 @@ import {
   hasUserEdits, acceptEstimate, discardEstimate,
   foodOn, bowelOn, dayTotals, DERIVED_METRICS, derivedMetric, isDerivedKey,
   availableDerivedMetrics, foodSummary, bowelSummary,
-  sanitizeFoodLogs, sanitizeBowelLogs, localTime, prettyTime,
+  sanitizeFoodLogs, sanitizeBowelLogs, sanitizeFoodItems, sanitizeGoals,
+  localTime, prettyTime, localDate,
+  newFoodItem, rememberFood, logFromFoodItem, scaleNutrition,
+  browseFoods, toggleFavorite, goalProgress, hasGoals,
 } from "./lib/tracking";
 import {
   hasStoredKey, loadConnection, saveConnection, clearKey, maskKey, testConnection,
@@ -60,7 +65,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.5.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -1017,6 +1022,12 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     camera: <g><path {...p} d="M4 8h3l1.4-2h7.2L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle {...p} cx="12" cy="13.5" r="3.4" /></g>,
     clock: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M12 7.2V12l3.2 2" /></g>,
     edit: <path {...p} d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17zM13.5 6.5l3 3" />,
+    minus: <path {...p} d="M5 12h14" />,
+    star: <path {...p} d="M12 4.2l2.35 4.76 5.25.77-3.8 3.7.9 5.23L12 16.2l-4.7 2.46.9-5.23-3.8-3.7 5.25-.77z" />,
+    starFilled: <path d="M12 4.2l2.35 4.76 5.25.77-3.8 3.7.9 5.23L12 16.2l-4.7 2.46.9-5.23-3.8-3.7 5.25-.77z" fill={color} stroke={color} strokeWidth="1.6" strokeLinejoin="round" />,
+    bell: <g><path {...p} d="M6 9a6 6 0 0 1 12 0c0 3.5.8 5.2 1.6 6.2.4.5 0 1.3-.7 1.3H5.1c-.7 0-1.1-.8-.7-1.3C5.2 14.2 6 12.5 6 9z" /><path {...p} d="M10 20a2 2 0 0 0 4 0" /></g>,
+    target: <g><circle {...p} cx="12" cy="12" r="8.5" /><circle {...p} cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1.6" fill={color} stroke="none" /></g>,
+    search: <g><circle {...p} cx="11" cy="11" r="6.5" /><path {...p} d="M16 16l4.5 4.5" /></g>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -3661,7 +3672,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
   );
 }
 
-function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
+function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], foods = [], onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onUpdateLibrary }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
@@ -3714,6 +3725,7 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
   /* Which log sheet is open, if any. `null` = closed; an object carries the
      row being edited (or {} for a new one). */
   const [foodSheet, setFoodSheet] = useState(null);
+  const [foodPicker, setFoodPicker] = useState(null); // meal id
   const [bowelSheet, setBowelSheet] = useState(null);
   const aiEnabled = !!ai?.enabled && !viewer;
 
@@ -3811,7 +3823,7 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
           <QuickAdd
             checkedIn={!!today}
             onCheckIn={() => openLog(todayStr())}
-            onFood={() => setFoodSheet({})}
+            onFood={() => setFoodPicker(mealForTime(localTime()))}
             onBowel={() => setBowelSheet({})}
             onPhoto={photoFields.length > 0 ? () => openLog(todayStr()) : null} />
         </>
@@ -4001,9 +4013,18 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         Export data
       </Button>
 
+      {foodPicker && (
+        <FoodPicker
+          library={foods} meal={foodPicker} date={todayStr()}
+          onLog={(log) => { onSaveFood(log); setFoodPicker(null); }}
+          onOpenFull={() => { setFoodSheet({ meal: foodPicker }); setFoodPicker(null); }}
+          onUpdateLibrary={onUpdateLibrary}
+          onClose={() => setFoodPicker(null)} />
+      )}
       {foodSheet && (
         <FoodLogSheet
           initial={foodSheet.id ? foodSheet : null}
+          defaultMeal={foodSheet.meal}
           date={todayStr()}
           aiEnabled={aiEnabled}
           onSave={(log) => { onSaveFood(log); setFoodSheet(null); }}
@@ -4837,7 +4858,7 @@ async function buildFullBackup(db) {
     app: APP_NAME, kind: "full", schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(), disclaimer: DISCLAIMER,
     profile: db.profile, entries: db.entries, reports: db.reports || [],
-    food: db.food || [], bowel: db.bowel || [],
+    food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
     // Past AI observations travel with the journal, but the opt-in does not:
     // turning on a feature that talks to an external service is a decision
     // made per device, by the person holding it, not inherited from a file.
@@ -4904,7 +4925,7 @@ async function restoreBackup(obj, setDb) {
   }
   const next = migrateDb({
     profile: obj.profile, entries: obj.entries, reports: Array.isArray(obj.reports) ? obj.reports : [],
-    food: obj.food, bowel: obj.bowel,
+    food: obj.food, bowel: obj.bowel, foods: obj.foods,
     // `enabled` is deliberately not restored — see buildFullBackup.
     ai: { ...DEFAULT_AI, analysis: obj.ai?.analysis ?? null, dismissed: Array.isArray(obj.ai?.dismissed) ? obj.ai.dismissed : [] },
     ack: true, onboarded: true,
@@ -4969,37 +4990,39 @@ function photoLegendRows(tpl, entries, start, end) {
 /* ---------- daily reminder ---------- */
 
 const DEFAULT_REMINDER = { enabled: false, time: DEFAULT_REMINDER_TIME, notify: false };
-const readReminder = (profile) => {
-  const r = profile && profile.reminder;
-  if (!r || typeof r !== "object") return { ...DEFAULT_REMINDER };
-  return {
-    enabled: r.enabled === true,
-    time: isValidTime(r.time) ? r.time : DEFAULT_REMINDER_TIME,
-    notify: r.notify === true,
-  };
-};
+/* Settings card: a list of reminder times, then how the phone should say so.
 
-/* Settings card: pick a check-in time, then choose how the phone should say so.
-   The calendar file is listed first on purpose — it's the only one of the two
-   that still works with the browser closed, and pretending otherwise would set
-   people up to quietly stop logging. */
+   One time was never enough. A check-in belongs at the end of the day; meals
+   belong at meal times, because the whole point of logging food is doing it
+   while you eat rather than reconstructing dinner at 9pm.
+
+   The calendar file is listed first on purpose — it is the only one of the two
+   delivery routes that still works with the browser closed, and pretending
+   otherwise would set people up to quietly stop logging. */
 function ReminderCard({ profile, onSave }) {
-  const reminder = readReminder(profile);
+  const reminders = sortReminders(readReminders(profile));
   const [perm, setPerm] = useState(() => notificationPermission());
   const [msg, setMsg] = useState(null);
+  const [adding, setAdding] = useState(false);
 
-  const patch = (next) => onSave({ ...reminder, ...next });
+  const commit = (next) => onSave(sortReminders(next));
+  const patch = (id, p) => commit(reminders.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  const remove = (id) => commit(reminders.filter((r) => r.id !== id));
+  const add = (preset) => {
+    setAdding(false);
+    commit([...reminders, newReminder(preset)]);
+  };
+
+  const live = reminders.filter((r) => r.enabled);
 
   const addToCalendar = () => {
     try {
-      const ics = buildReminderICS({
-        time: reminder.time,
-        title: `${APP_NAME} check-in`,
-        description: "Open your journal and log today. Everything stays on your device.",
+      const ics = buildRemindersICS(live);
+      download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "health-journal-reminders.ics");
+      setMsg({
+        ok: true,
+        text: `Calendar file saved with ${live.length} reminder${live.length === 1 ? "" : "s"} — open it to add them to your phone.`,
       });
-      download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "health-journal-daily-reminder.ics");
-      setMsg({ ok: true, text: "Calendar file saved — open it to add the daily reminder to your phone." });
-      feedback("save");
     } catch (e) {
       setMsg({ ok: false, text: "Couldn't build the calendar file on this device." });
     }
@@ -5009,57 +5032,96 @@ function ReminderCard({ profile, onSave }) {
     const result = await requestNotificationPermission();
     setPerm(result);
     if (result === "granted") {
-      patch({ notify: true });
-      setMsg({ ok: true, text: `Reminder set for ${formatTime(reminder.time)} on days you leave the app open.` });
+      setMsg({ ok: true, text: "Browser reminders on, for the days you leave the app open." });
     } else if (result === "denied") {
-      setMsg({ ok: false, text: "Your browser blocked notifications for this site. The calendar reminder above works regardless." });
+      setMsg({ ok: false, text: "Your browser blocked notifications for this site. The calendar file above works regardless." });
     }
   };
 
+  const used = new Set(reminders.map((r) => r.label.toLowerCase()));
+  const presets = REMINDER_PRESETS.filter((p) => !used.has(p.label.toLowerCase()));
+
   return (
     <Card className="mt-3">
-      <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: C.sub }}>Daily reminder</div>
+      <div className="fhj-eyebrow mb-1">Reminders</div>
       <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
-        A journal only helps if you write in it. Pick a time that fits your day — most people log in the evening.
+        A journal only helps if you write in it. Add as many times as suit your day — meals while
+        you're eating, a check-in in the evening.
       </p>
 
-      <label className="flex items-center justify-between gap-3 py-1.5">
-        <span className="text-sm font-medium">Check in at</span>
-        <input type="time" value={reminder.time}
-          onChange={(e) => { if (isValidTime(e.target.value)) patch({ time: e.target.value, enabled: true }); }}
-          className="px-3 py-2 rounded-xl text-sm font-medium"
-          style={{ background: C.faint, border: `1px solid ${C.line}`, color: C.ink }} />
-      </label>
+      {reminders.length === 0 ? (
+        <div className="fhj-empty fhj-cat-symptom" style={{ padding: "1.25rem 0.5rem" }}>
+          <span className="fhj-empty-art" style={{ width: "2.75rem", height: "2.75rem" }}>
+            <Icon name="bell" size={18} color="currentColor" />
+          </span>
+          <span className="fhj-empty-text">No reminders yet.</span>
+        </div>
+      ) : (
+        <div className="rounded-xl overflow-hidden mb-3" style={{ border: `1px solid ${C.line}` }}>
+          {reminders.map((r, i) => (
+            <div key={r.id} className="flex items-center gap-2 px-3 py-2"
+              style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none", opacity: r.enabled ? 1 : 0.5 }}>
+              <button type="button" role="switch" aria-checked={r.enabled}
+                aria-label={`${r.label} reminder`}
+                onClick={() => patch(r.id, { enabled: !r.enabled })}
+                className="shrink-0">
+                <span className={"fhj-switch" + (r.enabled ? " is-on" : "")} />
+              </button>
+              <input
+                value={r.label}
+                onChange={(e) => patch(r.id, { label: e.target.value.slice(0, 60) })}
+                aria-label={`name for the ${formatTime(r.time)} reminder`}
+                className="flex-1 min-w-0 bg-transparent text-sm outline-none"
+                style={{ color: C.ink }} />
+              <input type="time" value={r.time}
+                onChange={(e) => { if (isValidTime(e.target.value)) patch(r.id, { time: e.target.value }); }}
+                aria-label={`time for ${r.label}`}
+                className="px-2 py-1.5 rounded-lg text-sm font-medium shrink-0"
+                style={{ background: C.faint, border: `1px solid ${C.line}`, color: C.ink }} />
+              <button type="button" onClick={() => remove(r.id)} aria-label={`delete ${r.label} reminder`}
+                className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                <Icon name="x" size={14} color={C.subtle} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
-      <div className="mt-3 flex flex-col gap-2">
-        <button onClick={addToCalendar}
-          className="fhj-btn fhj-btn-primary fhj-btn-block">
-          Add {formatTime(reminder.time)} reminder to my calendar
-        </button>
-        <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
-          Downloads a small calendar file that repeats daily. Your phone does the reminding, so it still
-          works when the app is closed. Nothing is sent anywhere — the file never leaves your device
-          unless you put it somewhere yourself.
-        </p>
-      </div>
+      {adding ? (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {presets.map((p) => (
+            <button key={p.label} type="button" onClick={() => add(p)} className="fhj-chip">
+              {p.label} · {formatTime(p.time)}
+            </button>
+          ))}
+          <button type="button" onClick={() => add({ label: "Reminder", time: DEFAULT_REMINDER_TIME })}
+            className="fhj-chip">Custom</button>
+          <button type="button" onClick={() => setAdding(false)} className="fhj-chip">Cancel</button>
+        </div>
+      ) : (
+        <Button variant="secondary" block icon="plus" onClick={() => setAdding(true)}>Add a reminder</Button>
+      )}
 
-      {perm !== "unsupported" && (
+      {live.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          <Button variant="primary" block onClick={addToCalendar}>
+            Add {live.length} reminder{live.length === 1 ? "" : "s"} to my calendar
+          </Button>
+          <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
+            Downloads a small calendar file that repeats daily. Your phone does the reminding, so it still
+            works when the app is closed. Nothing is sent anywhere — the file never leaves your device
+            unless you put it somewhere yourself.
+          </p>
+        </div>
+      )}
+
+      {perm !== "unsupported" && live.length > 0 && (
         <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
           {perm === "granted" ? (
-            <button onClick={() => patch({ notify: !reminder.notify })}
-              className="w-full flex items-center justify-between py-2 text-left gap-3">
-              <span>
-                <span className="text-sm font-medium block">Also nudge me in the browser</span>
-                <span className="text-[11px] block" style={{ color: C.sub }}>
-                  Only while the app is open or running in the background.
-                </span>
-              </span>
-              <span className="w-10 h-6 rounded-full relative shrink-0 transition-colors"
-                style={{ background: reminder.notify ? C.accent : C.line }}>
-                <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all"
-                  style={{ left: reminder.notify ? "1.15rem" : "0.15rem" }} />
-              </span>
-            </button>
+            <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
+              Browser reminders are on. They only fire while the app is open or running in the
+              background, which is why the calendar file above is the one that matters.
+            </p>
           ) : (
             <button onClick={enableNotifications} disabled={perm === "denied"}
               className="w-full py-2.5 rounded-xl text-sm font-medium disabled:opacity-50" style={{ background: C.faint }}>
@@ -5078,6 +5140,49 @@ function ReminderCard({ profile, onSave }) {
     </Card>
   );
 }
+
+/* Optional daily nutrition targets. Blank means "no target", which is the
+   default and stays the default — this app does not decide that someone ought
+   to have a calorie goal, and an unset target shows no progress bar rather
+   than a zero one. */
+function GoalsCard({ goals, onSave }) {
+  const [draft, setDraft] = useState(() => ({ ...(goals || {}) }));
+  const set = (k, raw) => {
+    const next = { ...draft };
+    if (raw === "") delete next[k];
+    else {
+      const n = Number(raw);
+      if (isFinite(n) && n >= 0) next[k] = n;
+    }
+    setDraft(next);
+    onSave(sanitizeGoals(next));
+  };
+  return (
+    <Card className="mt-3 fhj-cat-food">
+      <div className="fhj-eyebrow mb-1">Daily nutrition targets</div>
+      <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+        Optional. Set only the ones you care about — leave the rest blank and the food diary just
+        shows what you ate, with no target attached.
+      </p>
+      {NUTRIENTS.map((n) => (
+        <label key={n.k} className="flex items-center gap-2.5 py-1.5">
+          <span className="text-xs flex-1 min-w-0" style={{ color: C.sub }}>{n.label}</span>
+          <input type="number" inputMode="numeric" className="fhj-input" placeholder="none"
+            style={{ width: "6rem", minHeight: 38, padding: "0.375rem 0.5rem", textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+            aria-label={`daily ${n.label} target in ${n.unit}`}
+            value={draft[n.k] == null ? "" : String(draft[n.k])}
+            onChange={(e) => set(n.k, e.target.value)} />
+          <span className="text-[11px] w-8 shrink-0" style={{ color: C.muted }}>{n.unit}</span>
+        </label>
+      ))}
+      <p className="text-[10.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+        These are your numbers, not advice. Nothing here is checked against a guideline, and going
+        over or under a target is never flagged as good or bad.
+      </p>
+    </Card>
+  );
+}
+
 
 /* Settings card: storage meter, free-up-space, full backup, restore. */
 function DataDurabilityCard({ db, setDb }) {
@@ -5457,8 +5562,11 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
   const setReportPrefs = (reportPrefs) => setDb((prev) => ({
     ...prev, profile: { ...prev.profile, reportPrefs, updatedAt: new Date().toISOString() },
   }));
-  const setReminder = (reminder) => setDb((prev) => ({
-    ...prev, profile: { ...prev.profile, reminder, updatedAt: new Date().toISOString() },
+  const setReminders = (reminders) => setDb((prev) => ({
+    ...prev, profile: { ...prev.profile, reminders, updatedAt: new Date().toISOString() },
+  }));
+  const setGoals = (goals) => setDb((prev) => ({
+    ...prev, profile: { ...prev.profile, goals, updatedAt: new Date().toISOString() },
   }));
   return (
     <div className="px-4 pb-10 pt-3 fhj-stagger">
@@ -5470,7 +5578,8 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
       </Card>
 
       <AppearanceCard />
-      <ReminderCard profile={db.profile} onSave={setReminder} />
+      <ReminderCard profile={db.profile} onSave={setReminders} />
+      <GoalsCard goals={db.profile.goals} onSave={setGoals} />
 
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-1">Taps & sounds</div>
@@ -5838,6 +5947,47 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
   }));
   const [photoOpen, setPhotoOpen] = useState(null); // field key of expanded photo settings
 
+  /* The question list used to be one flat run of every question from every
+     enabled pack — routinely sixty rows, with the thing you came to change
+     somewhere in the middle. It is grouped by pack now, collapsed by default,
+     with a filter across the top.
+
+     Sections are keyed by pack label rather than by `sec`, because that is the
+     grouping the user themselves chose when they turned packs on. Reordering
+     still operates on the whole ordered list, so moving a question up out of
+     its section works exactly as before. */
+  const [query, setQuery] = useState("");
+  const [openSections, setOpenSections] = useState(() => new Set());
+
+  const q = query.trim().toLowerCase();
+  const matches = (f) => !q || f.label.toLowerCase().includes(q) || (f.moduleLabel || "").toLowerCase().includes(q);
+
+  const sections = useMemo(() => {
+    const map = new Map();
+    displayFields.forEach((f, i) => {
+      const key = f.moduleLabel || "Other";
+      if (!map.has(key)) map.set(key, { label: key, color: f.moduleColor, fields: [] });
+      // The index into the *whole* ordered list, so the arrows keep moving a
+      // question through the real order rather than within its section.
+      map.get(key).fields.push({ field: f, index: i });
+    });
+    return Array.from(map.values());
+  }, [displayFields]);
+
+  const visibleSections = useMemo(
+    () => sections
+      .map((s) => ({ ...s, fields: s.fields.filter((r) => matches(r.field)) }))
+      .filter((s) => s.fields.length > 0),
+    [sections, q]
+  );
+
+  const toggleSection = (label) => setOpenSections((prev) => {
+    const next = new Set(prev);
+    if (next.has(label)) next.delete(label); else next.add(label);
+    return next;
+  });
+  const allOpen = visibleSections.length > 0 && visibleSections.every((s) => openSections.has(s.label));
+
   return (
     <div className="px-4 pb-10 pt-3">
       <label className="fhj-eyebrow block" htmlFor="fhj-setup-name">Your name (optional)</label>
@@ -5883,7 +6033,46 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
         {displayFields.length === 0 && (
           <div className="text-sm py-3" style={{ color: C.sub }}>Turn on a question pack above, or add your own question below.</div>
         )}
-        {displayFields.map((f, i) => {
+        {displayFields.length > 0 && (
+          <div className="flex items-center gap-2 mb-2.5">
+            <input className="fhj-input" type="search" placeholder="Find a question"
+              value={query} onChange={(e) => setQuery(e.target.value)}
+              aria-label="Filter questions" style={{ minHeight: 40 }} />
+            <Button size="sm" variant="ghost" className="shrink-0 whitespace-nowrap"
+              onClick={() => setOpenSections(allOpen ? new Set() : new Set(visibleSections.map((x) => x.label)))}>
+              {allOpen ? "Collapse" : "Expand all"}
+            </Button>
+          </div>
+        )}
+
+        {displayFields.length > 0 && visibleSections.length === 0 && (
+          <div className="text-sm py-3" style={{ color: C.sub }}>
+            No question matches “{query.trim()}”.
+          </div>
+        )}
+
+        {visibleSections.map((sec) => {
+          /* A search result is useless inside a collapsed section, so a live
+             query forces every matching section open. */
+          const open = !!q || openSections.has(sec.label);
+          const total = sec.fields.length;
+          const enabled = sec.fields.filter((r) => !disabledFields.has(r.field.k)).length;
+          return (
+            <div key={sec.label} className="mb-2">
+              <button type="button" onClick={() => toggleSection(sec.label)} aria-expanded={open}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left"
+                style={{ background: C.faint, border: `1.5px solid ${open ? C.lineStrong : "transparent"}` }}>
+                <span className="w-1 h-5 rounded-full shrink-0" style={{ background: sec.color || C.accent }} />
+                <span className="flex-1 min-w-0">
+                  <span className="text-sm font-bold block truncate" style={{ color: C.ink }}>{sec.label}</span>
+                  <span className="text-[10.5px] block" style={{ color: C.subtle }}>
+                    {enabled} of {total} on
+                  </span>
+                </span>
+                <Icon name={open ? "up" : "down"} size={16} color={C.sub} />
+              </button>
+
+              {open && <div className="pt-2">{sec.fields.map(({ field: f, index: i }) => {
           const on = !disabledFields.has(f.k);
           return (
             <div key={f.k} className="rounded-xl mb-2 overflow-hidden"
@@ -5915,7 +6104,9 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
                   </span>
                   <span className="min-w-0">
                     <span className="text-sm block truncate">{f.label}</span>
-                    <span className="text-[10.5px] block" style={{ color: C.subtle }}>{f.moduleLabel}</span>
+                    {f.sec && f.sec !== f.moduleLabel && (
+                      <span className="text-[10.5px] block truncate" style={{ color: C.subtle }}>{f.sec}</span>
+                    )}
                   </span>
                 </button>
                 {f.custom && (
@@ -6002,6 +6193,9 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
                   </label>
                 </div>
               )}
+            </div>
+          );
+              })}</div>}
             </div>
           );
         })}
@@ -7915,8 +8109,8 @@ function FoodEstimatePanel({ result, onUse, onDiscard, onRerun, busy }) {
 
 /* ---------- the food sheet ---------- */
 
-function FoodLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) {
-  const [log, setLog] = useState(() => initial || newFoodLog({ date }));
+function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete, onClose }) {
+  const [log, setLog] = useState(() => initial || newFoodLog({ date, meal: defaultMeal }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [confirm, setConfirm] = useState(null); // pending send, awaiting consent
@@ -8062,21 +8256,36 @@ function FoodLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) {
           <div className="text-xs mt-2 p-2.5 rounded-lg" style={{ background: C.dangerBg, color: C.dangerInk }}>{err}</div>
         )}
 
-        {/* nutrition — always editable by hand, with or without AI */}
-        <details className="mt-3" open={!!log.nutrition || !!log.ai}>
-          <summary className="fhj-eyebrow cursor-pointer py-1.5">Nutrition</summary>
-          <div className="pt-1">
-            {resolved.map((n) => (
-              <NutrientRow key={n.k} nutrient={n.k} value={n.value} source={n.source}
-                onChange={(v) => setNutrient(n.k, v)} />
-            ))}
-            {hasAiValues(log) && (
-              <p className="text-[10px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
-                Values in lavender are AI estimates. Type over any of them to make it yours.
-              </p>
-            )}
-          </div>
-        </details>
+        {/* Nutrition — always editable by hand, with or without AI.
+
+            The four headline figures are never hidden. Typing calories is the
+            single most common thing anyone does in a food tracker, and putting
+            it behind a disclosure is exactly the friction this feature exists
+            to remove. The other three sit behind "More nutrients" because
+            almost nobody fills them in by hand. */}
+        <div className="mt-3">
+          <span className="fhj-eyebrow block mb-1">Nutrition</span>
+          {resolved.filter((n) => nutrientDef(n.k).primary).map((n) => (
+            <NutrientRow key={n.k} nutrient={n.k} value={n.value} source={n.source}
+              onChange={(v) => setNutrient(n.k, v)} />
+          ))}
+          <details className="mt-1">
+            <summary className="text-[11px] font-semibold cursor-pointer py-1.5" style={{ color: C.accentText }}>
+              More nutrients
+            </summary>
+            <div className="pt-1">
+              {resolved.filter((n) => !nutrientDef(n.k).primary).map((n) => (
+                <NutrientRow key={n.k} nutrient={n.k} value={n.value} source={n.source}
+                  onChange={(v) => setNutrient(n.k, v)} />
+              ))}
+            </div>
+          </details>
+          {hasAiValues(log) && (
+            <p className="text-[10px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+              Values in lavender are AI estimates. Type over any of them to make it yours.
+            </p>
+          )}
+        </div>
 
         <label className="block mt-3">
           <span className="fhj-eyebrow block mb-1">Notes</span>
@@ -8356,6 +8565,451 @@ function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) 
   );
 }
 
+/* =====================================================================
+   The food diary
+   =====================================================================
+
+   The thing that makes a calorie tracker usable is not the form — it is never
+   having to fill the form in twice. MyFitnessPal solves that with two million
+   foods on a server. This app has no server and no account, so it solves the
+   half that actually does the work: people eat the same thirty or forty things
+   on repeat, so the library builds itself out of their own logs and the second
+   time you eat something is one tap. */
+
+/** A number stepper for servings. Half steps below 3, whole above — nobody
+    eats 4.5 bowls, and everybody eats half a sandwich. */
+function ServingStepper({ value, onChange, serving }) {
+  const step = (dir) => {
+    const s = value < 3 || (dir < 0 && value <= 3) ? 0.5 : 1;
+    const next = Math.round((value + dir * s) * 100) / 100;
+    onChange(Math.max(0.5, Math.min(99, next)));
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => step(-1)} aria-label="fewer servings"
+        className="fhj-icon-btn" style={{ width: "2.25rem", height: "2.25rem" }} disabled={value <= 0.5}>
+        <Icon name="minus" size={16} color={C.ink} />
+      </button>
+      <div className="text-center" style={{ minWidth: "5.5rem" }}>
+        <div className="text-base font-bold tabular-nums" style={{ color: C.ink }}>
+          {Math.round(value * 100) / 100}
+        </div>
+        <div className="text-[10px] truncate" style={{ color: C.subtle }}>× {serving}</div>
+      </div>
+      <button type="button" onClick={() => step(1)} aria-label="more servings"
+        className="fhj-icon-btn" style={{ width: "2.25rem", height: "2.25rem" }}>
+        <Icon name="plus" size={16} color={C.ink} />
+      </button>
+    </div>
+  );
+}
+
+/** One row in the picker: the food, what a serving of it costs, and a tap
+    target that logs it outright. The name opens the serving stepper for
+    anything that isn't exactly one serving. */
+function FoodRow({ item, onQuickAdd, onOpen, onToggleFavorite }) {
+  const cal = item.nutrition?.calories;
+  return (
+    <div className="flex items-center gap-1 fhj-row" style={{ borderTop: `1px solid ${C.line}` }}>
+      <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-left px-3 py-2.5">
+        <div className="text-sm font-medium truncate" style={{ color: C.ink }}>
+          {item.name}
+          {item.brand && <span className="font-normal" style={{ color: C.subtle }}> · {item.brand}</span>}
+        </div>
+        <div className="text-[11px] mt-0.5 flex items-center gap-1.5 flex-wrap" style={{ color: C.subtle }}>
+          <span>{item.serving}</span>
+          {cal != null && <><span aria-hidden="true">·</span><span>{formatNutrient("calories", cal)} kcal</span></>}
+          {item.estimated && <span className="fhj-ai-badge" style={{ fontSize: "0.5rem" }}>Est.</span>}
+        </div>
+      </button>
+      <button type="button" onClick={onToggleFavorite}
+        aria-label={item.favorite ? `remove ${item.name} from favourites` : `add ${item.name} to favourites`}
+        aria-pressed={!!item.favorite}
+        className="w-9 h-9 flex items-center justify-center shrink-0 rounded-full">
+        <Icon name={item.favorite ? "starFilled" : "star"} size={16}
+          color={item.favorite ? C.warn : C.muted} />
+      </button>
+      <button type="button" onClick={onQuickAdd} aria-label={`log one ${item.serving} of ${item.name}`}
+        className="fhj-icon-btn mr-2 shrink-0" style={{ width: "2.25rem", height: "2.25rem" }}>
+        <Icon name="plus" size={16} color={C.accentText} />
+      </button>
+    </div>
+  );
+}
+
+/** Search + browse the library, and log from it in one tap.
+
+    Search deliberately beats the tab: once someone is typing they are after
+    one specific thing, and whichever tab they happen to be on is noise. */
+function FoodPicker({ library, meal, date, onLog, onOpenFull, onUpdateLibrary, onClose }) {
+  const [tab, setTab] = useState("recent");
+  const [query, setQuery] = useState("");
+  const [detail, setDetail] = useState(null); // { item, servings }
+  const [quickCal, setQuickCal] = useState("");
+  const searchRef = useRef(null);
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  const rows = useMemo(() => browseFoods(library, tab, query), [library, tab, query]);
+  const TABS = [["recent", "Recent"], ["frequent", "Frequent"], ["favorite", "Favourites"], ["all", "All"]];
+
+  const emptyCopy = query.trim()
+    ? `Nothing saved matches “${query.trim()}”.`
+    : tab === "favorite"
+      ? "Star a food and it lands here."
+      : library.length === 0
+        ? "Your saved foods build up as you log. The second time you eat something, it's one tap."
+        : "Nothing here yet.";
+
+  const bodyRef = useInert(!!detail);
+
+  return (
+    <>
+      <Modal title={`Add to ${mealLabel(meal).toLowerCase()}`} onClose={onClose}>
+        <div className="fhj-cat-food" ref={bodyRef}>
+          <input ref={searchRef} className="fhj-input" type="search" placeholder="Search your foods"
+            value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search your saved foods" />
+
+          {!query.trim() && (
+            <div className="fhj-segmented mt-2.5" role="tablist">
+              {TABS.map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id}
+                  onClick={() => setTab(id)}
+                  className={"fhj-segment" + (tab === id ? " is-active" : "")}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-3 rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
+            {rows.length === 0 ? (
+              <div className="px-3 py-6 text-center text-[13px] leading-relaxed" style={{ color: C.sub }}>
+                {emptyCopy}
+              </div>
+            ) : (
+              <div style={{ maxHeight: "17rem", overflowY: "auto" }}>
+                {rows.slice(0, 60).map((item) => (
+                  <FoodRow key={item.id} item={item}
+                    onQuickAdd={() => { feedback("save"); onLog(logFromFoodItem(item, { date, meal, servings: 1 })); }}
+                    onOpen={() => setDetail({ item, servings: 1 })}
+                    onToggleFavorite={() => onUpdateLibrary(toggleFavorite(library, item.id))} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quick-add calories: the escape hatch for "I know roughly what that
+              was and I don't want to describe it". */}
+          <div className="flex items-end gap-2 mt-3">
+            <label className="flex-1">
+              <span className="fhj-eyebrow block mb-1">Quick add calories</span>
+              <input className="fhj-input" type="number" inputMode="numeric" placeholder="e.g. 250"
+                value={quickCal} onChange={(e) => setQuickCal(e.target.value)} />
+            </label>
+            <Button variant="secondary" disabled={!Number(quickCal)}
+              onClick={() => {
+                const n = Number(quickCal);
+                if (!isFinite(n) || n <= 0) return;
+                feedback("save");
+                onLog(newFoodLog({ date, meal, description: "Quick add", nutrition: { calories: n } }));
+              }}>
+              Add
+            </Button>
+          </div>
+
+          <Button variant="outline" block icon="plus" className="mt-3" onClick={onOpenFull}>
+            Something new — describe or photograph it
+          </Button>
+        </div>
+      </Modal>
+
+      {detail && (
+        <Modal title={detail.item.name} onClose={() => setDetail(null)}>
+          <div className="fhj-cat-food">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <span className="text-xs" style={{ color: C.sub }}>How much?</span>
+              <ServingStepper value={detail.servings} serving={detail.item.serving}
+                onChange={(servings) => setDetail((d) => ({ ...d, servings }))} />
+            </div>
+            <div className="rounded-xl p-3" style={{ background: C.faint }}>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                {NUTRIENTS.filter((n) => detail.item.nutrition?.[n.k] != null).map((n) => (
+                  <div key={n.k} className="flex items-baseline justify-between gap-2">
+                    <span className="text-[11px]" style={{ color: C.sub }}>{n.label}</span>
+                    <span className="text-sm font-semibold tabular-nums" style={{ color: C.ink }}>
+                      {formatNutrient(n.k, (detail.item.nutrition[n.k] || 0) * detail.servings)}
+                      <span className="text-[10px] font-normal ml-0.5" style={{ color: C.subtle }}>{n.unit}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {detail.item.estimated && (
+                <p className="text-[10px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                  These figures started as an AI estimate. They stay labelled as one until you edit them.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDetail(null)}>Cancel</Button>
+              <div className="flex-1" />
+              <Button onClick={() => {
+                feedback("save");
+                onLog(logFromFoodItem(detail.item, { date, meal, servings: detail.servings }));
+              }}>
+                Add to {mealLabel(meal).toLowerCase()}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** Progress toward one target. Deliberately unjudged: the bar fills, and that
+    is all it says. No red for over, no green for under — this app does not
+    have an opinion about someone's calorie count. */
+function GoalBar({ progress }) {
+  const def = nutrientDef(progress.k);
+  const pct = progress.ratio == null ? 0 : Math.round(progress.ratio * 100);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <span className="text-[11px]" style={{ color: C.sub }}>{def.label}</span>
+        <span className="text-[11px] tabular-nums" style={{ color: C.subtle }}>
+          <b style={{ color: C.ink }}>{formatNutrient(progress.k, progress.eaten)}</b>
+          {" / "}{formatNutrient(progress.k, progress.goal)} {def.unit}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: C.faint }}
+        role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+        aria-label={`${def.label}: ${pct}% of your target`}>
+        <div className="h-full rounded-full" style={{
+          width: `${pct}%`, background: C.sage,
+          transition: "width var(--fhj-ease) var(--fhj-out)",
+        }} />
+      </div>
+    </div>
+  );
+}
+
+/** The calories ring on the diary header. One number, big, plus what's left. */
+function CalorieRing({ eaten, goal }) {
+  const r = 42, circ = 2 * Math.PI * r;
+  const ratio = goal > 0 ? Math.max(0, Math.min(1, (eaten || 0) / goal)) : 0;
+  const remaining = goal - (eaten || 0);
+  return (
+    <div className="relative shrink-0" style={{ width: 104, height: 104 }}>
+      <svg width="104" height="104" viewBox="0 0 104 104" aria-hidden="true" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="52" cy="52" r={r} fill="none" stroke={C.faint} strokeWidth="9" />
+        <circle cx="52" cy="52" r={r} fill="none" stroke={C.sage} strokeWidth="9" strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={circ * (1 - ratio)}
+          style={{ transition: "stroke-dashoffset 600ms var(--fhj-out)" }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="font-display text-xl leading-none tabular-nums" style={{ color: C.ink }}>
+          {formatNutrient("calories", Math.abs(remaining))}
+        </div>
+        <div className="text-[9.5px] mt-1 text-center leading-tight" style={{ color: C.subtle }}>
+          {remaining >= 0 ? "kcal left" : "kcal over"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One meal's block: its items, its subtotal, and one button to add to it.
+    Grouping by meal is what makes a day of food readable — a flat list of nine
+    items is a receipt, not a diary. */
+function MealSection({ meal, logs, onAdd, onOpenLog, viewer }) {
+  const def = MEALS.find((m) => m.id === meal);
+  let kcal = null;
+  for (const l of logs) {
+    const c = resolveNutrient(l, "calories");
+    if (c.value != null) kcal = (kcal ?? 0) + c.value;
+  }
+  return (
+    <Card className="!p-0 mb-2.5" style={{ padding: 0 }}>
+      <div className="flex items-center justify-between gap-2 px-3.5 pt-3 pb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="fhj-tl-dot" style={{ width: "1.5rem", height: "1.5rem" }}>
+            <Icon name={def?.icon || "food"} size={12} color="currentColor" />
+          </span>
+          <span className="text-sm font-bold" style={{ color: C.ink }}>{def?.label || "Meal"}</span>
+        </div>
+        <span className="text-[11px] tabular-nums shrink-0" style={{ color: C.subtle }}>
+          {kcal == null ? "—" : `${formatNutrient("calories", kcal)} kcal`}
+        </span>
+      </div>
+
+      {logs.map((l) => {
+        const cal = resolveNutrient(l, "calories");
+        return (
+          <button key={l.id} type="button" onClick={() => onOpenLog(l)}
+            className="fhj-row w-full flex items-center gap-2 px-3.5 py-2 text-left"
+            style={{ borderTop: `1px solid ${C.line}` }}>
+            <span className="flex-1 min-w-0">
+              <span className="text-[13px] block truncate" style={{ color: C.ink }}>
+                {l.description?.trim() || l.ai?.identified || "Meal"}
+              </span>
+              <span className="text-[10.5px] block truncate" style={{ color: C.subtle }}>
+                {l.serving || prettyTime(l.time)}
+              </span>
+            </span>
+            {hasAiValues(l) && <span className="fhj-ai-badge shrink-0" style={{ fontSize: "0.5rem" }}>Est.</span>}
+            <span className="text-[12px] tabular-nums shrink-0" style={{ color: C.sub }}>
+              {cal.value == null ? "—" : formatNutrient("calories", cal.value)}
+            </span>
+          </button>
+        );
+      })}
+
+      {!viewer && (
+        <button type="button" onClick={onAdd}
+          className="w-full flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold"
+          style={{ borderTop: `1px solid ${C.line}`, color: C.accentText }}>
+          <Icon name="plus" size={14} color={C.accentText} /> Add food
+        </button>
+      )}
+    </Card>
+  );
+}
+
+function FoodScreen({
+  food, foods, goals, onLog, onSaveLog, onDeleteLog, onUpdateLibrary,
+  onEditGoals, aiEnabled, viewer,
+}) {
+  const [date, setDate] = useState(todayStr());
+  const [picker, setPicker] = useState(null); // meal id
+  const [sheet, setSheet] = useState(null);   // log being edited, or { meal } for new
+  const rows = foodOn(food, date);
+  const totals = dayTotals(food, date);
+  const progress = goalProgress(goals, totals);
+  const calGoal = goals?.calories;
+  const isToday = date === todayStr();
+
+  const yesterday = addDays(date, -1);
+  const yesterdayRows = foodOn(food, yesterday);
+
+  const copyYesterday = () => {
+    if (!yesterdayRows.length) return;
+    if (!window.confirm(
+      `Copy all ${yesterdayRows.length} item${yesterdayRows.length === 1 ? "" : "s"} from ${fmtNice(yesterday)} to ${fmtNice(date)}?`
+    )) return;
+    feedback("save");
+    for (const src of yesterdayRows) {
+      const { id, createdAt, updatedAt, ...rest } = src;
+      onLog(newFoodLog({ ...rest, date }));
+    }
+  };
+
+  return (
+    <div className="px-4 pb-8 pt-3 fhj-cat-food">
+      {/* date pager */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <button className="fhj-icon-btn" onClick={() => setDate(addDays(date, -1))} aria-label="previous day">
+          <Icon name="left" size={16} color={C.sub} />
+        </button>
+        <div className="text-center min-w-0">
+          <div className="text-sm font-bold truncate" style={{ color: C.ink }}>
+            {isToday ? "Today" : fmtNice(date)}
+          </div>
+          {isToday && <div className="text-[10.5px]" style={{ color: C.subtle }}>{fmtNice(date)}</div>}
+        </div>
+        <button className="fhj-icon-btn" onClick={() => setDate(addDays(date, 1))}
+          disabled={date >= todayStr()} aria-label="next day">
+          <Icon name="right" size={16} color={C.sub} />
+        </button>
+      </div>
+
+      {/* the day's totals */}
+      <Card className="mb-4">
+        <div className="flex items-center gap-4">
+          {calGoal ? (
+            <CalorieRing eaten={totals.calories} goal={calGoal} />
+          ) : (
+            <div className="shrink-0">
+              <div className="font-display text-4xl leading-none tabular-nums" style={{ color: C.ink }}>
+                {formatNutrient("calories", totals.calories)}
+              </div>
+              <div className="text-[11px] mt-1" style={{ color: C.subtle }}>kcal today</div>
+            </div>
+          )}
+          <div className="flex-1 min-w-0 flex flex-col gap-2">
+            {progress.filter((p) => p.k !== "calories").length > 0 ? (
+              progress.filter((p) => p.k !== "calories").slice(0, 3).map((p) => (
+                <GoalBar key={p.k} progress={p} />
+              ))
+            ) : (
+              <div className="flex flex-wrap gap-x-3.5 gap-y-1">
+                {NUTRIENTS.filter((n) => n.primary && n.k !== "calories" && totals[n.k] != null).map((n) => (
+                  <div key={n.k} className="flex items-baseline gap-1">
+                    <span className="text-sm font-bold tabular-nums" style={{ color: C.ink }}>
+                      {formatNutrient(n.k, totals[n.k])}
+                    </span>
+                    <span className="text-[10px]" style={{ color: C.subtle }}>{n.label.toLowerCase()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {progress.length === 0 && !viewer && (
+              <button onClick={onEditGoals} className="text-[11px] font-semibold self-start"
+                style={{ color: C.accentText }}>Set daily targets</button>
+            )}
+          </div>
+        </div>
+        {totals.partlyEstimated && (
+          <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap" style={{ borderTop: `1px solid ${C.line}` }}>
+            <span className="fhj-ai-badge">Partly estimated</span>
+            <span className="text-[10.5px]" style={{ color: C.subtle }}>
+              Some of today's figures came from AI, not a label.
+            </span>
+          </div>
+        )}
+      </Card>
+
+      {MEALS.map((m) => (
+        <MealSection key={m.id} meal={m.id} viewer={viewer}
+          logs={rows.filter((r) => r.meal === m.id)}
+          onAdd={() => setPicker(m.id)}
+          onOpenLog={(l) => !viewer && setSheet(l)} />
+      ))}
+
+      {!viewer && yesterdayRows.length > 0 && rows.length === 0 && (
+        <Button variant="secondary" block icon="refresh" className="mt-3" onClick={copyYesterday}>
+          Copy {yesterdayRows.length} item{yesterdayRows.length === 1 ? "" : "s"} from yesterday
+        </Button>
+      )}
+
+      {rows.length === 0 && (
+        <p className="text-[11.5px] leading-relaxed mt-4 text-center" style={{ color: C.subtle }}>
+          Nothing logged for this day yet. Foods you save build up as you go — after a week or so,
+          most meals are one tap.
+        </p>
+      )}
+
+      {picker && (
+        <FoodPicker
+          library={foods} meal={picker} date={date}
+          onLog={(log) => { onLog(log); setPicker(null); }}
+          onOpenFull={() => { setSheet({ meal: picker }); setPicker(null); }}
+          onUpdateLibrary={onUpdateLibrary}
+          onClose={() => setPicker(null)} />
+      )}
+      {sheet && (
+        <FoodLogSheet
+          initial={sheet.id ? sheet : null}
+          date={date}
+          defaultMeal={sheet.meal}
+          aiEnabled={aiEnabled}
+          onSave={(log) => { onSaveLog(log); setSheet(null); }}
+          onDelete={sheet.id ? (log) => { onDeleteLog(log); setSheet(null); } : null}
+          onClose={() => setSheet(null)} />
+      )}
+    </div>
+  );
+}
+
 /* ---------- Quick Add ----------
    Four tactile tiles, one per thing worth logging. This is the most-pressed
    control in the app and the reason the chunky-button treatment exists. */
@@ -8529,7 +9183,7 @@ function TodayNutritionStrip({ food, date }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun, food, bowel, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
+function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun, food, bowel, foods, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
   return (
     <div className="px-4 pb-10">
       <div className="flex items-start justify-between pt-6 pb-2">
@@ -8562,7 +9216,8 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
       <TrendsScreen profile={profile} entries={entries} openLog={openLog} goExport={goExport} goGallery={goGallery}
         goReport={goReport} reports={reports} openSavedReport={openSavedReport} deleteSavedReport={deleteSavedReport}
         goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} aiAutoRun={aiAutoRun}
-        food={food} bowel={bowel} onSaveFood={onSaveFood} onDeleteFood={onDeleteFood}
+        food={food} bowel={bowel} foods={foods} onUpdateLibrary={onUpdateLibrary}
+        onSaveFood={onSaveFood} onDeleteFood={onDeleteFood}
         onSaveBowel={onSaveBowel} onDeleteBowel={onDeleteBowel} />
     </div>
   );
@@ -9073,6 +9728,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "home" },
   { id: "log", label: "Log", icon: "log" },
+  { id: "food", label: "Food", icon: "food" },
   { id: "calendar", label: "Calendar", icon: "calendar" },
   { id: "export", label: "Export", icon: "download" },
 ];
@@ -9094,8 +9750,33 @@ function migrateDb(data) {
      sanitised on every load rather than trusted on any of them. */
   d.food = sanitizeFoodLogs(d.food);
   d.bowel = sanitizeBowelLogs(d.bowel);
+  d.foods = sanitizeFoodItems(d.foods);
+  if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
+  /* Reminders moved from one time to a list. readReminders migrates a
+     pre-list install on the way through, so nobody loses the time they set. */
+  d.profile.reminders = readReminders(d.profile);
   d.schemaVersion = SCHEMA_VERSION;
   return d;
+}
+
+/* Whether a reminder's job is already done for today. Nudging someone to log
+   dinner when dinner is already in the diary is the fastest way to get
+   notifications switched off. */
+function alreadyDone(db, reminder) {
+  const today = todayStr();
+  if (reminder.kind === "food") {
+    // Within a couple of hours either side of the reminder, not "any food at
+    // all today" — breakfast being logged says nothing about dinner.
+    const mins = Number(reminder.time.slice(0, 2)) * 60 + Number(reminder.time.slice(3, 5));
+    return (db.food || []).some((f) => {
+      if (f.date !== today) return false;
+      const m = Number(f.time.slice(0, 2)) * 60 + Number(f.time.slice(3, 5));
+      return Math.abs(m - mins) <= 120;
+    });
+  }
+  if (reminder.kind === "bowel") return (db.bowel || []).some((b) => b.date === today);
+  const entry = entryOn(entriesFor(db), today);
+  return !!entry?.quickLogCompleted || !!entry?.detailedLogCompleted;
 }
 
 /* Render-error safety net: the user's data lives in storage, not in React
@@ -9266,29 +9947,28 @@ export default function App({ viewer = false }) {
     clearDeepLink();
   }, [viewer, db]);
 
-  // Daily reminder, browser layer. Only fires while the page is alive, which is
-  // exactly what the settings copy promises — the calendar file is what covers
-  // a closed browser. Skipped entirely once today is already logged.
+  /* Reminders, browser layer. Only fires while the page is alive, which is
+     exactly what the settings copy promises — the calendar file is what covers
+     a closed browser.
+
+     One timer, always armed for whichever reminder is next rather than one
+     timer per reminder: with five meal reminders that would be five live
+     timeouts re-created on every database write. A reminder whose job is
+     already done for today stays silent. */
   useEffect(() => {
     if (viewer || !db || !db.onboarded) return;
-    const reminder = readReminder(db.profile);
-    if (!reminder.notify || notificationPermission() !== "granted") return;
+    if (notificationPermission() !== "granted") return;
+    const reminders = readReminders(db.profile);
+    if (!reminders.some((r) => r.enabled)) return;
 
     let timer = null;
     const arm = () => {
-      const wait = msUntilNext(reminder.time);
-      if (wait == null) return;
+      const due = nextReminderDue(reminders);
+      if (!due) return;
       timer = setTimeout(() => {
-        const today = entryOn(entriesFor(db), todayStr());
-        const logged = !!today?.quickLogCompleted || !!today?.detailedLogCompleted;
-        if (!logged) {
-          const streak = calcStreak(entriesFor(db));
-          showReminderNotification(
-            streak > 1 ? `Time for today's check-in — ${streak} days running.` : "Time for today's check-in.",
-          );
-        }
-        arm(); // roll forward to tomorrow
-      }, wait);
+        if (!alreadyDone(db, due.reminder)) showReminderNotification(reminderMessage(due.reminder));
+        arm(); // roll forward to the next one
+      }, due.ms);
     };
     arm();
     return () => { if (timer) clearTimeout(timer); };
@@ -9516,17 +10196,24 @@ export default function App({ viewer = false }) {
     const rows = prev[slice] || [];
     const i = rows.findIndex((r) => r.id === log.id);
     const next = i >= 0 ? rows.map((r) => (r.id === log.id ? log : r)) : [...rows, log];
-    return { ...prev, [slice]: next };
+    /* Saving a meal teaches the library, which is the entire reason the second
+       time you eat something is one tap. Deletes deliberately don't un-teach
+       it: a meal you logged and removed is still a food you might eat again. */
+    const foods = slice === "food" ? rememberFood(prev.foods || [], log) : prev.foods;
+    return { ...prev, [slice]: next, foods };
   });
   const removeLog = (slice) => (log) => {
     setDb((prev) => ({ ...prev, [slice]: (prev[slice] || []).filter((r) => r.id !== log.id) }));
     if (log.photoId) deletePhotos([log.photoId]).catch(() => {});
   };
 
+  const setLibrary = (foods) => setDb((prev) => ({ ...prev, foods }));
+
   const dashProps = {
     profile, entries, openLog: goToLog,
     viewer,
-    food: db.food || [], bowel: db.bowel || [],
+    food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
+    onUpdateLibrary: setLibrary,
     onSaveFood: upsertLog("food"), onDeleteFood: removeLog("food"),
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     goExport: () => setScreen("export"), goSettings: () => setScreen("settings"),
@@ -9553,6 +10240,15 @@ export default function App({ viewer = false }) {
       <LogScreen profile={profile} entries={entries} date={logDate} setDate={setLogDate}
         mode={logMode} setMode={setLogMode} onPatch={upsertEntry}
         onFinishQuick={goHome} onSetBaseline={setPhotoBaseline} />
+    );
+  } else if (screen === "food") {
+    content = (
+      <FoodScreen
+        food={db.food || []} foods={db.foods || []} goals={db.profile.goals}
+        aiEnabled={!!db.ai?.enabled && !viewer} viewer={viewer}
+        onLog={upsertLog("food")} onSaveLog={upsertLog("food")} onDeleteLog={removeLog("food")}
+        onUpdateLibrary={setLibrary}
+        onEditGoals={() => setScreen("settings")} />
     );
   } else if (screen === "calendar") {
     content = <CalendarScreen profile={profile} entries={entries} openLog={goToLog} />;

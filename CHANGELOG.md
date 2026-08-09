@@ -1,5 +1,85 @@
 # Changelog
 
+## 1.5.0
+
+### Food tracking that keeps up with a real day
+
+The first version could log a meal. It could not log *lunch* in five seconds,
+which is the only thing that decides whether anyone keeps using a food tracker.
+
+MyFitnessPal solves that with two million foods on a server. This app has no
+server and no account, so it solves the half that actually does the work:
+**people eat the same thirty or forty things on repeat**, so the library builds
+itself out of your own logs and the second time you eat something is one tap.
+
+- **A personal food library**, grown by using the app. Saving a meal saves the
+  food, per single serving — logging "3 × 1 slice" doesn't teach it that a slice
+  is three slices.
+- **A picker built for speed**: search, plus Recent / Frequent / Favourites
+  tabs, a one-tap `+` on every row, and a serving stepper for anything that
+  isn't exactly one portion. Search deliberately overrides the tab — once
+  you're typing, you want one specific thing.
+- **Quick-add calories** for "I know roughly what that was and I don't want to
+  describe it".
+- **A Food tab**: date pager, calorie ring, macro bars, and the day grouped
+  into Breakfast / Lunch / Dinner / Snack / Drink with per-meal subtotals. A
+  flat list of nine items is a receipt; grouped, it's a diary.
+- **Copy yesterday**, for the days that repeat.
+- **Optional daily targets** — calories and any macros you care about, left
+  blank by default. Progress bars fill and that is all they do: no red for over,
+  no green for under. The app doesn't have an opinion about your calorie count.
+- Corrections propagate: fixing a food's figures once fixes them everywhere
+  after.
+
+**Provenance survives re-use.** A saved food whose numbers began as an
+unconfirmed AI estimate is marked as such, and logging it writes into the log's
+`ai` block rather than its `nutrition` — otherwise saving a food would be a
+laundering step that turns a guess into a measurement one tap later. Re-logged
+estimates still read "about 520 kcal" and still carry the badge.
+
+### The question editor is navigable again
+
+Every question from every enabled pack used to render as one flat run —
+routinely sixty rows, with the one you came to change somewhere in the middle.
+
+- **Collapsible sections, one per pack**, each showing how many of its questions
+  are on. Everything starts closed, so the screen opens short.
+- **A filter across the top.** A live query forces matching sections open — a
+  search hit inside a shut drawer helps nobody.
+- Expand/collapse all, and the reorder arrows still operate on the whole
+  ordered list, so moving a question up out of its section works as before.
+
+### More than one reminder
+
+One daily time could never express what this app needs nudging for. A check-in
+belongs at the end of the day; meals belong at meal times, because the point of
+food tracking is logging it *while you eat*.
+
+- **A list of reminders**, each with its own name, time and on/off switch.
+  Presets for breakfast, lunch, dinner and an evening check-in.
+- **One calendar file covering all of them** — still floating-time, so 8am
+  means 8am wherever you wake up, and still the delivery route that works with
+  the browser closed.
+- Notifications know what they are nudging toward, and stay quiet when the job
+  is already done — a dinner reminder checks for food logged around that time
+  rather than "any food at all today", since breakfast says nothing about
+  dinner.
+- One timer armed for whichever reminder is next, rather than one timer each.
+- Existing installs keep the single time they set; it becomes the first entry
+  in the list.
+
+### Fixed
+
+- **Toggle switches rendered as a bare knob with no track** anywhere they
+  weren't inside a flex container — `.fhj-switch` never set `display`, so as an
+  inline element its width and height collapsed.
+- The nutrition fields sat behind a collapsed disclosure. Typing calories is
+  the single most common action in a food tracker; the four headline figures
+  are always visible now, with the rest behind "More nutrients".
+
+83 new tests (food library, goals, multi-reminder scheduling, the sectioned
+editor, and the one-tap logging loop end to end); **407 total across 18 suites**.
+
 ## 1.4.0
 
 ### A new visual system

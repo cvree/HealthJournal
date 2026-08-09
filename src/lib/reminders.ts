@@ -68,6 +68,108 @@ export function msUntilNext(time: string, now: Date = new Date()): number | null
   return Math.max(0, next.getTime() - now.getTime());
 }
 
+/* ---------- more than one reminder ----------
+
+   One daily time can't express what this app actually needs nudging for. A
+   check-in belongs at the end of the day; meals belong at meal times; the
+   whole point of food tracking is logging it *while you eat*, not
+   reconstructing it at 9pm. So reminders are a list.
+
+   The old single `reminder` field is still read, and migrated on first load,
+   so nobody loses the time they set. */
+
+export type ReminderKind = "checkin" | "food" | "bowel" | "custom";
+
+export interface NamedReminder {
+  id: string;
+  label: string;
+  time: TimeOfDay;
+  enabled: boolean;
+  kind?: ReminderKind;
+}
+
+/** Offered on the "add a reminder" menu. Times are the common ones, not
+    prescriptions — every one is editable the moment it is added. */
+export const REMINDER_PRESETS: { label: string; time: TimeOfDay; kind: ReminderKind }[] = [
+  { label: "Breakfast", time: "08:00", kind: "food" },
+  { label: "Lunch", time: "12:30", kind: "food" },
+  { label: "Dinner", time: "18:30", kind: "food" },
+  { label: "Evening check-in", time: "20:00", kind: "checkin" },
+];
+
+let seq = 0;
+export function newReminder(partial: Partial<NamedReminder> = {}): NamedReminder {
+  seq += 1;
+  return {
+    id: `r_${Date.now().toString(36)}_${seq}`,
+    label: partial.label?.trim() || "Reminder",
+    time: isValidTime(partial.time) ? partial.time : DEFAULT_REMINDER_TIME,
+    enabled: partial.enabled !== false,
+    kind: partial.kind || "custom",
+  };
+}
+
+/** Read the reminder list off a profile, migrating a pre-list install.
+
+    A profile that only ever had the single reminder keeps its time and its
+    on/off state; one that has neither gets an empty list rather than a
+    default, because a reminder nobody asked for is a notification nobody
+    asked for. */
+export function readReminders(profile: any): NamedReminder[] {
+  const raw = profile?.reminders;
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((r: any) => r && typeof r === "object" && isValidTime(r.time))
+      .slice(0, 12)
+      .map((r: any) => ({
+        id: String(r.id || "").slice(0, 64) || newReminder().id,
+        label: String(r.label || "Reminder").slice(0, 60).trim() || "Reminder",
+        time: r.time,
+        enabled: r.enabled !== false,
+        kind: (["checkin", "food", "bowel", "custom"].includes(r.kind) ? r.kind : "custom") as ReminderKind,
+      }));
+  }
+  const legacy = profile?.reminder;
+  if (legacy && isValidTime(legacy.time)) {
+    return [newReminder({
+      label: "Daily check-in",
+      time: legacy.time,
+      enabled: !!legacy.enabled || !!legacy.notify,
+      kind: "checkin",
+    })];
+  }
+  return [];
+}
+
+/** Sort by clock time so the list reads like a day. */
+export const sortReminders = (rs: NamedReminder[]): NamedReminder[] =>
+  rs.slice().sort((a, b) => (minutesOfDay(a.time) ?? 0) - (minutesOfDay(b.time) ?? 0));
+
+/** The next enabled reminder due, and how long until it fires. Null when the
+    list is empty or everything in it is switched off. */
+export function nextReminderDue(
+  rs: NamedReminder[], now: Date = new Date()
+): { reminder: NamedReminder; at: Date; ms: number } | null {
+  let best: { reminder: NamedReminder; at: Date; ms: number } | null = null;
+  for (const r of rs) {
+    if (!r.enabled || !isValidTime(r.time)) continue;
+    const at = nextOccurrence(r.time, now);
+    if (!at) continue;
+    const ms = Math.max(0, at.getTime() - now.getTime());
+    if (!best || ms < best.ms) best = { reminder: r, at, ms };
+  }
+  return best;
+}
+
+/** What the notification should say. Kind-specific, because "time to log"
+    means something different for a meal than for an evening check-in. */
+export function reminderMessage(r: NamedReminder): string {
+  if (r.kind === "food") return `${r.label} — log what you ate while it's in front of you.`;
+  if (r.kind === "bowel") return `${r.label} — anything to log?`;
+  if (r.kind === "checkin") return `${r.label} — today's check-in takes about a minute.`;
+  return `${r.label} — time to log.`;
+}
+
 /* ---------- calendar file (the reminder that survives a closed browser) ---------- */
 
 function pad(n: number): string {
@@ -131,30 +233,70 @@ export function buildReminderICS(opts: ReminderICSOptions): string {
     description ||
     "Time for today's check-in. Everything you log stays on your device.";
 
-  const lines = [
+  return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Health Journal//Daily check-in//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
+    ...icsEvent({ start, end, uid: id, title, body, now }),
+    "END:VCALENDAR",
+  ].join("\r\n") + "\r\n";
+}
+
+/** One VEVENT's worth of lines, shared by the single- and multi-reminder
+    builders so a change to the alarm or recurrence can only be made once. */
+function icsEvent(o: { start: Date; end: Date; uid: string; title: string; body: string; now: Date }): string[] {
+  return [
     "BEGIN:VEVENT",
-    `UID:${id}`,
-    `DTSTAMP:${utcStamp(now)}`,
-    `DTSTART:${floatingStamp(start)}`,
-    `DTEND:${floatingStamp(end)}`,
+    `UID:${o.uid}`,
+    `DTSTAMP:${utcStamp(o.now)}`,
+    `DTSTART:${floatingStamp(o.start)}`,
+    `DTEND:${floatingStamp(o.end)}`,
     "RRULE:FREQ=DAILY",
-    fold(`SUMMARY:${escapeText(title)}`),
-    fold(`DESCRIPTION:${escapeText(body)}`),
+    fold(`SUMMARY:${escapeText(o.title)}`),
+    fold(`DESCRIPTION:${escapeText(o.body)}`),
     "TRANSP:TRANSPARENT",
     "BEGIN:VALARM",
     "ACTION:DISPLAY",
-    fold(`DESCRIPTION:${escapeText(title)}`),
+    fold(`DESCRIPTION:${escapeText(o.title)}`),
     "TRIGGER:PT0M",
     "END:VALARM",
     "END:VEVENT",
-    "END:VCALENDAR",
   ];
-  return lines.join("\r\n") + "\r\n";
+}
+
+/** Every enabled reminder as one calendar file — one import, one place to
+    delete them from later. Disabled ones are left out rather than exported as
+    cancelled events: the calendar is a snapshot of what is on right now. */
+export function buildRemindersICS(reminders: NamedReminder[], now: Date = new Date()): string {
+  const live = sortReminders(reminders).filter((r) => r.enabled && isValidTime(r.time));
+  if (!live.length) throw new Error("No enabled reminders to export.");
+
+  const events: string[] = [];
+  live.forEach((r, i) => {
+    const start = nextOccurrence(r.time, now)!;
+    const end = new Date(start.getTime() + 5 * 60 * 1000);
+    events.push(...icsEvent({
+      start, end,
+      // Index-suffixed so two reminders at the same time can't collide on a
+      // UID and silently overwrite each other on import.
+      uid: `health-journal-${r.id}-${i}@localhost`,
+      title: `Health Journal — ${r.label}`,
+      body: reminderMessage(r) + " Everything you log stays on your device.",
+      now,
+    }));
+  });
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Health Journal//Reminders//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...events,
+    "END:VCALENDAR",
+  ].join("\r\n") + "\r\n";
 }
 
 /* ---------- browser notification layer ---------- */

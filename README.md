@@ -23,21 +23,37 @@ and everything else keeps working whether you turn it on or not.
 
 ## What it does
 
+**Reminders, plural.** A check-in belongs at the end of the day; meals belong at meal times,
+because the point of tracking food is logging it while you eat. Add as many named times as suit
+your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
+
 **Build your own survey.** Start from a question pack — Eczema/Skin, Carnivore/Diet, POTS,
 IBS, Migraine, Allergy/MCAS, Fatigue/Long COVID, Autoimmune, Thyroid, Joint Pain, General
 Wellness, Wearable — mix several, switch individual questions off, add your own, and reorder
 them. Each question has independent visibility across five surfaces: quick log, detailed log,
-dashboard, charts, export.
+dashboard, charts, export. The editor groups them into collapsible sections per pack, with a
+filter across the top — sixty questions in one flat list was unusable.
 
 **Log in about a minute.** Quick Log batches four questions per screen with big tap targets,
 smart defaults pre-filled from your own 7-day median, and auto-advance. Detailed Log is the
 long form when you want it. Any past day stays editable from the calendar.
 
-**Food.** Log a meal or drink with the category, time, description, serving, weight or quantity,
-notes, and a photo. Calories and macros can be entered by hand, or estimated by AI if you've set
-that up — from a photo, from your description, or from both. Every estimated value is labelled
-**AI Estimated**, is editable, and is never stored in the same field as a number you entered.
-Estimates read "about 520 kcal", because that is what they are.
+**Food.** A proper food diary: a date pager, a calorie ring, macro bars, and the day grouped
+into Breakfast / Lunch / Dinner / Snack / Drink with per-meal subtotals. Log a meal with the
+category, time, description, serving, weight or quantity, notes, and a photo. Calories and macros
+can be typed, or estimated by AI if you've set that up — from a photo, from your description, or
+from both. Every estimated value is labelled **AI Estimated**, is editable, and is never stored in
+the same field as a number you entered. Estimates read "about 520 kcal", because that is what
+they are.
+
+**And it gets faster the more you use it.** MyFitnessPal is quick because you never type a food
+twice — that's two million foods on a server, which an app with no server and no account cannot
+have. So this does the half that actually does the work: people eat the same thirty or forty
+things on repeat, so **your library builds itself out of your own logs**. Search it, or pick from
+Recent / Frequent / Favourites, and re-logging is one tap — with a serving stepper for anything
+that isn't exactly one portion, quick-add calories for when you can't be bothered, and
+copy-yesterday for the days that repeat. Set daily targets if you want them; leave them blank and
+the diary just shows what you ate. Fixing a food's figures once fixes them everywhere after.
 
 **Bowel movements.** A quick log with Bristol type, amount, colour, consistency, urgency,
 straining, discomfort, notes, and an optional photo. If you ask it to, AI can suggest the
@@ -293,7 +309,7 @@ health-journal/
 │   │   ├── ai.ts               # optional AI analysis (credential, payload, parsing)
 │   │   ├── aiProviders.ts      # provider catalogue, model discovery + scoring
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
-│   │   ├── tracking.ts         # food + bowel logs, derived metrics, sanitising
+│   │   ├── tracking.ts         # food + bowel logs, food library, goals, derived metrics
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
 │   │   ├── answers.ts          # type-safe answer read/write
@@ -309,7 +325,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 324 tests across 17 suites
+└── tests/                      # 407 tests across 18 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

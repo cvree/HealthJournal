@@ -76,6 +76,22 @@ const openTile = async (name: RegExp) => {
   fireEvent.click(tile);
 };
 
+/** The picker dialog, scoped — the timeline behind it carries the same food
+    names, so an unscoped query matches twice. */
+const pickerDialog = async () => {
+  const search = await screen.findByPlaceholderText("Search your foods");
+  return search.closest('[role="dialog"]') as HTMLElement;
+};
+
+/** Quick Add → Food opens the *picker*, which is the one-tap path for a food
+    already saved. The long form is one step further in, behind "Something
+    new" — this walks that route. */
+const openFoodForm = async () => {
+  await openTile(/^Food/);
+  fireEvent.click(await screen.findByRole("button", { name: /Something new/ }));
+  await screen.findByText("Log food");
+};
+
 describe("Quick Add", () => {
   it("offers the four things worth logging", async () => {
     await mountApp();
@@ -93,8 +109,7 @@ describe("Quick Add", () => {
 describe("logging a meal", () => {
   it("saves it and shows it on today's timeline", async () => {
     await mountApp();
-    await openTile(/^Food/);
-    await screen.findByText("Log food");
+    await openFoodForm();
 
     fireEvent.click(screen.getByRole("button", { name: "Lunch" }));
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), {
@@ -110,8 +125,7 @@ describe("logging a meal", () => {
 
   it("keeps a hand-typed nutrition value as the user's, unbadged", async () => {
     await mountApp();
-    await openTile(/^Food/);
-    await screen.findByText("Log food");
+    await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Oats" } });
     fireEvent.change(screen.getByLabelText(/Calories in kcal/), { target: { value: "420" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -125,8 +139,7 @@ describe("logging a meal", () => {
 
   it("persists across a reload", async () => {
     const { kv, unmount } = await mountApp();
-    await openTile(/^Food/);
-    await screen.findByText("Log food");
+    await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Rye toast" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
@@ -141,7 +154,7 @@ describe("logging a meal", () => {
 
   it("reopens an existing meal for editing rather than adding a second one", async () => {
     await mountApp();
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Soup" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
@@ -199,8 +212,7 @@ describe("logging a bowel movement", () => {
 describe("AI stays out of the way when it is off", () => {
   it("shows no analysis button anywhere in the food sheet", async () => {
     await mountApp({ ai: false });
-    await openTile(/^Food/);
-    await screen.findByText("Log food");
+    await openFoodForm();
     expect(screen.queryByText(/Estimate nutrition with AI/)).toBeNull();
     expect(document.querySelector(".fhj-ai-badge")).toBeNull();
   });
@@ -215,7 +227,7 @@ describe("AI stays out of the way when it is off", () => {
   it("still records everything the two sheets are for", async () => {
     // The whole app has to work with no key and no network. This is that claim.
     await mountApp({ ai: false });
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Eggs" } });
     fireEvent.change(screen.getByLabelText(/Protein in g/), { target: { value: "14" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -227,7 +239,7 @@ describe("AI stays out of the way when it is off", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     await mountApp({ ai: false });
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Toast" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
@@ -241,14 +253,14 @@ describe("the timeline", () => {
     await mountApp();
 
     // Log a late meal first, then an early one.
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Late dinner" } });
     const timeInputs = () => document.querySelectorAll('input[type="time"]');
     fireEvent.change(timeInputs()[0], { target: { value: "20:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
 
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Early breakfast" } });
     fireEvent.change(timeInputs()[0], { target: { value: "07:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -260,7 +272,7 @@ describe("the timeline", () => {
 
   it("tints each row by category so kinds are told apart before they are read", async () => {
     await mountApp();
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Lunch" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
@@ -275,7 +287,7 @@ describe("the timeline", () => {
 
   it("shows today's calorie total once a meal carries one", async () => {
     await mountApp();
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Pasta" } });
     fireEvent.change(screen.getByLabelText(/Calories in kcal/), { target: { value: "600" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -289,8 +301,7 @@ describe("nothing is sent without consent", () => {
 
   it("shows the analysis button only once AI is switched on", async () => {
     await mountApp({ ai: true });
-    await openTile(/^Food/);
-    await screen.findByText("Log food");
+    await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Salmon" } });
     expect(await screen.findByText(/Estimate nutrition with AI/)).toBeTruthy();
   });
@@ -298,8 +309,7 @@ describe("nothing is sent without consent", () => {
   it("makes no request until the consent sheet is confirmed", async () => {
     const sent = stubProvider({ nutrition: { calories: 520 }, confidence: "medium" });
     await mountApp({ ai: true });
-    await openTile(/^Food/);
-    await screen.findByText("Log food");
+    await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Salmon salad" } });
 
     fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
@@ -315,7 +325,7 @@ describe("nothing is sent without consent", () => {
   it("sends nothing at all if the sheet is cancelled", async () => {
     const sent = stubProvider({ nutrition: { calories: 1 }, confidence: "low" });
     await mountApp({ ai: true });
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Toast" } });
     fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
     const dialog = (await screen.findByText(/Send this for an estimate/)).closest('[role="dialog"]')!;
@@ -331,7 +341,7 @@ describe("nothing is sent without consent", () => {
       confidence: "medium",
     });
     await mountApp({ ai: true });
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Salmon" } });
     fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
     fireEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
@@ -349,7 +359,7 @@ describe("nothing is sent without consent", () => {
   it("stops hedging once the user accepts the estimate as their own", async () => {
     stubProvider({ nutrition: { calories: 520 }, confidence: "high" });
     await mountApp({ ai: true });
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Salmon" } });
     fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
     fireEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
@@ -364,11 +374,157 @@ describe("nothing is sent without consent", () => {
   it("never sends an image on the text-only path", async () => {
     const sent = stubProvider({ nutrition: { calories: 100 }, confidence: "low" });
     await mountApp({ ai: true });
-    await openTile(/^Food/);
+    await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Toast" } });
     fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
     fireEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(JSON.stringify(sent[0])).not.toContain("inlineData");
+  });
+});
+
+describe("the one-tap loop", () => {
+  /** Log a food through the long form so the library learns it. */
+  async function teachLibrary(name: string, kcal: string) {
+    await openFoodForm();
+    fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: name } });
+    fireEvent.change(screen.getByPlaceholderText("1 bowl"), { target: { value: "1 plate" } });
+    fireEvent.change(screen.getByLabelText(/Calories in kcal/), { target: { value: kcal } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
+  }
+
+  it("saves a food to the library the first time it is logged", async () => {
+    await mountApp();
+    await teachLibrary("Chicken burrito bowl", "640");
+
+    await openTile(/^Food/);
+    const dlg = await pickerDialog();
+    expect(within(dlg).getByText("Chicken burrito bowl")).toBeTruthy();
+    expect(within(dlg).getByText(/1 plate/)).toBeTruthy();
+  });
+
+  it("re-logs a saved food in a single tap", async () => {
+    await mountApp();
+    await teachLibrary("Oats", "300");
+
+    await openTile(/^Food/);
+    fireEvent.click(await screen.findByRole("button", { name: /log one 1 plate of Oats/ }));
+
+    await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
+    // Two logs now, so the day's total is doubled.
+    expect(document.body.textContent).toContain("600");
+  });
+
+  it("searches the library by name", async () => {
+    await mountApp();
+    await teachLibrary("Chicken burrito bowl", "640");
+    await teachLibrary("Greek yoghurt", "120");
+
+    await openTile(/^Food/);
+    const dlg = await pickerDialog();
+    fireEvent.change(within(dlg).getByPlaceholderText("Search your foods"), { target: { value: "yog" } });
+    await waitFor(() => expect(within(dlg).queryByText("Chicken burrito bowl")).toBeNull());
+    expect(within(dlg).getByText("Greek yoghurt")).toBeTruthy();
+  });
+
+  it("quick-adds bare calories without asking for a description", async () => {
+    await mountApp();
+    await openTile(/^Food/);
+    fireEvent.change(await screen.findByPlaceholderText("e.g. 250"), { target: { value: "180" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
+    expect(document.body.textContent).toContain("Quick add");
+    expect(document.body.textContent).toContain("180 kcal");
+  });
+
+  it("scales a serving without touching the saved food", async () => {
+    await mountApp();
+    await teachLibrary("Oats", "300");
+
+    await openTile(/^Food/);
+    const dlg = await pickerDialog();
+    fireEvent.click(within(dlg).getByText("Oats")); // opens the serving stepper
+    fireEvent.click(await screen.findByRole("button", { name: "more servings" }));
+    fireEvent.click(screen.getByRole("button", { name: /Add to/ }));
+
+    await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
+    // 300 from the original log + 450 from 1.5 servings.
+    expect(document.body.textContent).toContain("750");
+  });
+
+  it("tells the user what the library is for before there is one", async () => {
+    await mountApp();
+    await openTile(/^Food/);
+    expect(await screen.findByText(/build up as you log/i)).toBeTruthy();
+  });
+
+  it("keeps an unconfirmed estimate labelled when it is logged again", async () => {
+    stubProvider({ nutrition: { calories: 400 }, confidence: "low" });
+    await mountApp({ ai: true });
+    await openFoodForm();
+    fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Mystery curry" } });
+    fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
+    fireEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
+    await screen.findByText(/AI Estimated/);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
+
+    // Logged again from the library, it is still an estimate — saving a food
+    // must not launder a guess into a measurement.
+    await openTile(/^Food/);
+    fireEvent.click(await screen.findByRole("button", { name: /log one .* of Mystery curry/ }));
+    await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
+    expect(document.body.textContent).toContain("about 400 kcal");
+  });
+});
+
+describe("the food diary", () => {
+  const goToDiary = async () => {
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Food" }));
+    await screen.findByRole("button", { name: "previous day" });
+  };
+
+  it("groups the day into meals, each with its own add button", async () => {
+    await mountApp();
+    await goToDiary();
+    for (const meal of ["Breakfast", "Lunch", "Dinner", "Snack", "Drink"]) {
+      expect(screen.getByText(meal), meal).toBeTruthy();
+    }
+    expect(screen.getAllByRole("button", { name: /Add food/ })).toHaveLength(5);
+  });
+
+  it("files a meal under the section it was added from", async () => {
+    await mountApp();
+    await goToDiary();
+    const dinnerCard = screen.getByText("Dinner").closest(".fhj-card")!;
+    fireEvent.click(within(dinnerCard as HTMLElement).getByRole("button", { name: /Add food/ }));
+    fireEvent.change(await screen.findByPlaceholderText("e.g. 250"), { target: { value: "700" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
+    expect(within(screen.getByText("Dinner").closest(".fhj-card") as HTMLElement).getByText("Quick add")).toBeTruthy();
+  });
+
+  it("pages back to a previous day", async () => {
+    await mountApp();
+    await goToDiary();
+    expect(screen.getByText("Today")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "previous day" }));
+    await waitFor(() => expect(screen.queryByText("Today")).toBeNull());
+  });
+
+  it("won't page into the future", async () => {
+    await mountApp();
+    await goToDiary();
+    expect(screen.getByRole("button", { name: "next day" })).toHaveProperty("disabled", true);
+  });
+
+  it("offers to set targets rather than inventing one", async () => {
+    await mountApp();
+    await goToDiary();
+    expect(screen.getByText("Set daily targets")).toBeTruthy();
+    // No goal means no progress bar and no ring — just what was eaten.
+    expect(document.querySelector('[role="progressbar"]')).toBeNull();
   });
 });

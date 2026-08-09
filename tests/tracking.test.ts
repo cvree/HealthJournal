@@ -12,6 +12,9 @@ import {
   formatNutrient, foodSummary, bowelSummary, severityLabel, bristolLabel,
   DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, derivedSeries,
   sanitizeFoodLogs, sanitizeBowelLogs, NUTRIENT_KEYS,
+  newFoodItem, rememberFood, logFromFoodItem, scaleNutrition, foodKey,
+  browseFoods, searchScore, toggleFavorite, goalProgress, hasGoals,
+  sanitizeFoodItems, sanitizeGoals,
 } from "../src/lib/tracking";
 import { buildFoodTable, buildBowelTable, buildWideTable, logsInRange } from "../src/lib/exports";
 import type { FoodLog } from "../src/types/models";
@@ -443,5 +446,233 @@ describe("the daily table gains food columns only when there is food", () => {
     const rows = [food({ date: "2026-08-09", nutrition: { calories: 500 } })];
     const { header, rows: out } = buildWideTable(tpl, profile, entries, rows);
     expect(out[0][header.indexOf("food_fiber")]).toBe("");
+  });
+});
+
+/* ---------- the food library ---------- */
+
+describe("the food library grows by using the app", () => {
+  it("remembers a meal the first time it is saved", () => {
+    const lib = rememberFood([], food({ description: "Oats", serving: "1 bowl", nutrition: { calories: 300 } }));
+    expect(lib).toHaveLength(1);
+    expect(lib[0].name).toBe("Oats");
+    expect(lib[0].serving).toBe("1 bowl");
+    expect(lib[0].nutrition.calories).toBe(300);
+    expect(lib[0].useCount).toBe(1);
+  });
+
+  it("counts a second use instead of creating a duplicate", () => {
+    let lib = rememberFood([], food({ description: "Oats", nutrition: { calories: 300 } }));
+    lib = rememberFood(lib, food({ description: "  oats  ", nutrition: { calories: 300 } }));
+    expect(lib).toHaveLength(1);
+    expect(lib[0].useCount).toBe(2);
+  });
+
+  it("stores figures per single serving, not per logged portion", () => {
+    // Logging "3 × 1 slice" must not teach the library that a slice is 3 slices.
+    const lib = rememberFood([], food({
+      description: "Toast", servings: 3, serving: "3 × 1 slice", nutrition: { calories: 300 },
+    }));
+    expect(lib[0].nutrition.calories).toBe(100);
+  });
+
+  it("refuses to save a log with nothing to call it", () => {
+    expect(rememberFood([], food({ description: "", nutrition: { calories: 300 } }))).toHaveLength(0);
+  });
+
+  it("refuses to save a log with no figures worth reusing", () => {
+    expect(rememberFood([], food({ description: "Water" }))).toHaveLength(0);
+  });
+
+  it("marks a food whose figures were never confirmed by the user", () => {
+    const lib = rememberFood([], food({
+      description: "Salad",
+      ai: { at: "x", model: "m", source: "photo", nutrition: { calories: 200 }, confidence: "low" },
+    }));
+    expect(lib[0].estimated).toBe(true);
+  });
+
+  it("clears the estimated flag once the user corrects it", () => {
+    let lib = rememberFood([], food({
+      description: "Salad",
+      ai: { at: "x", model: "m", source: "photo", nutrition: { calories: 200 }, confidence: "low" },
+    }));
+    expect(lib[0].estimated).toBe(true);
+    lib = rememberFood(lib, food({ description: "Salad", nutrition: { calories: 240 } }));
+    expect(lib[0].estimated).toBeUndefined();
+    expect(lib[0].nutrition.calories).toBe(240); // correcting once fixes it everywhere after
+  });
+});
+
+describe("logging from the library", () => {
+  const item = newFoodItem({ name: "Oats", serving: "1 bowl", nutrition: { calories: 300, protein: 10 } });
+
+  it("scales the figures by the serving count", () => {
+    const log = logFromFoodItem(item, { date: "2026-08-09", time: "08:00", servings: 2 });
+    expect(resolveNutrient(log, "calories")).toEqual({ k: "calories", value: 600, source: "user" });
+    expect(resolveNutrient(log, "protein").value).toBe(20);
+    expect(log.serving).toBe("2 × 1 bowl");
+  });
+
+  it("keeps the single-serving wording at one serving", () => {
+    expect(logFromFoodItem(item, { date: "2026-08-09", servings: 1 }).serving).toBe("1 bowl");
+  });
+
+  it("handles a half serving without a fractional mess", () => {
+    const log = logFromFoodItem(item, { date: "2026-08-09", servings: 0.5 });
+    expect(resolveNutrient(log, "calories").value).toBe(150);
+    expect(log.serving).toBe("0.5 × 1 bowl");
+  });
+
+  it("picks the meal from the time when one isn't given", () => {
+    expect(logFromFoodItem(item, { date: "2026-08-09", time: "08:00" }).meal).toBe("breakfast");
+    expect(logFromFoodItem(item, { date: "2026-08-09", time: "19:00" }).meal).toBe("dinner");
+  });
+
+  it("carries the estimate flag through, so a guess never becomes a measurement", () => {
+    const guessed = newFoodItem({ name: "Curry", nutrition: { calories: 700 }, estimated: true });
+    const log = logFromFoodItem(guessed, { date: "2026-08-09" });
+    // The figure lands in the AI block, not the user's, so it still badges.
+    expect(log.nutrition).toBeUndefined();
+    expect(resolveNutrient(log, "calories")).toEqual({ k: "calories", value: 700, source: "ai" });
+    expect(hasAiValues(log)).toBe(true);
+    expect(log.ai!.source).toBe("library");
+  });
+
+  it("writes its own figures down, so editing the saved food can't rewrite history", () => {
+    const log = logFromFoodItem(item, { date: "2026-08-09", servings: 1 });
+    const edited = { ...item, nutrition: { calories: 999 } };
+    expect(edited.nutrition.calories).toBe(999);
+    expect(resolveNutrient(log, "calories").value).toBe(300); // unchanged
+  });
+
+  it("does not scale micronutrient strings", () => {
+    const withMicros = newFoodItem({
+      name: "Spinach", nutrition: { calories: 20, micros: [{ label: "Iron", amount: "2.7 mg" }] },
+    });
+    const log = logFromFoodItem(withMicros, { date: "2026-08-09", servings: 3 });
+    expect(log.nutrition!.micros).toBeUndefined(); // dropped rather than mangled
+    expect(log.nutrition!.calories).toBe(60);
+  });
+});
+
+describe("finding a food fast", () => {
+  const lib = [
+    newFoodItem({ name: "Chicken breast", nutrition: { calories: 165 }, useCount: 9, lastUsedAt: "2026-08-01" }),
+    newFoodItem({ name: "Zucchini", nutrition: { calories: 17 }, useCount: 2, lastUsedAt: "2026-08-09" }),
+    newFoodItem({ name: "Chocolate", nutrition: { calories: 546 }, useCount: 5, lastUsedAt: "2026-08-05", favorite: true }),
+    newFoodItem({ name: "Greek yoghurt", brand: "Chobani", nutrition: { calories: 120 }, useCount: 0, lastUsedAt: "2026-07-01" }),
+  ];
+
+  it("ranks a prefix match above a match buried mid-word", () => {
+    const names = browseFoods(lib, "all", "chi").map((f) => f.name);
+    expect(names[0]).toBe("Chicken breast");
+    expect(names).toContain("Zucchini"); // still found, just lower
+    expect(names.indexOf("Chicken breast")).toBeLessThan(names.indexOf("Zucchini"));
+  });
+
+  it("matches on brand as well as name", () => {
+    expect(browseFoods(lib, "all", "chobani").map((f) => f.name)).toEqual(["Greek yoghurt"]);
+  });
+
+  it("ignores case and punctuation in matching keys", () => {
+    expect(foodKey("Chicken Breast")).toBe(foodKey("  chicken breast  "));
+    expect(foodKey("Ben & Jerry's")).toBe(foodKey("ben and jerry s".replace(" and ", " & ")));
+  });
+
+  it("lets search override the tab, because typing means you want one thing", () => {
+    // "favorite" tab, but a query that only matches a non-favourite.
+    expect(browseFoods(lib, "favorite", "zucc").map((f) => f.name)).toEqual(["Zucchini"]);
+  });
+
+  it("orders recents by when they were last eaten", () => {
+    expect(browseFoods(lib, "recent")[0].name).toBe("Zucchini");
+  });
+
+  it("orders frequents by use count and omits the never-used", () => {
+    const names = browseFoods(lib, "frequent").map((f) => f.name);
+    expect(names).toEqual(["Chicken breast", "Chocolate", "Zucchini"]);
+    expect(names).not.toContain("Greek yoghurt");
+  });
+
+  it("shows only favourites on the favourites tab", () => {
+    expect(browseFoods(lib, "favorite").map((f) => f.name)).toEqual(["Chocolate"]);
+  });
+
+  it("toggles a favourite without touching anything else", () => {
+    const next = toggleFavorite(lib, lib[0].id);
+    expect(next[0].favorite).toBe(true);
+    expect(next[0].nutrition).toEqual(lib[0].nutrition);
+    expect(toggleFavorite(next, lib[0].id)[0].favorite).toBe(false);
+  });
+
+  it("returns everything for an empty query", () => {
+    expect(browseFoods(lib, "all", "   ")).toHaveLength(4);
+  });
+});
+
+describe("daily goals", () => {
+  const totals = { calories: 1500, protein: 60, fiber: null } as any;
+
+  it("reports nothing at all when no goals are set", () => {
+    expect(goalProgress(undefined, totals)).toEqual([]);
+    expect(goalProgress({}, totals)).toEqual([]);
+    expect(hasGoals(undefined)).toBe(false);
+  });
+
+  it("only reports the targets that were actually set", () => {
+    const p = goalProgress({ calories: 2000 }, totals);
+    expect(p.map((g) => g.k)).toEqual(["calories"]);
+    expect(p[0].remaining).toBe(500);
+    expect(p[0].ratio).toBeCloseTo(0.75);
+  });
+
+  it("clamps the ratio so a bar can't overflow its track", () => {
+    expect(goalProgress({ calories: 1000 }, totals)[0].ratio).toBe(1);
+    expect(goalProgress({ calories: 1000 }, totals)[0].remaining).toBe(-500);
+  });
+
+  it("treats an unrecorded nutrient as untouched, not as zero eaten", () => {
+    const p = goalProgress({ fiber: 30 }, totals)[0];
+    expect(p.eaten).toBe(null);
+    expect(p.ratio).toBe(null);
+    expect(p.remaining).toBe(30);
+  });
+
+  it("ignores nonsense targets", () => {
+    expect(goalProgress({ calories: 0, protein: -5 } as any, totals)).toEqual([]);
+    expect(sanitizeGoals({ calories: "2000", protein: 120 })).toEqual({ protein: 120 });
+    expect(sanitizeGoals({})).toBeUndefined();
+    expect(sanitizeGoals(null)).toBeUndefined();
+  });
+});
+
+describe("restoring a library", () => {
+  it("drops entries with no name", () => {
+    expect(sanitizeFoodItems([{ name: "" }, { name: "   " }, {}, null])).toHaveLength(0);
+  });
+
+  it("collapses duplicates, which would split the use counts", () => {
+    const rows = sanitizeFoodItems([
+      { name: "Oats", nutrition: { calories: 300 }, useCount: 5 },
+      { name: "  OATS ", nutrition: { calories: 310 }, useCount: 2 },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].useCount).toBe(5);
+  });
+
+  it("repairs a missing serving rather than dropping the food", () => {
+    expect(sanitizeFoodItems([{ name: "Oats" }])[0].serving).toBe("1 serving");
+  });
+
+  it("survives a round trip through JSON", () => {
+    const lib = rememberFood([], food({ description: "Oats", serving: "1 bowl", nutrition: { calories: 300 } }));
+    const back = sanitizeFoodItems(JSON.parse(JSON.stringify(lib)));
+    expect(back[0].name).toBe("Oats");
+    expect(back[0].nutrition.calories).toBe(300);
+  });
+
+  it("accepts a journal that predates the library", () => {
+    expect(sanitizeFoodItems(undefined)).toEqual([]);
   });
 });

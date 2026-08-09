@@ -594,6 +594,11 @@ button:active:not(:disabled) {
 }
 .fhj-switch {
   position: relative;
+  /* Blockified explicitly: as an inline element its width and height collapse,
+     which left the track invisible and only the knob drawn anywhere it wasn't
+     a flex item. */
+  display: inline-block;
+  vertical-align: middle;
   flex: none;
   width: 2.625rem;
   height: 1.5rem;
