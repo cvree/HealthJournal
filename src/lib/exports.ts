@@ -4,12 +4,15 @@
    saved workflow changes. Covered end-to-end by tests/exports.test.ts. */
 
 import type {
+  BowelLog,
   DailyEntry,
   ExportCell,
   ExportTable,
+  FoodLog,
   SurveyQuestion,
   TrackingSetup,
 } from "../types/models";
+import { NUTRIENT_KEYS, dayTotals, mealLabel, resolveNutrient } from "./tracking";
 
 /** Minimal view of the merged template this module needs. */
 export interface TemplateLike {
@@ -47,13 +50,24 @@ export function metaCols(profile: TrackingSetup, tpl: TemplateLike, e: DailyEntr
 /** Wide table: one row per day, one column per exportable question.
     Photo questions expand into flag/rating/rating-source/note/photo-id
     columns; linked ratings read from the linked answer key (the single
-    source of truth for those values). */
-export function buildWideTable(tpl: TemplateLike, profile: TrackingSetup, entries: DailyEntry[]): ExportTable {
+    source of truth for those values).
+
+    When `food` is supplied, each row also carries that day's nutrition totals.
+    Per-meal detail doesn't fit a one-row-per-day table and lives in
+    `buildFoodTable` instead — this is the daily summary that belongs beside
+    the survey answers. */
+export function buildWideTable(
+  tpl: TemplateLike, profile: TrackingSetup, entries: DailyEntry[], food: FoodLog[] = []
+): ExportTable {
   const efields = tpl.fields.filter((f) => f.exportable !== false);
   const header: string[] = [...META_HEADERS];
   for (const f of efields) {
     if (f.type === "photo") header.push(`${f.k}_photo`, `${f.k}_rating`, `${f.k}_rating_source`, `${f.k}_note`, `${f.k}_photo_id`);
     else header.push(f.k);
+  }
+  const withFood = food.length > 0;
+  if (withFood) {
+    header.push("food_meals", ...NUTRIENT_KEYS.map((k) => `food_${k}`), "food_partly_estimated");
   }
   header.push("imported_fields", "notes");
 
@@ -69,6 +83,12 @@ export function buildWideTable(tpl: TemplateLike, profile: TrackingSetup, entrie
         row.push(serialize(e.answers?.[f.k]));
       }
     }
+    if (withFood) {
+      const t = dayTotals(food, e.date);
+      row.push(t.meals || "");
+      for (const k of NUTRIENT_KEYS) row.push(t[k] == null ? "" : t[k]);
+      row.push(t.partlyEstimated ? "y" : "");
+    }
     row.push(Object.entries(e.sources || {}).filter(([, v]) => v === "fitbit").map(([k]) => k).join("|"));
     row.push(e.notes || "");
     return row;
@@ -76,3 +96,65 @@ export function buildWideTable(tpl: TemplateLike, profile: TrackingSetup, entrie
 
   return { header, rows };
 }
+
+/* ---------- food & bowel ----------
+
+   One row per log, not per day. Every nutrient gets two columns — the value
+   and where it came from — because an export that flattens "I weighed this"
+   and "a model guessed this" into one number destroys the distinction the
+   whole feature is built to preserve, and a spreadsheet is exactly where
+   someone would go looking for it. */
+
+export function buildFoodTable(food: FoodLog[]): ExportTable {
+  const header = [
+    "date", "time", "meal", "description", "serving", "quantity", "unit",
+    ...NUTRIENT_KEYS.flatMap((k) => [k, `${k}_source`]),
+    "micronutrients", "ai_identified", "ai_source", "ai_confidence", "ai_note",
+    "photo_id", "notes", "log_id", "created_at", "updated_at",
+  ];
+
+  const rows: ExportCell[][] = [...food]
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .map((f) => {
+      const row: ExportCell[] = [
+        f.date, f.time, mealLabel(f.meal), f.description || "",
+        f.serving || "", f.quantity ?? "", f.unit || "",
+      ];
+      for (const k of NUTRIENT_KEYS) {
+        const r = resolveNutrient(f, k);
+        row.push(r.value ?? "", r.value == null ? "" : r.source);
+      }
+      const micros = f.nutrition?.micros || f.ai?.nutrition?.micros || [];
+      row.push(micros.map((m) => `${m.label}: ${m.amount}`).join("; "));
+      row.push(f.ai?.identified || "", f.ai?.source || "", f.ai?.confidence || "", f.ai?.note || "");
+      row.push(f.photoId || "", f.notes || "", f.id, f.createdAt, f.updatedAt);
+      return row;
+    });
+
+  return { header, rows };
+}
+
+export function buildBowelTable(bowel: BowelLog[]): ExportTable {
+  const header = [
+    "date", "time", "bristol_type", "amount", "color", "consistency",
+    "urgency_0_3", "straining_0_3", "discomfort_0_3",
+    "ai_bristol", "ai_color", "ai_consistency", "ai_form", "ai_confidence",
+    "photo_id", "notes", "log_id", "created_at", "updated_at",
+  ];
+
+  const rows: ExportCell[][] = [...bowel]
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .map((b) => [
+      b.date, b.time, b.bristol ?? "", b.amount || "", b.color || "", b.consistency || "",
+      b.urgency ?? "", b.straining ?? "", b.discomfort ?? "",
+      b.ai?.bristol ?? "", b.ai?.color || "", b.ai?.consistency || "", b.ai?.form || "",
+      b.ai?.confidence || "",
+      b.photoId || "", b.notes || "", b.id, b.createdAt, b.updatedAt,
+    ]);
+
+  return { header, rows };
+}
+
+/** Rows inside a date range, for the export screen's range filter. */
+export const logsInRange = <T extends { date: string }>(rows: T[], start: string, end: string): T[] =>
+  (rows || []).filter((r) => r.date >= start && r.date <= end);

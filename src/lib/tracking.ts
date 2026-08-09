@@ -1,0 +1,546 @@
+/* Food and bowel-movement logs.
+
+   These are the two categories that don't fit the daily-survey model the rest
+   of the app is built on. A day has one "overall severity" but four meals and
+   two bowel movements, so they live in their own arrays (db.food, db.bowel)
+   and reach the dashboard, the timeline and the trend chart through the
+   *derived daily metrics* at the bottom of this file.
+
+   Three rules this module exists to keep:
+
+   1. **The user's numbers and the model's numbers never share a field.**
+      `FoodLog.nutrition` is only ever written by a person; `FoodLog.ai` is the
+      model's reply, stored whole. `effectiveNutrition` merges them for display
+      and reports which side each value came from, so the UI can label an
+      estimate as an estimate every single time it draws one.
+   2. **Estimates are ranges wearing a number.** `formatNutrient` rounds to a
+      resolution the estimate can actually support (a photo can support "about
+      600 kcal", never "612 kcal") so the presentation doesn't imply a
+      precision the method doesn't have.
+   3. **Nothing here talks to a network.** Analysis lives in ./ai; this module
+      only shapes what goes in and what comes back out. */
+
+import type {
+  BowelAiResult, BowelLog, FoodAiResult, FoodLog, MealCategory, NutritionValues,
+} from "../types/models";
+
+export type { BowelLog, FoodLog, MealCategory, NutritionValues };
+
+/* ---------- ids & clocks ---------- */
+
+const rand = () => Math.random().toString(36).slice(2, 9);
+const stamp = () => new Date().toISOString();
+
+/** Local YYYY-MM-DD. Deliberately not toISOString().slice(0,10), which is UTC
+    and silently files an 11pm meal under tomorrow. */
+export function localDate(d: Date = new Date()): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Local HH:MM, 24-hour. */
+export function localTime(d: Date = new Date()): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "7:30 am" — for display only; storage always keeps 24h. */
+export function prettyTime(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+  if (!m) return "";
+  const h = Number(m[1]);
+  const suffix = h < 12 ? "am" : "pm";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]} ${suffix}`;
+}
+
+/* ---------- catalogues ---------- */
+
+export const MEALS: { id: MealCategory; label: string; icon: string }[] = [
+  { id: "breakfast", label: "Breakfast", icon: "sunrise" },
+  { id: "lunch", label: "Lunch", icon: "sun" },
+  { id: "dinner", label: "Dinner", icon: "moon" },
+  { id: "snack", label: "Snack", icon: "snack" },
+  { id: "drink", label: "Drink", icon: "drink" },
+];
+
+export const mealLabel = (m: string): string =>
+  MEALS.find((x) => x.id === m)?.label || "Meal";
+
+/** Best guess at which meal someone is logging, from the clock. Only ever a
+    pre-selection — every field stays editable. */
+export function mealForTime(hhmm: string): MealCategory {
+  const h = Number(String(hhmm).slice(0, 2));
+  if (!isFinite(h)) return "snack";
+  if (h < 10) return "breakfast";
+  if (h < 15) return "lunch";
+  if (h < 21) return "dinner";
+  return "snack";
+}
+
+export const UNITS = ["g", "oz", "ml", "cup", "tbsp", "piece", "serving"];
+
+/** The seven Bristol types, in the scale's own order. Descriptions are the
+    observable shape only — the scale is a description, not a diagnosis, and
+    this app never presents it as one. */
+export const BRISTOL: { type: number; label: string; desc: string }[] = [
+  { type: 1, label: "Separate hard lumps", desc: "Like nuts, hard to pass" },
+  { type: 2, label: "Lumpy sausage", desc: "Sausage-shaped but lumpy" },
+  { type: 3, label: "Cracked sausage", desc: "Sausage with cracks on the surface" },
+  { type: 4, label: "Smooth sausage", desc: "Smooth and soft, like a snake" },
+  { type: 5, label: "Soft blobs", desc: "Soft blobs with clear edges" },
+  { type: 6, label: "Mushy ragged", desc: "Fluffy pieces with ragged edges" },
+  { type: 7, label: "Entirely liquid", desc: "Watery, no solid pieces" },
+];
+
+export const bristolLabel = (t?: number): string =>
+  BRISTOL.find((b) => b.type === t)?.label || "";
+
+export const BOWEL_COLORS = [
+  "Brown", "Light brown", "Dark brown", "Yellow", "Green", "Pale / clay", "Red", "Black",
+];
+
+export const BOWEL_CONSISTENCY = ["Hard", "Formed", "Soft", "Loose", "Watery"];
+
+export const BOWEL_AMOUNTS: { id: "small" | "medium" | "large"; label: string }[] = [
+  { id: "small", label: "Small" },
+  { id: "medium", label: "Medium" },
+  { id: "large", label: "Large" },
+];
+
+/** 0–3 scales share one vocabulary so three questions read as one control. */
+export const SEVERITY_0_3 = ["None", "Mild", "Moderate", "Severe"];
+
+export const severityLabel = (n?: number): string =>
+  n == null ? "" : SEVERITY_0_3[Math.max(0, Math.min(3, Math.round(n)))] || "";
+
+/* ---------- nutrient definitions ----------
+   One list drives the estimate form, the totals row, the trend metrics and the
+   export columns, so a nutrient can't exist in one of those and not another. */
+
+export type NutrientKey = "calories" | "protein" | "carbs" | "fat" | "fiber" | "sugar" | "sodium";
+
+export const NUTRIENTS: {
+  k: NutrientKey;
+  label: string;
+  unit: string;
+  /** Rounding step for display — see the "estimates are ranges" rule up top. */
+  step: number;
+  /** Shown on the compact summary line under a meal. */
+  primary?: boolean;
+}[] = [
+  { k: "calories", label: "Calories", unit: "kcal", step: 5, primary: true },
+  { k: "protein", label: "Protein", unit: "g", step: 1, primary: true },
+  { k: "carbs", label: "Carbs", unit: "g", step: 1, primary: true },
+  { k: "fat", label: "Fat", unit: "g", step: 1, primary: true },
+  { k: "fiber", label: "Fiber", unit: "g", step: 0.5 },
+  { k: "sugar", label: "Sugar", unit: "g", step: 0.5 },
+  { k: "sodium", label: "Sodium", unit: "mg", step: 10 },
+];
+
+export const NUTRIENT_KEYS = NUTRIENTS.map((n) => n.k);
+
+export const nutrientDef = (k: NutrientKey) => NUTRIENTS.find((n) => n.k === k)!;
+
+/** Round to the nutrient's own resolution. Keeps "about 600 kcal" from being
+    rendered as 612 and read as a measurement. */
+export function formatNutrient(k: NutrientKey, v: number | null | undefined): string {
+  if (v == null || !isFinite(v)) return "–";
+  const { step } = nutrientDef(k);
+  const rounded = Math.round(v / step) * step;
+  return step < 1 ? String(Math.round(rounded * 2) / 2) : String(Math.round(rounded));
+}
+
+/* ---------- constructors ---------- */
+
+export function newFoodLog(partial: Partial<FoodLog> = {}): FoodLog {
+  const now = new Date();
+  const time = partial.time || localTime(now);
+  return {
+    id: `f_${Date.now().toString(36)}${rand()}`,
+    date: partial.date || localDate(now),
+    time,
+    meal: partial.meal || mealForTime(time),
+    description: partial.description ?? "",
+    createdAt: stamp(),
+    updatedAt: stamp(),
+    ...partial,
+  } as FoodLog;
+}
+
+export function newBowelLog(partial: Partial<BowelLog> = {}): BowelLog {
+  const now = new Date();
+  return {
+    id: `b_${Date.now().toString(36)}${rand()}`,
+    date: partial.date || localDate(now),
+    time: partial.time || localTime(now),
+    createdAt: stamp(),
+    updatedAt: stamp(),
+    ...partial,
+  } as BowelLog;
+}
+
+/* ---------- user data vs. AI estimates ----------
+
+   The whole point of keeping the two apart on disk is being able to answer
+   "did I write this, or did a model?" at render time. This is where that gets
+   answered. */
+
+export type ValueSource = "user" | "ai" | "none";
+
+export type ResolvedNutrient = {
+  k: NutrientKey;
+  value: number | null;
+  source: ValueSource;
+};
+
+/** The number to show for one nutrient, and where it came from. The user's own
+    figure always wins; a model's fills the gap; neither means no value, which
+    is a legitimate and common answer. */
+export function resolveNutrient(log: FoodLog, k: NutrientKey): ResolvedNutrient {
+  const mine = log.nutrition?.[k];
+  if (typeof mine === "number" && isFinite(mine)) return { k, value: mine, source: "user" };
+  const theirs = log.ai?.nutrition?.[k];
+  if (typeof theirs === "number" && isFinite(theirs)) return { k, value: theirs, source: "ai" };
+  return { k, value: null, source: "none" };
+}
+
+/** Every nutrient resolved at once, in catalogue order. */
+export const effectiveNutrition = (log: FoodLog): ResolvedNutrient[] =>
+  NUTRIENT_KEYS.map((k) => resolveNutrient(log, k));
+
+/** True when any displayed value on this log came from a model. Drives the
+    "AI Estimated" badge on the card. */
+export const hasAiValues = (log: FoodLog): boolean =>
+  effectiveNutrition(log).some((n) => n.source === "ai");
+
+/** True when the user has overridden anything the model said. */
+export const hasUserEdits = (log: FoodLog): boolean =>
+  NUTRIENT_KEYS.some((k) => typeof log.nutrition?.[k] === "number");
+
+/** Accept a model's estimate as the user's own — used by "Looks right".
+    Copies the values across so later edits to `ai` (a re-run) can't silently
+    change numbers the user has already signed off on. */
+export function acceptEstimate(log: FoodLog): FoodLog {
+  if (!log.ai) return log;
+  const nutrition: NutritionValues = { ...(log.nutrition || {}) };
+  for (const k of NUTRIENT_KEYS) {
+    if (typeof nutrition[k] !== "number") {
+      const v = log.ai.nutrition?.[k];
+      if (typeof v === "number" && isFinite(v)) nutrition[k] = v;
+    }
+  }
+  if (log.ai.nutrition?.micros?.length && !nutrition.micros?.length) {
+    nutrition.micros = log.ai.nutrition.micros.slice();
+  }
+  return { ...log, nutrition, updatedAt: stamp() };
+}
+
+/** Drop a model's reading entirely, keeping everything the user wrote. */
+export function discardEstimate(log: FoodLog): FoodLog {
+  const { ai, ...rest } = log;
+  return { ...rest, updatedAt: stamp() } as FoodLog;
+}
+
+/* ---------- daily aggregates ---------- */
+
+const onDate = <T extends { date: string }>(rows: T[], date: string): T[] =>
+  (rows || []).filter((r) => r && r.date === date);
+
+const byTime = <T extends { time: string }>(rows: T[]): T[] =>
+  rows.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+export const foodOn = (food: FoodLog[], date: string): FoodLog[] => byTime(onDate(food, date));
+export const bowelOn = (bowel: BowelLog[], date: string): BowelLog[] => byTime(onDate(bowel, date));
+
+export type DayTotals = Record<NutrientKey, number | null> & {
+  /** How many of the day's meals contributed at least one number. */
+  counted: number;
+  meals: number;
+  /** True when any contributing value was a model's rather than the user's. */
+  partlyEstimated: boolean;
+};
+
+/** Totals across a day's meals. A nutrient with no data anywhere in the day is
+    null rather than 0 — "I didn't record fibre" and "I ate no fibre" are
+    different statements and the chart must not conflate them. */
+export function dayTotals(food: FoodLog[], date: string): DayTotals {
+  const logs = foodOn(food, date);
+  const out: any = { counted: 0, meals: logs.length, partlyEstimated: false };
+  for (const k of NUTRIENT_KEYS) out[k] = null;
+  for (const log of logs) {
+    let contributed = false;
+    for (const n of effectiveNutrition(log)) {
+      if (n.value == null) continue;
+      out[n.k] = (out[n.k] ?? 0) + n.value;
+      contributed = true;
+      if (n.source === "ai") out.partlyEstimated = true;
+    }
+    if (contributed) out.counted += 1;
+  }
+  return out as DayTotals;
+}
+
+/* ---------- derived trend metrics ----------
+
+   Food and bowel logs are many-per-day, but the trend chart is one-value-per
+   day. These definitions are the bridge: each one reduces a day's logs to a
+   single number, and is then indistinguishable from a survey question to the
+   picker, the chart and the AI pattern payload.
+
+   `dir` follows the app's existing convention: "sym" = higher is worse, "pos"
+   = higher is better, "neutral" = neither, just a quantity. Most of these are
+   neutral on purpose — there is no healthy calorie count, and colouring one
+   red would be the app giving dietary advice. */
+
+export type DerivedMetric = {
+  k: string;
+  label: string;
+  unit?: string;
+  dir: "sym" | "pos" | "neutral";
+  sec: string;
+  /** Reduce one day to one number, or null when the day has no data. */
+  value: (ctx: { food: FoodLog[]; bowel: BowelLog[]; date: string }) => number | null;
+};
+
+const avg = (xs: number[]): number | null =>
+  xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null;
+
+export const FOOD_METRICS: DerivedMetric[] = NUTRIENTS.map((n) => ({
+  k: `food_${n.k}`,
+  label: n.k === "calories" ? "Calories" : `${n.label} (food)`,
+  unit: n.unit,
+  dir: "neutral" as const,
+  sec: "Food",
+  value: ({ food, date }) => {
+    const t = dayTotals(food, date);
+    const v = t[n.k];
+    return v == null ? null : Math.round(v * 10) / 10;
+  },
+}));
+
+export const BOWEL_METRICS: DerivedMetric[] = [
+  {
+    k: "bm_count",
+    label: "Bowel movements",
+    dir: "neutral",
+    sec: "Bowel",
+    value: ({ bowel, date }) => {
+      const rows = bowelOn(bowel, date);
+      return rows.length ? rows.length : null;
+    },
+  },
+  {
+    k: "bm_bristol",
+    label: "Bristol type (avg)",
+    dir: "neutral",
+    sec: "Bowel",
+    value: ({ bowel, date }) =>
+      avg(bowelOn(bowel, date).map((b) => b.bristol).filter((n): n is number => typeof n === "number")),
+  },
+  {
+    k: "bm_urgency",
+    label: "Urgency",
+    dir: "sym",
+    sec: "Bowel",
+    value: ({ bowel, date }) =>
+      avg(bowelOn(bowel, date).map((b) => b.urgency).filter((n): n is number => typeof n === "number")),
+  },
+  {
+    k: "bm_straining",
+    label: "Straining",
+    dir: "sym",
+    sec: "Bowel",
+    value: ({ bowel, date }) =>
+      avg(bowelOn(bowel, date).map((b) => b.straining).filter((n): n is number => typeof n === "number")),
+  },
+  {
+    k: "bm_discomfort",
+    label: "Discomfort",
+    dir: "sym",
+    sec: "Bowel",
+    value: ({ bowel, date }) =>
+      avg(bowelOn(bowel, date).map((b) => b.discomfort).filter((n): n is number => typeof n === "number")),
+  },
+];
+
+export const DERIVED_METRICS: DerivedMetric[] = [...FOOD_METRICS, ...BOWEL_METRICS];
+
+export const derivedMetric = (k: string): DerivedMetric | undefined =>
+  DERIVED_METRICS.find((m) => m.k === k);
+
+export const isDerivedKey = (k: string): boolean => DERIVED_METRICS.some((m) => m.k === k);
+
+/** Which derived metrics have enough data to be worth offering. A picker full
+    of always-empty options is worse than a short one. */
+export function availableDerivedMetrics(
+  food: FoodLog[], bowel: BowelLog[], dates: string[], minDays = 2
+): DerivedMetric[] {
+  return DERIVED_METRICS.filter((m) => {
+    let n = 0;
+    for (const date of dates) {
+      if (m.value({ food, bowel, date }) != null) n += 1;
+      if (n >= minDays) return true;
+    }
+    return false;
+  });
+}
+
+/** One derived metric across a run of dates, in the shape the chart already
+    understands ({ date, value }). */
+export function derivedSeries(
+  m: DerivedMetric, food: FoodLog[], bowel: BowelLog[], dates: string[]
+): { date: string; value: number | null }[] {
+  return dates.map((date) => ({ date, value: m.value({ food, bowel, date }) }));
+}
+
+/* ---------- summaries for the timeline ---------- */
+
+/** "Lunch · 2 slices · about 520 kcal" — the one-line description of a meal
+    used on the dashboard timeline. */
+export function foodSummary(log: FoodLog): string {
+  const bits: string[] = [];
+  if (log.serving) bits.push(log.serving);
+  else if (log.quantity != null) bits.push(`${log.quantity}${log.unit ? ` ${log.unit}` : ""}`);
+  const cal = resolveNutrient(log, "calories");
+  if (cal.value != null) {
+    bits.push(`${cal.source === "ai" ? "about " : ""}${formatNutrient("calories", cal.value)} kcal`);
+  }
+  return bits.join(" · ");
+}
+
+/** "Type 4 · Medium · Brown" — same idea for a bowel log. */
+export function bowelSummary(log: BowelLog): string {
+  const bits: string[] = [];
+  if (log.bristol != null) bits.push(`Type ${log.bristol}`);
+  if (log.amount) bits.push(BOWEL_AMOUNTS.find((a) => a.id === log.amount)?.label || log.amount);
+  if (log.color) bits.push(log.color);
+  else if (log.consistency) bits.push(log.consistency);
+  return bits.join(" · ");
+}
+
+/* ---------- sanitising restored / imported rows ----------
+
+   Backups are user-editable files. Anything reaching the render tree from one
+   goes through here first, for the same reason model output does: an array
+   where an object belongs shouldn't be able to take a screen down. */
+
+const str = (v: unknown, max = 400): string => (typeof v === "string" ? v.slice(0, max) : "");
+const num = (v: unknown): number | undefined =>
+  typeof v === "number" && isFinite(v) ? v : undefined;
+const clamp = (v: number | undefined, lo: number, hi: number): number | undefined =>
+  v == null ? undefined : Math.max(lo, Math.min(hi, v));
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/* Validates the value, not just the shape. `\d{2}:\d{2}` accepts "25:99",
+   which then sorts into the middle of the timeline and renders as "25:99 pm". */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function cleanNutrition(v: any): NutritionValues | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const out: NutritionValues = {};
+  for (const k of NUTRIENT_KEYS) {
+    const n = num(v[k]);
+    // Negative nutrition is not a thing; an absurd upper bound catches a
+    // decimal-point slip without second-guessing a legitimately big day.
+    if (n != null && n >= 0 && n < 1e6) out[k] = n;
+  }
+  if (Array.isArray(v.micros)) {
+    out.micros = v.micros
+      .filter((m: any) => m && typeof m === "object")
+      .slice(0, 12)
+      .map((m: any) => ({ label: str(m.label, 60), amount: str(m.amount, 40) }))
+      .filter((m: any) => m.label && m.amount);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+const CONFIDENCES = ["low", "medium", "high"];
+const confidence = (v: unknown) =>
+  (CONFIDENCES.includes(v as string) ? v : "low") as "low" | "medium" | "high";
+
+function cleanFoodAi(v: any): FoodAiResult | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const nutrition = cleanNutrition(v.nutrition);
+  if (!nutrition) return undefined;
+  const source = ["text", "photo", "photo+text"].includes(v.source) ? v.source : "text";
+  return {
+    at: str(v.at, 40) || stamp(),
+    model: str(v.model, 80),
+    source,
+    identified: str(v.identified, 200) || undefined,
+    nutrition,
+    confidence: confidence(v.confidence),
+    note: str(v.note, 400) || undefined,
+  };
+}
+
+function cleanBowelAi(v: any): BowelAiResult | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  return {
+    at: str(v.at, 40) || stamp(),
+    model: str(v.model, 80),
+    bristol: clamp(num(v.bristol), 1, 7),
+    color: str(v.color, 40) || undefined,
+    consistency: str(v.consistency, 40) || undefined,
+    form: str(v.form, 60) || undefined,
+    confidence: confidence(v.confidence),
+    note: str(v.note, 400) || undefined,
+  };
+}
+
+/** Drop anything malformed rather than throwing — one bad row in a restored
+    backup must not cost the user the other three hundred. */
+export function sanitizeFoodLogs(rows: unknown): FoodLog[] {
+  if (!Array.isArray(rows)) return [];
+  const out: FoodLog[] = [];
+  for (const r of rows as any[]) {
+    if (!r || typeof r !== "object") continue;
+    if (!DATE_RE.test(r.date)) continue;
+    const meal = MEALS.some((m) => m.id === r.meal) ? r.meal : "snack";
+    out.push({
+      id: str(r.id, 64) || `f_${Date.now().toString(36)}${rand()}`,
+      date: r.date,
+      time: TIME_RE.test(r.time) ? r.time : "12:00",
+      meal,
+      description: str(r.description, 400),
+      serving: str(r.serving, 80) || undefined,
+      quantity: num(r.quantity),
+      unit: str(r.unit, 20) || undefined,
+      notes: str(r.notes, 2000) || undefined,
+      photoId: str(r.photoId, 64) || undefined,
+      nutrition: cleanNutrition(r.nutrition),
+      ai: cleanFoodAi(r.ai),
+      createdAt: str(r.createdAt, 40) || stamp(),
+      updatedAt: str(r.updatedAt, 40) || stamp(),
+    });
+  }
+  return out;
+}
+
+export function sanitizeBowelLogs(rows: unknown): BowelLog[] {
+  if (!Array.isArray(rows)) return [];
+  const out: BowelLog[] = [];
+  for (const r of rows as any[]) {
+    if (!r || typeof r !== "object") continue;
+    if (!DATE_RE.test(r.date)) continue;
+    out.push({
+      id: str(r.id, 64) || `b_${Date.now().toString(36)}${rand()}`,
+      date: r.date,
+      time: TIME_RE.test(r.time) ? r.time : "12:00",
+      bristol: clamp(num(r.bristol), 1, 7),
+      amount: BOWEL_AMOUNTS.some((a) => a.id === r.amount) ? r.amount : undefined,
+      color: str(r.color, 40) || undefined,
+      consistency: str(r.consistency, 40) || undefined,
+      urgency: clamp(num(r.urgency), 0, 3),
+      straining: clamp(num(r.straining), 0, 3),
+      discomfort: clamp(num(r.discomfort), 0, 3),
+      notes: str(r.notes, 2000) || undefined,
+      photoId: str(r.photoId, 64) || undefined,
+      ai: cleanBowelAi(r.ai),
+      createdAt: str(r.createdAt, 40) || stamp(),
+      updatedAt: str(r.updatedAt, 40) || stamp(),
+    });
+  }
+  return out;
+}

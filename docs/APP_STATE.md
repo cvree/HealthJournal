@@ -105,6 +105,76 @@
 > what proves it on the user's machine.
 > Tests: 217 across 14 suites (new `tests/aiProviders.test.ts`).
 
+> **2026-08-09 addendum 11 — 1.4: Soft Clinical redesign, food + bowel tracking.**
+> **Design system.** Palettes retuned in `src/lib/theme.ts`: dark is warm-neutral *soft
+> graphite* (`bg #141519`, `card #1E2026`), light is *warm off-white* (`bg #F4F1EB`,
+> `card #FDFBF7`). Accent is a **light** muted blue in dark mode carrying **dark** ink
+> (`onAccent #121419`) — white-on-accent can only clear AA if the blue is dark enough to look
+> muddy on graphite. New tokens: `sage/lavender/clay` (+`*Text`,`*Soft`) for per-category
+> tinting, and `shadowPop`/`shadowPopLg` (hard, zero-blur offsets). **Gotcha:** ~25 screens had
+> hand-rolled primary buttons with literal `#fff` text; they were correct against the old
+> blurple and unreadable against the new accent. All were converted to `.fhj-btn-primary` or to
+> `readableInk(fill)`. Never write a literal ink colour on a themed fill.
+> `index.css` gained `--fhj-bw`/`--fhj-bw-strong`/`--fhj-press` and a `.fhj-pop` class: the
+> whole neobrutalist register is those three tokens plus one class, so it can be turned up or
+> down centrally. Press travels exactly the shadow offset so the element lands flush.
+> New component classes: `.fhj-section-title` (display face + category bar), `.fhj-tile(s)`,
+> `.fhj-tl-*` (timeline), `.fhj-ai-badge`, `.fhj-empty*`, `.fhj-skeleton`, `.fhj-expand`
+> (0fr→1fr grid rows, no JS measurement), `.fhj-photo`, `.fhj-cat-*` (sets `--fhj-mark` /
+> `--fhj-tint-soft` / `--fhj-tint-text` for everything inside).
+> The pre-paint scripts in index.html/viewer.html duplicate two palette values and are now
+> pinned to them by `tests/theme.test.ts` — they silently drifted before.
+>
+> **`src/lib/tracking.ts` (new, fully typed).** Food and bowel logs live in their own top-level
+> arrays (`db.food`, `db.bowel`), not on `DailyEntry`, because a day has one severity but four
+> meals. **The load-bearing rule: `FoodLog.nutrition` is only ever written by a person and
+> `FoodLog.ai` holds the model's reply whole.** `resolveNutrient` merges them for display and
+> reports the source, which is what lets every surface label an estimate as one.
+> `acceptEstimate` copies values across (making them immune to a re-run); `discardEstimate`
+> drops the model's block. `dayTotals` returns **null, not 0**, for a nutrient nobody recorded.
+> `DERIVED_METRICS` bridges many-per-day logs to the one-value-per-day chart; food metrics are
+> deliberately `dir: "neutral"` — colouring a calorie count red would be dietary advice via a
+> palette. `sanitize{Food,Bowel}Logs` runs on every load (backups are hand-editable).
+>
+> **AI: one integration, five uses.** `aiProviders.chat()` now takes `image` (Gemini
+> `inlineData` / OpenAI `image_url`), a per-call `schema`, and `jsonHint`. `ai.ts` adds
+> `analyseFood` (text | photo | photo+text — one function, because the "explicit quantity wins"
+> rule must not exist in three places) and `analyseBowelPhoto`. `runStructured` is the shared
+> runner (resolve model → send → retry once on `isModelGone`). `isNoVision()` turns a text-only
+> model's 400 into a sentence instead of a status code.
+> **Safety gotcha, fixed:** `normaliseBowelResult` used to truncate a field *before* screening
+> it, so "pale, which can indicate a liver condition" was cut mid-word and the flagged term no
+> longer matched. **Always screen the full string, then truncate.**
+> Every send goes through `AiSendPreview`, which grew a `lines` mode for single-item sends.
+>
+> **Dashboard** is now Today / Quick Add / Today's Logs / Trends / Possible Patterns.
+> `TrendsScreen` builds `chartEntries` — real answers plus derived values folded in as answers —
+> kept separate from `entries` so streaks, calendar and exports are unaffected by a day that
+> only has a meal on it. `fieldFor(k)` synthesises a field for a derived key so the chart,
+> picker and axis code need no knowledge of food or bowel logs.
+>
+> **Charts.** Gradient wash (`ComposedChart` + `Area`), draw-in via `chartAnim()` (no-op under
+> reduced motion), hover dots, units in tooltips, current week emphasised in `WeeklyBars`.
+> **Fixed:** `margin.left: -14` was clipping the leading digit off two-character Y ticks ("10" →
+> "L0"); it is `-2` with `width={34}` now.
+>
+> **Modal a11y.** Every Modal shared one `aria-labelledby` id, so a stacked confirmation sheet
+> announced the heading beneath it; ids are per-instance (`React.useId`) now. `useInert()` sets
+> the native `inert` attribute imperatively (React 18 won't forward it) so a covered form leaves
+> the tab order and the a11y tree.
+>
+> **Export.** XLSX gains Food and Bowel sheets (one row per log; every nutrient has a value
+> column *and* a `_source` column). `buildWideTable` takes an optional `food` argument and
+> appends daily totals — no columns at all when there is no food, so existing exports are byte
+> -identical.
+>
+> **Not adopted:** react-bits (copy-in gallery, louder register than this product wants; the
+> interactions worth having are a dozen lines of CSS each). Vanta stays opt-in/off.
+> Tests: **324 across 17 suites** (new: `tracking`, `aiFoodBowel`, `foodBowelUi`).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

@@ -33,18 +33,45 @@ dashboard, charts, export.
 smart defaults pre-filled from your own 7-day median, and auto-advance. Detailed Log is the
 long form when you want it. Any past day stays editable from the calendar.
 
-**See what's happening.** Dashboard with today's key metric, streak, 7/30-day averages,
-week-over-week comparisons, a 30-day trend chart comparing up to four metrics at once, weekly
-bars, and cautiously-worded "possible pattern" cards that need at least six paired days before
-they'll say anything. Every chartable metric is reachable in the trend picker — it scrolls, it
-says so, and it works from a keyboard.
+**Food.** Log a meal or drink with the category, time, description, serving, weight or quantity,
+notes, and a photo. Calories and macros can be entered by hand, or estimated by AI if you've set
+that up — from a photo, from your description, or from both. Every estimated value is labelled
+**AI Estimated**, is editable, and is never stored in the same field as a number you entered.
+Estimates read "about 520 kcal", because that is what they are.
+
+**Bowel movements.** A quick log with Bristol type, amount, colour, consistency, urgency,
+straining, discomfort, notes, and an optional photo. If you ask it to, AI can suggest the
+observable attributes from a photo — Bristol type, colour, consistency, form, and nothing else.
+It will not tell you what anything means, and the photo stays on your device unless you
+explicitly choose that analysis.
+
+**See what's happening.** The dashboard is five sections — **Today**, **Quick Add**, **Today's
+Logs**, **Trends**, **Possible Patterns**. Quick Add is four tiles; Today's Logs is one timeline
+carrying check-ins, meals, bowel movements and photos in the order they happened. Trends is a
+30-day chart comparing up to four metrics at once, plus weekly bars and week-over-week cards —
+and food and bowel logs join it as derived daily metrics (calories, macros, movement count,
+average Bristol type, urgency, straining, discomfort). Possible-pattern cards need at least six
+paired days before they'll say anything. Every chartable metric is reachable in the trend picker
+— it scrolls, it says so, and it works from a keyboard.
+
+**Designed, not just built.** *Soft Clinical* — soft graphite in the dark, warm off-white in
+the light, muted blue with sage, lavender and clay accents, generous spacing and quiet depth —
+with a deliberate hint of neobrutalism: borders a notch above a hairline, hard offset shadows,
+chunky buttons that press down into them, and section titles you can find at a glance. Calm, not
+loud.
 
 **Dark and light.** Dark by default, with a light theme that's a proper design rather than an
 inversion, and a "match system" option. The choice is remembered on the device and applied
 before the first paint, so a cold start never flashes white. Both themes are contrast-audited:
 `tests/theme.test.ts` fails the build if a token pair drops below WCAG AA.
 
-**AI observations (optional, off by default).** Bring your own Google Gemini API key and the
+**AI (optional, off by default).** One integration, five uses: possible patterns, food from
+text, food from a photo, food from both, and bowel-photo attributes. Every one of them shows you
+exactly what is about to be sent and waits for you to confirm — nothing is sent on save, in the
+background, or on a retry without asking again. With AI switched off there is no analysis button
+anywhere and the app makes no network request at all.
+
+Bring your own Google Gemini API key and the
 Possible Patterns section gains a second, clearly-labelled source: longitudinal observations a
 median split doesn't look for — symptoms that recur together, changes after certain days,
 sleep/mood relationships, timing patterns, drifts from your own baseline. Every finding carries
@@ -266,6 +293,7 @@ health-journal/
 │   │   ├── ai.ts               # optional AI analysis (credential, payload, parsing)
 │   │   ├── aiProviders.ts      # provider catalogue, model discovery + scoring
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
+│   │   ├── tracking.ts         # food + bowel logs, derived metrics, sanitising
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
 │   │   ├── answers.ts          # type-safe answer read/write
@@ -281,15 +309,17 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 217 tests across 14 suites
+└── tests/                      # 324 tests across 17 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
 object that `App.tsx` reads as `C.something` at render time; a theme switch mutates it in place
 and mirrors every token onto `:root` as a `--fhj-*` custom property, so the stylesheet and the
 markup stay in sync from one source. `src/styles/index.css` holds the shared component classes
-(buttons, chips, cards, segmented controls, switches, sheets) so screens compose rather than
-restating padding and hover behaviour inline.
+(buttons, chips, cards, segmented controls, switches, sheets, Quick Add tiles, timeline rows,
+AI badges, empty states, skeletons) so screens compose rather than restating padding and hover
+behaviour inline. The tactile treatment lives in two tokens — `--fhj-bw` and `--fhj-shadow-pop`
+— plus one `.fhj-pop` class, which is why it can be turned up or down in one place.
 
 `App.tsx` is deliberately still one file (its artifact heritage) under `// @ts-nocheck`, but the
 data model lives in `src/types/models.ts` and is enforced at runtime by `src/lib/validate.ts`,
@@ -313,6 +343,18 @@ download before any reset, never a silent wipe.
   more exist, and a vertical wheel scrolls it horizontally on a desktop.
 - Both themes are contrast-audited in CI (`tests/theme.test.ts`), and the severity ramp picks
   its own label colour by luminance so a swatch is never white-on-pale.
+- Charts draw themselves in once and then hold still; under `prefers-reduced-motion` recharts
+  renders the final frame directly.
+- A confirmation sheet opening over a form makes that form `inert`, so its own buttons leave the
+  tab order and the accessibility tree while the dialog asking about them is up.
+
+**On react-bits and Vanta.** [react-bits](https://github.com/DavidHDev/react-bits) was evaluated
+and deliberately not adopted: it is a copy-in component gallery whose register — spotlight
+cards, animated gradients, decrypting text — is louder than this product wants, and the handful
+of interactions worth having (tactile press, card expansion, timeline reveal) are a dozen lines
+of CSS each with no dependency and no bundle cost. Vanta stays opt-in and off by default for the
+same reason: it is the one effect here that exists for its own sake, so it is the user's
+decision, and enabling it lazy-loads three.js rather than shipping it to everyone.
 
 ## Native iOS app + Home Screen widget
 

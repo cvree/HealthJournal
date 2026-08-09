@@ -183,6 +183,111 @@ export interface ExportTable {
   rows: ExportCell[][];
 }
 
+/* ---------- food & bowel logs ----------
+
+   These two categories don't fit the daily-survey shape the rest of the app is
+   built on: a day has one severity rating but four meals and two bowel
+   movements. So they live in their own top-level arrays keyed by date rather
+   than as answers on a DailyEntry, and the trend system reads *derived* daily
+   aggregates off them (see src/lib/tracking.ts).
+
+   The load-bearing rule in both shapes: **what the person entered and what a
+   model guessed are never stored in the same field.** `nutrition` holds only
+   values the user typed or explicitly edited; `ai` holds the untouched model
+   response. The effective value is the user's if present and the estimate
+   otherwise, and the UI can always say which it showed. Blending them on write
+   would make "is this number mine?" permanently unanswerable. */
+
+export type MealCategory = "breakfast" | "lunch" | "dinner" | "snack" | "drink";
+
+export type AiConfidence = "low" | "medium" | "high";
+
+/** Nutrition figures. Every field optional — a partial estimate is normal and
+    more honest than a zero-filled one. */
+export interface NutritionValues {
+  calories?: number;
+  protein?: number; // g
+  carbs?: number; // g
+  fat?: number; // g
+  fiber?: number; // g
+  sugar?: number; // g
+  sodium?: number; // mg
+  /** Anything else worth surfacing, e.g. { label: "Iron", amount: "2.1 mg" }. */
+  micros?: { label: string; amount: string }[];
+}
+
+/** A model's reading of a meal. Stored verbatim, never merged into the user's
+    own figures. */
+export interface FoodAiResult {
+  at: string; // ISO
+  model: string;
+  /** Which inputs the model actually got. */
+  source: "text" | "photo" | "photo+text";
+  /** What the model thinks the food is — only meaningful on a photo path. */
+  identified?: string;
+  nutrition: NutritionValues;
+  confidence: AiConfidence;
+  /** The model's own caveat, shown under the estimate. */
+  note?: string;
+}
+
+export interface FoodLog {
+  id: string;
+  date: string; // YYYY-MM-DD (local)
+  time: string; // HH:MM (local, 24h)
+  meal: MealCategory;
+  /** What the user called it. May be empty on a photo-only log. */
+  description: string;
+  /** Free text, e.g. "1 bowl", "2 slices". */
+  serving?: string;
+  /** Numeric weight/volume, paired with `unit`. */
+  quantity?: number;
+  unit?: string; // g | oz | ml | cup | serving …
+  notes?: string;
+  photoId?: string;
+  /** The user's own figures. Only ever written by the user. */
+  nutrition?: NutritionValues;
+  /** The model's figures, kept whole and separate. */
+  ai?: FoodAiResult;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type BowelAmount = "small" | "medium" | "large";
+
+/** A model's reading of a stool photo. Observable attributes only — the prompt
+    and the normaliser both refuse anything diagnostic. */
+export interface BowelAiResult {
+  at: string;
+  model: string;
+  bristol?: number; // 1–7
+  color?: string;
+  consistency?: string;
+  form?: string;
+  confidence: AiConfidence;
+  note?: string;
+}
+
+export interface BowelLog {
+  id: string;
+  date: string; // YYYY-MM-DD (local)
+  time: string; // HH:MM (local, 24h)
+  /** Bristol Stool Scale, 1 (hard lumps) – 7 (entirely liquid). */
+  bristol?: number;
+  amount?: BowelAmount;
+  color?: string;
+  consistency?: string;
+  /** 0 none – 3 severe, on all three. */
+  urgency?: number;
+  straining?: number;
+  discomfort?: number;
+  notes?: string;
+  photoId?: string;
+  ai?: BowelAiResult;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /* ---------- onboarding & database root ---------- */
 
 export interface OnboardingState {
@@ -194,5 +299,9 @@ export interface AppDatabase extends OnboardingState {
   profile: TrackingSetup;
   entries: DailyEntry[];
   reports?: ReportModel[];
+  /** Meals, newest-last. Many per day. */
+  food?: FoodLog[];
+  /** Bowel movements, newest-last. Many per day. */
+  bowel?: BowelLog[];
   schemaVersion?: number;
 }

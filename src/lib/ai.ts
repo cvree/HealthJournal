@@ -36,9 +36,12 @@
       discovered from the user's own key and re-resolved if one disappears. */
 
 import {
-  PROVIDERS, providerOf, listModels, chat, pickModel, isModelGone,
-  type Connection, type ProviderId,
+  PROVIDERS, providerOf, listModels, chat, pickModel, isModelGone, isNoVision,
+  type ChatImage, type Connection, type ProviderId,
 } from "./aiProviders";
+import type {
+  AiConfidence, BowelAiResult, FoodAiResult, NutritionValues,
+} from "../types/models";
 
 export {
   PROVIDERS, providerOf, pickModel, scoreModel, OPENAI_NOTE,
@@ -583,6 +586,393 @@ export function normaliseAnalysis(parsed: any, input: AnalysisInput, model?: str
     note: typeof parsed?.note === "string" && parsed.note.trim()
       ? scrubCausalLanguage(parsed.note.trim()).slice(0, 400)
       : undefined,
+  };
+}
+
+/* ============================================================
+   Food and bowel analysis
+   ============================================================
+
+   Everything below shares the machinery above — the same stored connection,
+   the same model resolution and retry, the same redaction, the same "untrusted
+   output is normalised at the boundary" discipline. What differs is the prompt,
+   the schema, and one hard new constraint:
+
+   **An image never leaves the device unless the user asked for this specific
+   analysis, on this specific photo, in this specific moment.** There is no
+   background upload, no "analyse on save", no retry that re-sends without
+   asking. `analyseFood`/`analyseBowelPhoto` are called from a button press and
+   nowhere else, and neither reads a photo from storage on its own — the caller
+   passes the bytes in, so the code path that sends is always visible at the
+   call site.
+
+   The bowel prompt carries the strictest rule in this file: describe what is
+   visible, never suggest what it might mean. */
+
+/** Shared confidence normaliser. */
+const CONFIDENCES: AiConfidence[] = ["low", "medium", "high"];
+const asConfidence = (v: unknown): AiConfidence =>
+  CONFIDENCES.includes(v as AiConfidence) ? (v as AiConfidence) : "low";
+
+const NUM_KEYS = ["calories", "protein", "carbs", "fat", "fiber", "sugar", "sodium"] as const;
+
+/** Keep only sane numbers. A model that answers "about 400-600" in a numeric
+    field, or slips a decimal, shouldn't reach the totals row. */
+function normaliseNutrition(raw: any): NutritionValues {
+  const out: NutritionValues = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const k of NUM_KEYS) {
+    const v = Number(raw[k]);
+    if (isFinite(v) && v >= 0 && v < 1e6) out[k] = Math.round(v * 10) / 10;
+  }
+  if (Array.isArray(raw.micros)) {
+    out.micros = raw.micros
+      .filter((m: any) => m && typeof m === "object")
+      .slice(0, 8)
+      .map((m: any) => ({
+        label: String(m.label ?? "").slice(0, 60).trim(),
+        amount: String(m.amount ?? "").slice(0, 40).trim(),
+      }))
+      .filter((m: { label: string; amount: string }) => m.label && m.amount);
+  }
+  return out;
+}
+
+const NUTRITION_SCHEMA = {
+  type: "object",
+  properties: {
+    calories: { type: "number" },
+    protein: { type: "number" },
+    carbs: { type: "number" },
+    fat: { type: "number" },
+    fiber: { type: "number" },
+    sugar: { type: "number" },
+    sodium: { type: "number" },
+    micros: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { label: { type: "string" }, amount: { type: "string" } },
+        required: ["label", "amount"],
+      },
+    },
+  },
+};
+
+const FOOD_SCHEMA = {
+  type: "object",
+  properties: {
+    identified: { type: "string" },
+    nutrition: NUTRITION_SCHEMA,
+    confidence: { type: "string", enum: ["low", "medium", "high"] },
+    note: { type: "string" },
+  },
+  required: ["nutrition", "confidence"],
+};
+
+const FOOD_JSON_HINT =
+  "\n\nReply with JSON only — no prose, no markdown fence — matching: " +
+  '{"identified":string,"nutrition":{"calories":number,"protein":number,"carbs":number,' +
+  '"fat":number,"fiber":number,"sugar":number,"sodium":number,' +
+  '"micros":[{"label":string,"amount":string}]},"confidence":"low"|"medium"|"high","note":string}';
+
+const FOOD_SYSTEM = `You estimate the nutritional content of a meal someone has logged in their personal food diary.
+
+You are giving a rough estimate from limited information, not a laboratory measurement, and the person reading it knows that. Be useful and be honest about the uncertainty.
+
+How to weigh what you are given:
+- If the person states a quantity, weight, serving size, or count, TREAT THAT AS FACT and estimate around it. Never override an explicit amount with your own guess about a "typical" portion, even if the photo looks different — they measured it and you did not.
+- If there is a photo and no stated amount, estimate the portion from the photo, using visible references (plate size, utensils, hands, packaging) where you can.
+- If there is both a photo and a description, use the photo for what the food *is* and how much is there, and the description for anything the photo cannot show — cooking method, hidden ingredients, brand, added oil, sauces, whether it is a light version.
+- If there is only a description, estimate for a standard preparation and say so in the note.
+
+Fill in calories, protein, carbs, fat, fiber, sugar and sodium in the units named in the schema: grams for macros and fiber and sugar, milligrams for sodium, kilocalories for calories. Omit any field you genuinely cannot estimate rather than inventing a number — a missing value is more useful than a fabricated one.
+
+In "micros", include up to 6 micronutrients that are actually notable in this food and would be worth someone knowing about — a good source of something, or an unusually high amount. Skip it entirely for foods with nothing notable. Give the amount as a short string with its unit, e.g. "2.1 mg".
+
+Set "identified" to a short plain description of what you think the food is. This matters most when you are working from a photo — it is how the person checks whether you understood the picture before they trust anything else.
+
+Set "confidence" honestly:
+- "high": a clearly described or clearly visible food with a stated amount.
+- "medium": a recognisable food where you are estimating the portion.
+- "low": an ambiguous photo, an unusual dish, or a description too vague to pin down.
+
+Use "note" for the one thing that would most change these numbers — the assumption you had to make, the ingredient you could not see, the portion you had to guess. One or two short sentences. Do not repeat the numbers back.
+
+Hard rules:
+- Never comment on whether the food is healthy, good, bad, or advisable.
+- Never suggest eating more or less of anything, and never mention diets, weight, or calorie targets.
+- Never diagnose anything or connect the food to a symptom or condition.
+- You are describing food, not advising a person.`;
+
+const BOWEL_SCHEMA = {
+  type: "object",
+  properties: {
+    bristol: { type: "integer" },
+    color: { type: "string" },
+    consistency: { type: "string" },
+    form: { type: "string" },
+    confidence: { type: "string", enum: ["low", "medium", "high"] },
+    note: { type: "string" },
+  },
+  required: ["confidence"],
+};
+
+const BOWEL_JSON_HINT =
+  "\n\nReply with JSON only — no prose, no markdown fence — matching: " +
+  '{"bristol":number,"color":string,"consistency":string,"form":string,' +
+  '"confidence":"low"|"medium"|"high","note":string}';
+
+/* The narrowest prompt in the app, deliberately. It is a description task with
+   a diagnosis-shaped hole next to it, and the model is told in four different
+   ways not to fall into it — because the failure mode here isn't a wrong
+   number, it's someone being told they have a condition by a photo classifier. */
+const BOWEL_SYSTEM = `You are helping someone record an observation in their personal health journal. They have taken a photo of a bowel movement and want help filling in the descriptive fields on their log form.
+
+Your entire job is to describe what is visibly present in the image, in the same terms the form uses. You are a labelling aid, nothing more.
+
+Fill in:
+- "bristol": the Bristol Stool Scale type, 1 to 7, that best matches the visible form. 1 separate hard lumps; 2 lumpy sausage; 3 sausage with cracks; 4 smooth soft sausage; 5 soft blobs with clear edges; 6 mushy pieces with ragged edges; 7 entirely liquid. Omit it if the image does not show the form clearly enough to place it.
+- "color": the visible colour in plain words, e.g. "brown", "dark brown", "light brown", "yellow", "green", "pale", "red-tinged", "black".
+- "consistency": one of hard, formed, soft, loose, watery.
+- "form": a short neutral phrase describing the shape, e.g. "single smooth log", "several soft pieces", "fragmented".
+
+Omit any field the image does not clearly show. Guessing here is worse than leaving it blank — the person can fill it in themselves, and a wrong label they don't notice is worse than no label.
+
+Set "confidence" to how clearly the image supports what you reported: "low" for a poorly lit, blurry, partial, or ambiguous photo, "high" only for a clear, well-lit, unambiguous one. Most photos of this kind are "low" or "medium".
+
+ABSOLUTE RULES — these override everything else:
+- Never name, suggest, hint at, or ask about any medical condition, disease, infection, or disorder.
+- Never say anything is normal, abnormal, healthy, unhealthy, concerning, or reassuring.
+- Never recommend seeing a doctor, taking anything, eating anything, or changing anything.
+- Never speculate about causes — not diet, not illness, not medication, not stress.
+- Never comment on what the observation might mean. It means nothing here. You are filling in form fields from a picture.
+- If you cannot describe the image in these terms, return every field empty with confidence "low" and leave "note" empty. That is a correct answer.
+
+Use "note" only for a practical remark about the photo itself, such as "lighting makes the colour hard to judge". Leave it empty otherwise.`;
+
+/** Words the bowel path must never emit, regardless of prompt compliance. A
+    model that ignores the instructions gets its output dropped rather than
+    softened — unlike the pattern text, there is no cautious rephrasing of a
+    diagnosis that is still worth showing. */
+const DIAGNOSTIC = new RegExp(
+  [
+    "diagnos", "condition", "disease", "infection", "syndrome", "disorder",
+    "ibs|irritable bowel", "crohn", "colitis", "celiac|coeliac", "cancer",
+    "parasite", "bacteri", "virus", "malabsorption", "bleeding", "blood in",
+    "see a doctor", "consult", "medical attention", "concerning", "abnormal",
+    "unhealthy", "healthy", "normal", "should", "recommend", "suggest you",
+  ].join("|"),
+  "i"
+);
+
+/** True when a bowel note strayed into interpretation. */
+export const isDiagnosticText = (text: string): boolean => DIAGNOSTIC.test(String(text ?? ""));
+
+/* ---------- running an analysis ---------- */
+
+/** Shared runner: resolve a model, send, retry once if the model is gone, and
+    turn every failure into an AiError the UI can phrase. Identical in shape to
+    runPatternAnalysis's inner attempt, which is the point — one integration,
+    five callers. */
+async function runStructured(
+  conn: Connection,
+  req: { system: string; user: string; image?: ChatImage | null; schema: any; jsonHint: string; maxTokens?: number },
+  signal?: AbortSignal
+): Promise<{ parsed: any; model: string }> {
+  if (!conn.key || !conn.key.trim()) throw new AiError("no-key", "No API key is set.");
+  const c: Connection = { ...conn };
+
+  const attempt = async (allowRetry: boolean): Promise<string> => {
+    if (!c.model) {
+      const picked = await testConnection(c);
+      if (!picked.ok || !picked.model) throw new AiError("auth", picked.message || "No usable model.");
+      c.model = picked.model;
+      await rememberModel(picked.model).catch(() => {});
+    }
+    try {
+      return await chat(c, {
+        system: req.system, user: req.user, image: req.image,
+        schema: req.schema, jsonHint: req.jsonHint, maxTokens: req.maxTokens, signal,
+      });
+    } catch (e: any) {
+      if (e?.name === "AbortError") throw e;
+      if (typeof e?.status !== "number") throw new AiError("network", networkMessage(c));
+      const body = String(e.body || e.message || "");
+      if (allowRetry && isModelGone(e.status, body)) {
+        c.model = undefined;
+        return attempt(false);
+      }
+      if (req.image && isNoVision(e.status, body)) {
+        throw new AiError(
+          "response",
+          "The model this app picked for you reads text but not images. You can still describe what you ate and get an estimate from that, or choose a different provider in Settings."
+        );
+      }
+      const { kind, message } = describeFailure(e.status, body, c.key);
+      throw new AiError(kind, message);
+    }
+  };
+
+  const text = await attempt(true);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(stripFence(text));
+  } catch {
+    throw new AiError("response", "The estimate came back in an unexpected shape. Try again.");
+  }
+  return { parsed, model: c.model || "" };
+}
+
+export type FoodAnalysisInput = {
+  /** What the user typed. Empty on a photo-only log. */
+  description?: string;
+  serving?: string;
+  quantity?: number;
+  unit?: string;
+  /** Only present when the user explicitly chose to analyse the photo. */
+  image?: ChatImage | null;
+};
+
+/** Plain-language description of what a food analysis would send, for the
+    confirmation sheet. Same contract as summariseInput: nothing goes out
+    before the user has seen this. */
+export function summariseFoodRequest(input: FoodAnalysisInput): {
+  sendsPhoto: boolean;
+  sendsText: boolean;
+  textParts: string[];
+} {
+  const textParts: string[] = [];
+  if (input.description?.trim()) textParts.push(input.description.trim());
+  if (input.serving?.trim()) textParts.push(input.serving.trim());
+  if (input.quantity != null) textParts.push(`${input.quantity}${input.unit ? ` ${input.unit}` : ""}`);
+  return { sendsPhoto: !!input.image, sendsText: textParts.length > 0, textParts };
+}
+
+/** Estimate a meal from text, a photo, or both.
+
+    The three modes are one function on purpose: they differ only in which
+    parts of the prompt have content, and splitting them would mean three
+    places to keep the "explicit quantities win" rule correct. */
+export async function analyseFood(
+  connOrKey: Connection | string,
+  input: FoodAnalysisInput,
+  opts: { signal?: AbortSignal } = {}
+): Promise<FoodAiResult> {
+  const conn: Connection = typeof connOrKey === "string" ? { provider: "gemini", key: connOrKey } : connOrKey;
+
+  const hasText = !!(input.description?.trim() || input.serving?.trim() || input.quantity != null);
+  if (!input.image && !hasText) {
+    throw new AiError("not-enough-data", "Add a photo or describe what you ate, and I can estimate from that.");
+  }
+
+  const stated: string[] = [];
+  if (input.serving?.trim()) stated.push(`serving: ${input.serving.trim()}`);
+  if (input.quantity != null) stated.push(`amount: ${input.quantity}${input.unit ? ` ${input.unit}` : ""}`);
+
+  const lines: string[] = [];
+  if (input.image && hasText) {
+    lines.push("Here is a photo of the meal, and what the person wrote about it.");
+  } else if (input.image) {
+    lines.push("Here is a photo of the meal. The person did not describe it.");
+  } else {
+    lines.push("The person described this meal. There is no photo.");
+  }
+  if (input.description?.trim()) lines.push(`Description: ${input.description.trim()}`);
+  if (stated.length) {
+    lines.push(
+      `Amounts the person stated (treat these as fact, do not override them): ${stated.join("; ")}`
+    );
+  }
+
+  const source: FoodAiResult["source"] = input.image ? (hasText ? "photo+text" : "photo") : "text";
+
+  const { parsed, model } = await runStructured(
+    conn,
+    {
+      system: FOOD_SYSTEM,
+      user: lines.join("\n"),
+      image: input.image || null,
+      schema: FOOD_SCHEMA,
+      jsonHint: FOOD_JSON_HINT,
+      maxTokens: 900,
+    },
+    opts.signal
+  );
+
+  return {
+    at: new Date().toISOString(),
+    model,
+    source,
+    identified: String(parsed?.identified ?? "").slice(0, 200).trim() || undefined,
+    nutrition: normaliseNutrition(parsed?.nutrition),
+    confidence: asConfidence(parsed?.confidence),
+    // The food note is advice-adjacent by nature, so it gets the same causal
+    // scrub the pattern text does before it can reach a screen.
+    note: scrubCausalLanguage(String(parsed?.note ?? "").slice(0, 300).trim()) || undefined,
+  };
+}
+
+/** Suggest observable attributes from a stool photo.
+
+    Returns only descriptive fields, and drops anything that reads as
+    interpretation. The user still has to accept the suggestion — nothing here
+    writes to their log on its own. */
+export async function analyseBowelPhoto(
+  connOrKey: Connection | string,
+  image: ChatImage,
+  opts: { signal?: AbortSignal } = {}
+): Promise<BowelAiResult> {
+  const conn: Connection = typeof connOrKey === "string" ? { provider: "gemini", key: connOrKey } : connOrKey;
+  if (!image?.data) throw new AiError("not-enough-data", "There's no photo to look at.");
+
+  const { parsed, model } = await runStructured(
+    conn,
+    {
+      system: BOWEL_SYSTEM,
+      user: "Describe what is visible in this photo, using only the form fields in the schema.",
+      image,
+      schema: BOWEL_SCHEMA,
+      jsonHint: BOWEL_JSON_HINT,
+      maxTokens: 400,
+    },
+    opts.signal
+  );
+
+  return normaliseBowelResult(parsed, model);
+}
+
+/** The boundary where a model's reply becomes something the UI may render.
+    Exported for tests — this is the guarantee that "never diagnose" survives a
+    model that ignores its instructions. */
+export function normaliseBowelResult(parsed: any, model = ""): BowelAiResult {
+  const bristolRaw = Number(parsed?.bristol);
+  const bristol =
+    isFinite(bristolRaw) && bristolRaw >= 1 && bristolRaw <= 7 ? Math.round(bristolRaw) : undefined;
+
+  /* Screen the *whole* string, then truncate — never the other way round.
+     Truncating first can cut a flagged word in half ("…liver conditi") and let
+     the sentence through the filter intact enough to still read as a
+     diagnosis. That is a real hole, not a hypothetical one; it is what the
+     first version of this function did. */
+  const clean = (v: unknown, max: number): string | undefined => {
+    const full = String(v ?? "").trim();
+    if (!full || isDiagnosticText(full)) return undefined;
+    return full.slice(0, max);
+  };
+
+  const noteFull = String(parsed?.note ?? "").trim();
+  const note = isDiagnosticText(noteFull) ? "" : noteFull.slice(0, 300);
+
+  return {
+    at: new Date().toISOString(),
+    model,
+    bristol,
+    color: clean(parsed?.color, 40),
+    consistency: clean(parsed?.consistency, 40),
+    form: clean(parsed?.form, 60),
+    confidence: asConfidence(parsed?.confidence),
+    note: note || undefined,
   };
 }
 

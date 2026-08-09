@@ -18,17 +18,30 @@
   --fhj-font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --fhj-font-display: "Fraunces Variable", "Fraunces", Georgia, serif;
 
-  /* One spacing scale, so "breathing room" means the same thing everywhere. */
+  /* One spacing scale, so "breathing room" means the same thing everywhere.
+     Nudged up from the previous scale: "generous spacing" is the single
+     cheapest thing that separates a calm product from a dense one. */
   --fhj-gap-xs: 0.375rem;
   --fhj-gap-sm: 0.625rem;
-  --fhj-gap: 0.875rem;
-  --fhj-gap-lg: 1.25rem;
-  --fhj-gap-xl: 2rem;
+  --fhj-gap: 1rem;
+  --fhj-gap-lg: 1.5rem;
+  --fhj-gap-xl: 2.25rem;
 
   --fhj-radius-sm: 0.625rem;
   --fhj-radius: 0.875rem;
-  --fhj-radius-lg: 1.125rem;
+  --fhj-radius-lg: 1.25rem;
   --fhj-radius-pill: 999px;
+
+  /* Border weights. The neobrutalist half of this design lives almost entirely
+     here and in --fhj-shadow-pop: a border one notch thicker than a hairline
+     reads as *drawn* rather than as a rendering artefact, without any of the
+     shouting that a 3px black outline would bring. */
+  --fhj-bw: 1.5px;
+  --fhj-bw-strong: 2px;
+
+  /* How far a tactile element travels when pressed. Matches the offset in
+     --fhj-shadow-pop so the element lands exactly on its own shadow. */
+  --fhj-press: 3px;
 
   /* Two durations, two curves. A third of either is usually a component asking
      for attention it hasn't earned. */
@@ -44,14 +57,14 @@
 /* ---------- base ---------- */
 
 html {
-  background: var(--fhj-bg, #0e1015);
+  background: var(--fhj-bg, #141519);
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
 }
 
 body {
-  background: var(--fhj-bg, #0e1015);
-  color: var(--fhj-ink, #e8eaf0);
+  background: var(--fhj-bg, #141519);
+  color: var(--fhj-ink, #ecebe7);
   font-family: var(--fhj-font-body);
   letter-spacing: 0.005em;
   overscroll-behavior-y: none;
@@ -64,8 +77,8 @@ body {
 }
 
 ::selection {
-  background: var(--fhj-accent-soft, rgba(91, 99, 232, 0.18));
-  color: var(--fhj-ink, #e8eaf0);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-ink, #ecebe7);
 }
 
 .font-display {
@@ -92,7 +105,7 @@ a:focus-visible,
 summary:focus-visible,
 [role="button"]:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
-  outline: 2px solid var(--fhj-focus, #8b92ff);
+  outline: 2px solid var(--fhj-focus, #a6c3ea);
   outline-offset: 2px;
   border-radius: var(--fhj-radius-sm);
 }
@@ -103,7 +116,7 @@ summary:focus-visible,
    looked like it ended after four options. */
 
 * {
-  scrollbar-color: var(--fhj-line-strong, #343b49) transparent;
+  scrollbar-color: var(--fhj-line-strong, #464a55) transparent;
   scrollbar-width: thin;
 }
 ::-webkit-scrollbar {
@@ -114,13 +127,13 @@ summary:focus-visible,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--fhj-line-strong, #343b49);
+  background: var(--fhj-line-strong, #464a55);
   border-radius: var(--fhj-radius-pill);
   border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--fhj-subtle, #6e7688);
+  background: var(--fhj-subtle, #9a9ca6);
   background-clip: content-box;
 }
 
@@ -149,7 +162,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   opacity: 0.55;
 }
 ::placeholder {
-  color: var(--fhj-muted, #4a5162);
+  color: var(--fhj-muted, #787b86);
   opacity: 1;
 }
 
@@ -160,8 +173,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* ---------- surfaces ---------- */
 
 .fhj-card {
-  background: var(--fhj-card, #171a22);
-  border: 1px solid var(--fhj-line, #252a34);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
   border-radius: var(--fhj-radius-lg);
   transition: border-color var(--fhj-ease) ease, background-color var(--fhj-ease) ease,
     box-shadow var(--fhj-ease) ease, transform var(--fhj-ease) var(--fhj-out);
@@ -173,8 +186,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 @media (hover: hover) {
   .fhj-card-tap:hover {
-    background: var(--fhj-card-hover, #1c2029);
-    border-color: var(--fhj-line-strong, #343b49);
+    background: var(--fhj-card-hover, #25272e);
+    border-color: var(--fhj-line-strong, #464a55);
     transform: translateY(-1px);
   }
 }
@@ -189,13 +202,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--fhj-subtle, #6e7688);
+  color: var(--fhj-subtle, #9a9ca6);
 }
 
 .fhj-caption {
   font-size: 0.6875rem;
   line-height: 1.5;
-  color: var(--fhj-subtle, #6e7688);
+  color: var(--fhj-subtle, #9a9ca6);
 }
 
 /* ---------- buttons ----------
@@ -210,9 +223,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   min-height: var(--fhj-tap);
   padding: 0.6875rem 1.125rem;
   border-radius: var(--fhj-radius);
-  border: 1px solid transparent;
+  border: var(--fhj-bw) solid transparent;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.003em;
   line-height: 1.2;
   cursor: pointer;
   user-select: none;
@@ -237,58 +251,65 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border-radius: var(--fhj-radius-sm);
 }
 
+/* The primary action is the one place the neobrutalist register is turned all
+   the way up: a solid accent slab, a drawn edge, and a hard offset shadow it
+   presses down into. Everything else in the app stays soft, which is what
+   keeps this reading as emphasis rather than as a house style. */
 .fhj-btn-primary {
-  background: var(--fhj-accent, #5b63e8);
-  color: var(--fhj-on-accent, #fff);
+  background: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #121419);
+  border-color: var(--fhj-accent, #8fb0e3);
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.55));
 }
 @media (hover: hover) {
   .fhj-btn-primary:hover:not(:disabled) {
-    background: var(--fhj-accent-hover, #6d74f0);
+    background: var(--fhj-accent-hover, #a3c0ea);
+    border-color: var(--fhj-accent-hover, #a3c0ea);
   }
 }
 
 .fhj-btn-secondary {
-  background: var(--fhj-faint, #20242e);
-  color: var(--fhj-ink, #e8eaf0);
-  border-color: var(--fhj-line, #252a34);
+  background: var(--fhj-faint, #2a2d35);
+  color: var(--fhj-ink, #ecebe7);
+  border-color: var(--fhj-line, #31343d);
 }
 @media (hover: hover) {
   .fhj-btn-secondary:hover:not(:disabled) {
-    background: var(--fhj-faint-hover, #272c37);
-    border-color: var(--fhj-line-strong, #343b49);
+    background: var(--fhj-faint-hover, #32353e);
+    border-color: var(--fhj-line-strong, #464a55);
   }
 }
 
 .fhj-btn-outline {
   background: transparent;
-  color: var(--fhj-accent-text, #a8aeff);
-  border-color: var(--fhj-accent-line, rgba(91, 99, 232, 0.42));
+  color: var(--fhj-accent-text, #a6c3ea);
+  border-color: var(--fhj-accent-line, rgba(143, 176, 227, 0.40));
 }
 @media (hover: hover) {
   .fhj-btn-outline:hover:not(:disabled) {
-    background: var(--fhj-accent-soft, rgba(91, 99, 232, 0.18));
+    background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
   }
 }
 
 .fhj-btn-ghost {
   background: transparent;
-  color: var(--fhj-sub, #9aa2b4);
+  color: var(--fhj-sub, #adafb8);
 }
 @media (hover: hover) {
   .fhj-btn-ghost:hover:not(:disabled) {
-    background: var(--fhj-faint, #20242e);
-    color: var(--fhj-ink, #e8eaf0);
+    background: var(--fhj-faint, #2a2d35);
+    color: var(--fhj-ink, #ecebe7);
   }
 }
 
 .fhj-btn-danger {
-  background: var(--fhj-danger-bg, rgba(236, 106, 99, 0.14));
-  color: var(--fhj-danger-ink, #f09b95);
+  background: var(--fhj-danger-bg, rgba(224, 139, 133, 0.13));
+  color: var(--fhj-danger-ink, #e6a29d);
   border-color: transparent;
 }
 @media (hover: hover) {
   .fhj-btn-danger:hover:not(:disabled) {
-    border-color: var(--fhj-danger-ink, #f09b95);
+    border-color: var(--fhj-danger-ink, #e6a29d);
   }
 }
 
@@ -301,16 +322,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   height: 2.5rem;
   flex: none;
   border-radius: var(--fhj-radius-pill);
-  background: var(--fhj-card, #171a22);
-  border: 1px solid var(--fhj-line, #252a34);
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, #31343d);
   cursor: pointer;
   transition: background-color var(--fhj-quick) ease, border-color var(--fhj-quick) ease,
     transform var(--fhj-ease) var(--fhj-spring);
 }
 @media (hover: hover) {
   .fhj-icon-btn:hover {
-    background: var(--fhj-faint, #20242e);
-    border-color: var(--fhj-line-strong, #343b49);
+    background: var(--fhj-faint, #2a2d35);
+    border-color: var(--fhj-line-strong, #464a55);
   }
 }
 .fhj-icon-btn:active {
@@ -335,6 +356,41 @@ button:active:not(:disabled) {
   transform: scale(0.965);
 }
 
+/* ---------- tactile press ----------
+
+   Anything carrying a hard offset shadow presses *into* it — travelling
+   exactly the shadow's own offset so the element lands flush on the surface
+   instead of shrinking. That one detail is the whole difference between a
+   button that feels like a physical key and one that feels like a rectangle
+   that got smaller.
+
+   Declared after the scale-press rules above so it wins on order; both
+   selectors carry the same specificity. */
+.fhj-pop {
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.55));
+  transition: background-color var(--fhj-quick) ease, border-color var(--fhj-quick) ease,
+    color var(--fhj-quick) ease, box-shadow var(--fhj-quick) var(--fhj-out),
+    transform var(--fhj-quick) var(--fhj-out);
+}
+.fhj-pop-lg {
+  box-shadow: var(--fhj-shadow-pop-lg, 5px 5px 0 rgba(0, 0, 0, 0.55));
+}
+.fhj-btn-primary:active:not(:disabled),
+.fhj-pop:active:not(:disabled),
+.fhj-pop-lg:active:not(:disabled) {
+  transform: translate(var(--fhj-press), var(--fhj-press));
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+/* Keyboard users get the same affordance on the way in, since they never see
+   :active for long enough to read it. */
+@media (hover: hover) {
+  .fhj-pop:hover:not(:disabled),
+  .fhj-pop-lg:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: var(--fhj-shadow-pop-lg, 5px 5px 0 rgba(0, 0, 0, 0.55));
+  }
+}
+
 /* ---------- chips ---------- */
 
 .fhj-chip {
@@ -342,14 +398,14 @@ button:active:not(:disabled) {
   align-items: center;
   gap: 0.4375rem;
   flex: none;
-  padding: 0.5rem 0.875rem;
-  min-height: 36px;
+  padding: 0.5rem 0.9375rem;
+  min-height: 38px;
   border-radius: var(--fhj-radius-pill);
-  background: var(--fhj-faint, #20242e);
-  border: 1px solid transparent;
-  color: var(--fhj-sub, #9aa2b4);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid transparent;
+  color: var(--fhj-sub, #adafb8);
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 550;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color var(--fhj-quick) ease, color var(--fhj-quick) ease,
@@ -357,24 +413,36 @@ button:active:not(:disabled) {
 }
 @media (hover: hover) {
   .fhj-chip:hover:not(.is-active) {
-    background: var(--fhj-faint-hover, #272c37);
-    color: var(--fhj-ink, #e8eaf0);
+    background: var(--fhj-faint-hover, #32353e);
+    color: var(--fhj-ink, #ecebe7);
   }
 }
 .fhj-chip:active {
   transform: scale(0.96);
 }
+/* A selected chip is not "the same chip, tinted". It is filled, drawn, lifted
+   and heavier — four signals, because this strip is the one control in the app
+   people reported not being able to read the state of. */
 .fhj-chip.is-active {
-  background: var(--fhj-accent, #5b63e8);
-  color: var(--fhj-on-accent, #fff);
-  font-weight: 600;
+  background: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #121419);
+  border-color: var(--fhj-accent, #8fb0e3);
+  font-weight: 700;
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.55));
+}
+.fhj-chip.is-active:active {
+  transform: translate(var(--fhj-press), var(--fhj-press));
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
 }
 .fhj-chip-dot {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
   flex: none;
-  box-shadow: 0 0 0 1.5px var(--fhj-on-accent, #fff);
+  box-shadow: 0 0 0 1.5px var(--fhj-card, #1e2026);
+}
+.fhj-chip.is-active .fhj-chip-dot {
+  box-shadow: 0 0 0 1.5px var(--fhj-on-accent, #121419);
 }
 
 /* ---------- metric picker ----------
@@ -433,9 +501,9 @@ button:active:not(:disabled) {
   width: 2rem;
   height: 2rem;
   border-radius: var(--fhj-radius-pill);
-  background: var(--fhj-card, #171a22);
-  border: 1px solid var(--fhj-line-strong, #343b49);
-  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.36));
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line-strong, #464a55);
+  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.34));
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--fhj-quick) ease, background-color var(--fhj-quick) ease;
@@ -452,7 +520,7 @@ button:active:not(:disabled) {
 }
 @media (hover: hover) {
   .fhj-picker-arrow:hover {
-    background: var(--fhj-faint-hover, #272c37);
+    background: var(--fhj-faint-hover, #32353e);
   }
 }
 /* Touch devices scroll directly; arrows would just cover two chips. */
@@ -479,8 +547,8 @@ button:active:not(:disabled) {
   padding: 0.1875rem;
   gap: 0.1875rem;
   border-radius: var(--fhj-radius);
-  background: var(--fhj-faint, #20242e);
-  border: 1px solid var(--fhj-line, #252a34);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
 }
 .fhj-segment {
   flex: 1;
@@ -488,7 +556,7 @@ button:active:not(:disabled) {
   padding: 0.4375rem 0.5rem;
   border-radius: calc(var(--fhj-radius) - 0.1875rem);
   background: transparent;
-  color: var(--fhj-sub, #9aa2b4);
+  color: var(--fhj-sub, #adafb8);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
@@ -496,14 +564,18 @@ button:active:not(:disabled) {
 }
 @media (hover: hover) {
   .fhj-segment:hover:not(.is-active) {
-    color: var(--fhj-ink, #e8eaf0);
+    color: var(--fhj-ink, #ecebe7);
   }
 }
 .fhj-segment.is-active {
-  background: var(--fhj-card, #171a22);
-  color: var(--fhj-ink, #e8eaf0);
-  font-weight: 600;
-  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.36));
+  background: var(--fhj-card, #1e2026);
+  color: var(--fhj-ink, #ecebe7);
+  font-weight: 680;
+  border: var(--fhj-bw) solid var(--fhj-line-strong, #464a55);
+  /* -1.5px keeps the active pill the same height as its inactive siblings once
+     it gains a border, so the row doesn't twitch when the selection moves. */
+  margin: calc(-1 * var(--fhj-bw));
+  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.34));
 }
 
 /* ---------- switch ---------- */
@@ -526,11 +598,11 @@ button:active:not(:disabled) {
   width: 2.625rem;
   height: 1.5rem;
   border-radius: var(--fhj-radius-pill);
-  background: var(--fhj-line-strong, #343b49);
+  background: var(--fhj-line-strong, #464a55);
   transition: background-color var(--fhj-ease) ease;
 }
 .fhj-switch.is-on {
-  background: var(--fhj-accent, #5b63e8);
+  background: var(--fhj-accent, #8fb0e3);
 }
 .fhj-switch::after {
   content: "";
@@ -553,21 +625,35 @@ button:active:not(:disabled) {
 .fhj-input {
   width: 100%;
   min-height: var(--fhj-tap);
-  padding: 0.625rem 0.875rem;
+  padding: 0.6875rem 0.9375rem;
   border-radius: var(--fhj-radius);
-  background: var(--fhj-faint, #20242e);
-  border: 1px solid var(--fhj-line, #252a34);
-  color: var(--fhj-ink, #e8eaf0);
-  font-size: 0.875rem;
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  color: var(--fhj-ink, #ecebe7);
+  font-size: 0.9375rem; /* ≥16px on iOS would be ideal; 15px + the meta viewport
+                           lock is the compromise the rest of the app uses */
   outline: none;
-  transition: border-color var(--fhj-quick) ease, background-color var(--fhj-quick) ease;
+  transition: border-color var(--fhj-quick) ease, background-color var(--fhj-quick) ease,
+    box-shadow var(--fhj-quick) ease;
 }
 .fhj-input:hover {
-  border-color: var(--fhj-line-strong, #343b49);
+  border-color: var(--fhj-line-strong, #464a55);
 }
 .fhj-input:focus {
-  border-color: var(--fhj-accent, #5b63e8);
-  background: var(--fhj-card, #171a22);
+  border-width: var(--fhj-bw-strong);
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-card, #1e2026);
+  /* Padding compensates for the half-pixel the thicker border eats, so text
+     doesn't shift when the field takes focus. */
+  padding: calc(0.6875rem - 0.5px) calc(0.9375rem - 0.5px);
+}
+.fhj-input::placeholder {
+  color: var(--fhj-muted, #787b86);
+}
+textarea.fhj-input {
+  min-height: 5.5rem;
+  resize: vertical;
+  line-height: 1.55;
 }
 
 /* ---------- badges ---------- */
@@ -584,20 +670,359 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 .fhj-badge-neutral {
-  background: var(--fhj-faint, #20242e);
-  color: var(--fhj-sub, #9aa2b4);
+  background: var(--fhj-faint, #2a2d35);
+  color: var(--fhj-sub, #adafb8);
 }
 .fhj-badge-accent {
-  background: var(--fhj-accent-soft, rgba(91, 99, 232, 0.18));
-  color: var(--fhj-accent-text, #a8aeff);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-accent-text, #a6c3ea);
 }
 .fhj-badge-good {
-  background: var(--fhj-good-soft, rgba(79, 191, 135, 0.16));
-  color: var(--fhj-good, #4fbf87);
+  background: var(--fhj-good-soft, rgba(127, 190, 158, 0.15));
+  color: var(--fhj-good, #7fbe9e);
 }
 .fhj-badge-danger {
-  background: var(--fhj-danger-bg, rgba(236, 106, 99, 0.14));
-  color: var(--fhj-danger-ink, #f09b95);
+  background: var(--fhj-danger-bg, rgba(224, 139, 133, 0.13));
+  color: var(--fhj-danger-ink, #e6a29d);
+}
+
+/* ============================================================
+   Soft Clinical components
+   ============================================================ */
+
+/* ---------- section titles ----------
+   Bold, set in the display face, with a small drawn mark to its left. The mark
+   is the "playful geometric accent" in its entire budget: one 3px-wide bar per
+   section, tinted by category. Anything more and the page starts to look
+   decorated rather than organised. */
+
+.fhj-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fhj-gap);
+  margin-bottom: 0.875rem;
+}
+.fhj-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-family: var(--fhj-font-display);
+  font-size: 1.0625rem;
+  font-weight: 620;
+  letter-spacing: -0.018em;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-section-title::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 1.0625rem;
+  border-radius: 2px;
+  background: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+/* Sections that already carry an icon don't need the bar as well. */
+.fhj-section-title.no-mark::before {
+  display: none;
+}
+
+/* Page-level heading, one per screen. */
+.fhj-page-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.026em;
+  line-height: 1.15;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+/* ---------- category tinting ----------
+   Set --fhj-mark (and optionally --fhj-tint-soft) on any container and the
+   section bar, badges and rails inside it follow. One hue per category is what
+   lets someone tell a food card from a bowel card at a glance. */
+
+.fhj-cat-symptom {
+  --fhj-mark: var(--fhj-accent, #8fb0e3);
+  --fhj-tint-soft: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  --fhj-tint-text: var(--fhj-accent-text, #a6c3ea);
+}
+.fhj-cat-food {
+  --fhj-mark: var(--fhj-sage, #7fbe9e);
+  --fhj-tint-soft: var(--fhj-sage-soft, rgba(127, 190, 158, 0.15));
+  --fhj-tint-text: var(--fhj-sage-text, #94cbad);
+}
+.fhj-cat-bowel {
+  --fhj-mark: var(--fhj-clay, #d9a183);
+  --fhj-tint-soft: var(--fhj-clay-soft, rgba(217, 161, 131, 0.15));
+  --fhj-tint-text: var(--fhj-clay-text, #e3b49b);
+}
+.fhj-cat-ai {
+  --fhj-mark: var(--fhj-lavender, #b49ee0);
+  --fhj-tint-soft: var(--fhj-lavender-soft, rgba(180, 158, 224, 0.16));
+  --fhj-tint-text: var(--fhj-lavender-text, #c3b1e8);
+}
+.fhj-cat-photo {
+  --fhj-mark: var(--fhj-chart3, #7bc2b6);
+  --fhj-tint-soft: rgba(123, 194, 182, 0.15);
+  --fhj-tint-text: var(--fhj-chart3, #7bc2b6);
+}
+
+/* ---------- Quick Add tiles ----------
+   The most-pressed control in the app. Chunky, drawn, and pressable — this is
+   where the tactile register earns its keep. */
+
+/* Two columns, always. Four tiles across a phone column leaves ~88px each,
+   which is enough for the icon and not enough for the label under it — the
+   labels wrapped to three lines and the row stopped reading as one control. */
+.fhj-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+.fhj-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 5.25rem;
+  padding: 0.8125rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line, #31343d);
+  color: var(--fhj-ink, #ecebe7);
+  text-align: left;
+  cursor: pointer;
+}
+.fhj-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+.fhj-tile-label {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+.fhj-tile-sub {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  line-height: 1.3;
+}
+@media (hover: hover) {
+  .fhj-tile:hover {
+    border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  }
+}
+.fhj-tile.is-done {
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
+}
+
+/* ---------- timeline ----------
+   Today's logs, in the order they happened. The rail is drawn by the items
+   themselves so an empty list has no orphaned line, and the dot is tinted by
+   whichever category the row belongs to. */
+
+.fhj-tl {
+  display: flex;
+  flex-direction: column;
+}
+.fhj-tl-item {
+  position: relative;
+  display: flex;
+  gap: 0.875rem;
+  padding: 0.75rem 0 0.75rem 0;
+}
+.fhj-tl-gutter {
+  position: relative;
+  flex: none;
+  width: 1.375rem;
+  display: flex;
+  justify-content: center;
+}
+/* The connecting line: drawn from every item except the last, so it stops at
+   the final dot instead of trailing into the card's padding. */
+.fhj-tl-item:not(:last-child) .fhj-tl-gutter::after {
+  content: "";
+  position: absolute;
+  top: 1.5rem;
+  bottom: -0.875rem;
+  width: var(--fhj-bw);
+  background: var(--fhj-line, #31343d);
+  border-radius: 1px;
+}
+.fhj-tl-dot {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
+  border: var(--fhj-bw) solid var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+.fhj-tl-body {
+  flex: 1;
+  min-width: 0;
+}
+.fhj-tl-time {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-tl-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+  line-height: 1.35;
+}
+.fhj-tl-meta {
+  margin-top: 0.1875rem;
+  font-size: 0.75rem;
+  color: var(--fhj-sub, #adafb8);
+  line-height: 1.45;
+}
+
+/* ---------- AI provenance ----------
+   Every value a model produced is lavender and says so. The rule this enforces
+   is that the user can always tell their own number from an estimated one. */
+
+.fhj-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.125rem 0.4375rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-lavender-soft, rgba(180, 158, 224, 0.16));
+  border: 1px solid var(--fhj-lavender, #b49ee0);
+  color: var(--fhj-lavender-text, #c3b1e8);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.fhj-ai-badge::before {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: none;
+  /* A diamond, not a dot — distinguishable from the timeline dots without
+     relying on colour alone. */
+  background: currentColor;
+  transform: rotate(45deg);
+}
+/* A field whose value came from a model: dashed underline, lavender rail. */
+.fhj-ai-value {
+  border-bottom: 1px dashed var(--fhj-lavender, #b49ee0);
+}
+
+/* ---------- empty states ---------- */
+
+.fhj-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.625rem;
+  padding: 2.25rem 1.25rem;
+}
+.fhj-empty-art {
+  position: relative;
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
+  border: var(--fhj-bw-strong) solid var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.55));
+}
+.fhj-empty-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-empty-text {
+  max-width: 22rem;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--fhj-sub, #adafb8);
+}
+
+/* ---------- loading ----------
+   Skeletons match the shape of what is coming, so the layout doesn't jump when
+   it arrives. `.fhj-shimmer` supplies the sweep. */
+
+.fhj-skeleton {
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-skeleton-line {
+  height: 0.6875rem;
+  border-radius: var(--fhj-radius-pill);
+}
+
+/* ---------- card expansion ----------
+   Grid-template-rows 0fr→1fr animates to the content's real height without
+   measuring it in JavaScript and without a max-height guess that clips. */
+
+.fhj-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--fhj-ease) var(--fhj-out);
+}
+.fhj-expand.is-open {
+  grid-template-rows: 1fr;
+}
+.fhj-expand > * {
+  overflow: hidden;
+  min-height: 0;
+}
+.fhj-expand-body {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--fhj-ease) ease, transform var(--fhj-ease) var(--fhj-out);
+}
+.fhj-expand.is-open .fhj-expand-body {
+  opacity: 1;
+  transform: none;
+  transition-delay: 60ms;
+}
+
+/* ---------- photos ----------
+   Photos fade up as they decode rather than popping in at full opacity, which
+   is what makes a gallery of them feel settled instead of flickery. */
+
+.fhj-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--fhj-faint, #2a2d35);
+  animation: fhjPhotoIn 320ms var(--fhj-out) backwards;
+}
+@keyframes fhjPhotoIn {
+  from {
+    opacity: 0;
+    transform: scale(1.015);
+  }
 }
 
 /* ---------- modal ---------- */
@@ -610,7 +1035,7 @@ button:active:not(:disabled) {
   align-items: flex-end;
   justify-content: center;
   padding: 1rem;
-  background: var(--fhj-overlay, rgba(5, 7, 11, 0.74));
+  background: var(--fhj-overlay, rgba(10, 11, 14, 0.72));
   backdrop-filter: blur(3px);
   animation: fhjFade 180ms ease;
 }
@@ -625,11 +1050,11 @@ button:active:not(:disabled) {
   max-height: min(86vh, 44rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1.375rem;
+  padding: 1.5rem;
   border-radius: var(--fhj-radius-lg);
-  background: var(--fhj-card, #171a22);
-  border: 1px solid var(--fhj-line, #252a34);
-  box-shadow: var(--fhj-shadow-lg, 0 12px 36px rgba(0, 0, 0, 0.48));
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
+  box-shadow: var(--fhj-shadow-lg, 0 12px 36px rgba(0, 0, 0, 0.46));
   animation: fhjSheet 260ms var(--fhj-out);
 }
 @keyframes fhjFade {
@@ -692,9 +1117,9 @@ button:active:not(:disabled) {
 .fhj-shimmer {
   background: linear-gradient(
     100deg,
-    var(--fhj-faint, #20242e) 38%,
-    var(--fhj-faint-hover, #272c37) 50%,
-    var(--fhj-faint, #20242e) 62%
+    var(--fhj-faint, #2a2d35) 38%,
+    var(--fhj-faint-hover, #32353e) 50%,
+    var(--fhj-faint, #2a2d35) 62%
   );
   background-size: 200% 100%;
   animation: fhjShimmer 1.4s ease infinite;
@@ -776,7 +1201,7 @@ button:active:not(:disabled) {
 @keyframes fhjPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 var(--fhj-accent-line, rgba(91, 99, 232, 0.42));
+    box-shadow: 0 0 0 0 var(--fhj-accent-line, rgba(143, 176, 227, 0.40));
   }
   50% {
     box-shadow: 0 0 0 7px transparent;
@@ -795,7 +1220,7 @@ button:active:not(:disabled) {
   z-index: 60;
   padding: 0.6rem 1.1rem;
   border-radius: 0 0 var(--fhj-radius) var(--fhj-radius);
-  background: var(--fhj-accent, #5b63e8);
+  background: var(--fhj-accent, #8fb0e3);
   color: var(--fhj-on-accent, #fff);
   font-size: 0.85rem;
   font-weight: 600;
@@ -825,17 +1250,41 @@ button:active:not(:disabled) {
     transition: none !important;
     animation: none !important;
   }
+  /* With transitions off, the hover lift becomes an instantaneous 1px jump
+     under the pointer — the exact twitchiness this preference is asking us to
+     stop. The press state stays: it is feedback, not decoration. */
+  .fhj-pop:hover:not(:disabled),
+  .fhj-pop-lg:hover:not(:disabled),
+  .fhj-card-tap:hover {
+    transform: none;
+  }
+  /* Expansion can't animate, so it must still open. grid-template-rows: 1fr on
+     a collapsed row would otherwise leave the body permanently clipped. */
+  .fhj-expand.is-open .fhj-expand-body {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (prefers-contrast: more) {
   :root {
     --fhj-sub: var(--fhj-ink);
     --fhj-subtle: var(--fhj-ink);
+    --fhj-bw: 2px;
+    --fhj-bw-strong: 2.5px;
   }
   .fhj-card,
   .fhj-input,
-  .fhj-segmented {
+  .fhj-segmented,
+  .fhj-tile,
+  .fhj-tl-dot {
     border-color: var(--fhj-line-strong) !important;
+  }
+  /* A tinted fill is not enough of a selected state when contrast is boosted. */
+  .fhj-chip.is-active,
+  .fhj-tile.is-done {
+    outline: 2px solid var(--fhj-ink);
+    outline-offset: 1px;
   }
 }
 
@@ -869,7 +1318,7 @@ button:active:not(:disabled) {
   body,
   .min-h-screen {
     background: #fff !important;
-    color: #16191f !important;
+    color: #1a1c21 !important;
   }
   body {
     -webkit-print-color-adjust: exact;
@@ -900,7 +1349,7 @@ button:active:not(:disabled) {
   }
   .fhj-card,
   .print-area .rounded-2xl {
-    border: 1px solid #c9cfd8 !important;
+    border: 1px solid #adafb8 !important;
     background: #fff !important;
     break-inside: avoid;
     page-break-inside: avoid;
@@ -923,7 +1372,7 @@ button:active:not(:disabled) {
     page-break-inside: avoid;
   }
   .print-masthead {
-    border-bottom: 2px solid #16191f;
+    border-bottom: 2px solid #1a1c21;
     padding-bottom: 8px;
     margin-bottom: 14px;
   }
@@ -936,16 +1385,16 @@ button:active:not(:disabled) {
     flex-wrap: wrap;
     gap: 4px 16px;
     font-size: 9pt;
-    color: #4a5160;
+    color: #787b86;
     margin-top: 4px;
   }
   .print-footnote {
     margin-top: 18px;
     padding-top: 8px;
-    border-top: 1px solid #c9cfd8;
+    border-top: 1px solid #adafb8;
     font-size: 8pt;
     line-height: 1.45;
-    color: #4a5160;
+    color: #787b86;
   }
   .print-footnote p {
     margin-bottom: 4px;
@@ -959,7 +1408,7 @@ button:active:not(:disabled) {
 }
 @media (hover: hover) {
   .fhj-row:hover {
-    background: var(--fhj-card-hover, #1c2029);
+    background: var(--fhj-card-hover, #25272e);
   }
 }
 .fhj-row:first-child {

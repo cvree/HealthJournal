@@ -4,17 +4,20 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  BarChart, Bar, CartesianGrid,
+  BarChart, Bar, CartesianGrid, ComposedChart, Area, Cell,
 } from "recharts";
 import * as XLSX from "xlsx";
-import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom } from "./lib/motion";
+import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion } from "./lib/motion";
 import VantaBackdrop from "./components/VantaBackdrop";
 import RecoveryScreen from "./components/RecoveryScreen";
 import ViewerLanding from "./components/ViewerLanding";
 import LockScreen from "./components/LockScreen";
 import { sanitizeCustomField } from "./lib/questions";
 import { validateDatabase } from "./lib/validate";
-import { serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped } from "./lib/exports";
+import {
+  serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped,
+  buildFoodTable, buildBowelTable, logsInRange,
+} from "./lib/exports";
 import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
 import { createPinRecord, verifyPin } from "./lib/lock";
 import {
@@ -31,9 +34,20 @@ import {
 } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
 import {
+  MEALS, mealLabel, mealForTime, UNITS, BRISTOL, bristolLabel, BOWEL_COLORS,
+  BOWEL_CONSISTENCY, BOWEL_AMOUNTS, SEVERITY_0_3, severityLabel,
+  NUTRIENTS, NUTRIENT_KEYS, nutrientDef, formatNutrient,
+  newFoodLog, newBowelLog, resolveNutrient, effectiveNutrition, hasAiValues,
+  hasUserEdits, acceptEstimate, discardEstimate,
+  foodOn, bowelOn, dayTotals, DERIVED_METRICS, derivedMetric, isDerivedKey,
+  availableDerivedMetrics, foodSummary, bowelSummary,
+  sanitizeFoodLogs, sanitizeBowelLogs, localTime, prettyTime,
+} from "./lib/tracking";
+import {
   hasStoredKey, loadConnection, saveConnection, clearKey, maskKey, testConnection,
   buildAnalysisInput, summariseInput, runPatternAnalysis, strengthLabel, looksLikeKey,
   PROVIDERS, providerOf, OPENAI_NOTE,
+  analyseFood, analyseBowelPhoto, summariseFoodRequest,
 } from "./lib/ai";
 
 /* ============================================================
@@ -46,7 +60,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -992,6 +1006,17 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     /* "Opens somewhere else" — the arrow leaving the box is the convention
        people already read without being told. */
     link: <g><path {...p} d="M14 4h6v6" /><path {...p} d="M20 4l-8.5 8.5" /><path {...p} d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></g>,
+    /* Food: a fork and knife, the one food glyph nobody has to decode. */
+    food: <g><path {...p} d="M7 3v8m0 0v10M5 3v4a2 2 0 0 0 4 0V3" /><path {...p} d="M17 21v-8a4 4 0 0 1 0-8v0c1.5 0 2 1.5 2 4s-.5 4-2 4" /></g>,
+    /* Bowel: the app's own mark rather than the obvious one — a rounded form
+       with a motion arc. Sits in a health journal without being a joke. */
+    bowel: <g><path {...p} d="M8.5 20h7a3 3 0 0 0 .6-5.9 3.4 3.4 0 0 0-2.6-4.4A3.2 3.2 0 0 0 8 8.6a3 3 0 0 0-.8 5.6A3 3 0 0 0 8.5 20z" /><path {...p} d="M12 3v2.6" /></g>,
+    sunrise: <g><path {...p} d="M12 4v3M5.6 9.6 7 11M18.4 9.6 17 11M3 17h18M6.5 17a5.5 5.5 0 0 1 11 0" /><path {...p} d="M9.5 6.5 12 4l2.5 2.5" /></g>,
+    snack: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M9 10.5v.4M15 10.5v.4M8.8 15a4.2 4.2 0 0 0 6.4 0" /></g>,
+    drink: <g><path {...p} d="M6 4h12l-1.4 15.2a2 2 0 0 1-2 1.8H9.4a2 2 0 0 1-2-1.8z" /><path {...p} d="M6.6 10h10.8" /></g>,
+    camera: <g><path {...p} d="M4 8h3l1.4-2h7.2L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle {...p} cx="12" cy="13.5" r="3.4" /></g>,
+    clock: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M12 7.2V12l3.2 2" /></g>,
+    edit: <path {...p} d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17zM13.5 6.5l3 3" />,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -1010,10 +1035,13 @@ function Card({ children, className = "", style = {}, tappable = false, ...rest 
   );
 }
 
-function SectionTitle({ children, action }) {
+/** A section heading: display face, weighted, with a small tinted bar to its
+    left. `cat` picks the bar's hue from the category classes in index.css, so
+    a food section and a symptom section are told apart before either is read. */
+function SectionTitle({ children, action, cat = "fhj-cat-symptom" }) {
   return (
-    <div className="mt-7 mb-2 flex items-end justify-between gap-3">
-      <h2 className="fhj-eyebrow">{children}</h2>
+    <div className={`fhj-section mt-7 ${cat}`}>
+      <h2 className="fhj-section-title">{children}</h2>
       {action}
     </div>
   );
@@ -1086,7 +1114,12 @@ function Badge({ tone = "neutral", children, ...rest }) {
 
 /** Bottom sheet on a phone, centred dialog on a laptop. Closes on Escape and
     on a backdrop click, and traps initial focus on the panel itself. */
-function Modal({ title, children, onClose, labelledBy = "fhj-modal-title" }) {
+/* `labelledBy` is generated per instance rather than fixed. Two modals can be
+   on screen at once — a confirmation sheet over the form it is asking about —
+   and a shared id meant the inner dialog announced the outer one's heading. */
+function Modal({ title, children, onClose, labelledBy }) {
+  const autoId = React.useId();
+  const titleId = labelledBy || `fhj-modal-title-${autoId}`;
   const panelRef = useRef(null);
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape" && onClose) onClose(); };
@@ -1097,10 +1130,10 @@ function Modal({ title, children, onClose, labelledBy = "fhj-modal-title" }) {
   return (
     <div className="fhj-scrim" onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
       <div ref={panelRef} className="fhj-sheet" role="dialog" aria-modal="true"
-        aria-labelledby={title ? labelledBy : undefined} tabIndex={-1} style={{ outline: "none" }}>
+        aria-labelledby={title ? titleId : undefined} tabIndex={-1} style={{ outline: "none" }}>
         {title && (
           <div className="flex items-start justify-between gap-3 mb-3">
-            <h2 id={labelledBy} className="font-display text-xl leading-snug">{title}</h2>
+            <h2 id={titleId} className="font-display text-xl leading-snug">{title}</h2>
             {onClose && (
               <button type="button" onClick={onClose} aria-label="Close"
                 className="fhj-icon-btn" style={{ width: "2rem", height: "2rem" }}>
@@ -1161,7 +1194,7 @@ function ToggleInput({ field, value, onChange, tint }) {
         className="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
         style={{
           background: active ? (val ? tint : C.subtle) : C.faint,
-          color: active ? "#fff" : C.sub,
+          color: active ? readableInk(val ? tint : C.subtle) : C.sub,
         }}>
         {label}
       </button>
@@ -1192,7 +1225,7 @@ function ChipsInput({ field, value, onChange, tint }) {
               className="px-3 py-1.5 rounded-full text-sm transition-colors"
               style={{
                 background: active ? tint : C.faint,
-                color: active ? "#fff" : C.ink,
+                color: active ? readableInk(tint) : C.ink,
               }}>
               {opt}
             </button>
@@ -1456,7 +1489,7 @@ function CameraModal({ timer, onCapture, onFallback, onClose, tint }) {
           <p className="text-sm mb-4" style={{ color: C.sub }}>
             This device or browser didn't allow the in-app camera, so the countdown timer can't run here. You can still take the photo with your device camera.
           </p>
-          <button onClick={onFallback} className="w-full py-3 rounded-xl text-sm font-semibold text-white" style={{ background: tint || C.accent }}>
+          <button onClick={onFallback} className="fhj-btn fhj-btn-primary fhj-btn-block">
             Open device camera
           </button>
           <button onClick={onClose} className="w-full mt-2 py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>Cancel</button>
@@ -1493,7 +1526,7 @@ function CameraModal({ timer, onCapture, onFallback, onClose, tint }) {
             <button onClick={() => { setShot(null); setPhase("live"); }}
               className="flex-1 py-3.5 rounded-xl text-sm font-semibold" style={{ background: "#333", color: "#fff" }}>Retake</button>
             <button onClick={() => onCapture(shot)}
-              className="flex-[1.4] py-3.5 rounded-xl text-sm font-semibold text-white" style={{ background: tint || C.accent }}>Use photo</button>
+              className="fhj-btn fhj-btn-primary flex-[1.4]">Use photo</button>
           </div>
         ) : phase === "counting" ? (
           <button onClick={cancelCountdown} className="w-full py-3.5 rounded-xl text-sm font-semibold" style={{ background: "#333", color: "#fff" }}>
@@ -1508,7 +1541,7 @@ function CameraModal({ timer, onCapture, onFallback, onClose, tint }) {
               </button>
             )}
             <button onClick={grab} disabled={phase !== "live"}
-              className="flex-1 py-3.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: tint || C.accent }}>
+              className="fhj-btn fhj-btn-primary flex-1">
               Capture now
             </button>
           </div>
@@ -1521,7 +1554,7 @@ function CameraModal({ timer, onCapture, onFallback, onClose, tint }) {
 /* Capture entry point. With a timer set AND an in-app camera available, opens
    the countdown camera; otherwise (or on failure) opens the native picker,
    which is always reliable but can't run a countdown. */
-function CaptureButton({ onPick, label = "Take photo", tint, timer = 0 }) {
+function CaptureButton({ onPick, label = "Take photo", tint, timer = 0, variant = "primary", icon }) {
   const inputRef = useRef(null);
   const [showCam, setShowCam] = useState(false);
   const [note, setNote] = useState("");
@@ -1544,11 +1577,7 @@ function CaptureButton({ onPick, label = "Take photo", tint, timer = 0 }) {
           try { onPick(await processImage(file)); }
           catch (err) { window.alert("Could not read that photo — please try again."); }
         }} />
-      <button onClick={onClick}
-        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
-        style={{ background: tint || C.accent }}>
-        {label}
-      </button>
+      <Button variant={variant} block icon={icon} onClick={onClick}>{label}</Button>
       {note && <div className="text-[11px] mt-1 text-center" style={{ color: C.sub }}>{note}</div>}
       {showCam && (
         <CameraModal timer={timer} tint={tint}
@@ -1744,7 +1773,7 @@ function PhotoSession({ tpl, entries, date, photos, answers, timer, onSetAnswer,
         })}
         <div className="flex gap-2 mt-1">
           <button onClick={() => setStep(0)} className="flex-1 py-3 rounded-xl text-sm font-semibold" style={{ background: C.faint }}>Back to start</button>
-          <button onClick={onDone} className="flex-[1.4] py-3 rounded-xl text-sm font-semibold text-white" style={{ background: tpl.color }}>Done</button>
+          <button onClick={onDone} className="fhj-btn fhj-btn-primary flex-[1.4]">Done</button>
         </div>
         <p className="text-[11px] mt-3 leading-relaxed" style={{ color: C.sub }}>
           Photos stay on this device. Ratings are personal tracking, not a medical assessment.
@@ -1812,7 +1841,7 @@ function PhotoSession({ tpl, entries, date, photos, answers, timer, onSetAnswer,
               <CaptureButtonInline label="Retake" tint={C.faint} textColor={C.ink} timer={timer} busy={busy}
                 onPick={(shot) => capture(f, shot)} />
               <button onClick={() => { clearTimeout(advanceTimer.current); setStep(step + 1); }}
-                className="flex-[1.4] py-3 rounded-xl text-sm font-semibold text-white" style={{ background: tpl.color }}>
+                className="fhj-btn fhj-btn-primary flex-[1.4]">
                 {step === fields.length - 1 ? "Finish" : "Next photo"}
               </button>
             </div>
@@ -1909,7 +1938,7 @@ const QUICK_BATCH_SIZE = 4;
 function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped, onSkip }) {
   const tap = (k, val, kind = "tap") => { feedback(kind); set(k, val); };
   const bigBtn = (active, color) => ({
-    background: active ? color : C.faint, color: active ? "#fff" : C.ink,
+    background: active ? color : C.faint, color: active ? readableInk(color) : C.ink,
     boxShadow: active ? `0 0 0 3px ${color}33` : "none",
   });
   const followUpOpen = f.type === "toggle" && v === true && deps.length > 0;
@@ -1956,7 +1985,7 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
               {lbl}
               {v == null && ghost === val && (
                 <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[9px] font-semibold"
-                  style={{ background: tint, color: "#fff" }}>yesterday</span>
+                  style={{ background: tint, color: readableInk(tint) }}>yesterday</span>
               )}
             </button>
           ))}
@@ -1976,7 +2005,7 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
                 set(f.k, next.length ? next : null);
               }}
                 className="px-4 py-2.5 rounded-full text-sm font-medium transition-colors"
-                style={{ background: active ? tint : C.faint, color: active ? "#fff" : C.ink }}>{opt}</button>
+                style={{ background: active ? tint : C.faint, color: active ? readableInk(tint) : C.ink }}>{opt}</button>
             );
           })}
         </div>
@@ -2178,7 +2207,7 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
           const s = calcStreak(entries);
           feedback(s > 0 && s % 7 === 0 ? "milestone" : "save");
           setCelebrating(true);
-        }} className="w-full mt-3 py-3.5 rounded-xl text-sm font-semibold text-white" style={{ background: tpl.color }}>
+        }} className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
           {doneLabel}
         </button>
       </div>
@@ -2211,8 +2240,7 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
           className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-30" style={{ background: C.faint }}>Back</button>
         <button onClick={skipBatch} className="flex-1 py-3 rounded-xl text-sm font-semibold" style={{ background: C.faint }}>Skip</button>
         <button onClick={() => { feedback(batchDone ? "batch" : "tap"); goNext(); }}
-          className={"flex-[1.4] py-3 rounded-xl text-sm font-semibold text-white" + (batchDone ? " fhj-pulse" : "")}
-          style={{ background: tpl.color }}>
+          className={"fhj-btn fhj-btn-primary flex-[1.4]" + (batchDone ? " fhj-pulse" : "")}>
           {page === totalPages - 1 ? "Review" : "Continue"}
         </button>
       </div>
@@ -2416,6 +2444,39 @@ const tooltipProps = () => ({
 });
 const axisTick = () => ({ fontSize: 10, fill: C.subtle });
 
+/* Charts draw themselves in once, then hold still. The duration is long enough
+   to read as a line being drawn and short enough that nobody waits for it —
+   and it is zero when the user has asked for reduced motion, which recharts
+   respects by simply rendering the final frame. */
+const chartAnim = () => (prefersReducedMotion() ? { isAnimationActive: false } : {
+  isAnimationActive: true, animationDuration: 620, animationEasing: "ease-out",
+});
+
+/* A soft vertical wash under the primary line. Quiet depth rather than a
+   filled area chart: 22% at the line, nothing by the axis. */
+function ChartFade({ id, color }) {
+  return (
+    <defs>
+      <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+        <stop offset="100%" stopColor={color} stopOpacity={0} />
+      </linearGradient>
+    </defs>
+  );
+}
+
+/* The empty state a chart falls back to. Shares the shape of the chart it
+   replaces so the card doesn't resize when data arrives. */
+function ChartEmpty({ title, height = 210 }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center px-6 rounded-xl fhj-cat-symptom"
+      style={{ height, background: C.faint, border: `1.5px dashed ${C.line}` }}>
+      <Icon name="trends" size={22} color={C.muted} />
+      <div className="text-sm mt-2" style={{ color: C.sub }}>{title}</div>
+    </div>
+  );
+}
+
 /* Overlay up to four metrics on one 30-day chart. Scale (1–10) metrics share a
    fixed axis; mixing in number metrics (steps, weight…) switches to an auto
    axis with a gentle note that units differ. */
@@ -2429,15 +2490,7 @@ function MultiMetricChart({ entries, fields, tint }) {
   });
   const anyData = fields.some((_, j) => series[j].some((p) => p.v != null));
   const allScale = fields.every((f) => f.type === "scale");
-  if (!anyData) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center px-6 rounded-xl"
-        style={{ height: 200, background: C.faint, color: C.sub }}>
-        <Icon name="trends" size={22} color={C.muted} />
-        <div className="text-sm mt-2">No answers for these metrics in the last 30 days.</div>
-      </div>
-    );
-  }
+  if (!anyData) return <ChartEmpty title="No answers for these metrics in the last 30 days." />;
   return (
     <>
       <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 mb-2.5">
@@ -2448,24 +2501,30 @@ function MultiMetricChart({ entries, fields, tint }) {
           </span>
         ))}
       </div>
-      <div style={{ width: "100%", height: 200 }}>
+      <div style={{ width: "100%", height: 210 }}>
         <ResponsiveContainer>
-          <LineChart data={data} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}>
-            <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 4" />
+          <LineChart data={data} margin={{ top: 10, right: 8, left: -2, bottom: 0 }}>
+            <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 5" />
             <XAxis dataKey="d" tickFormatter={fmtShort} minTickGap={30}
-              tick={axisTick()} axisLine={false} tickLine={false} />
+              tick={axisTick()} axisLine={false} tickLine={false} tickMargin={8} />
             <YAxis domain={allScale ? [1, 10] : ["auto", "auto"]}
-              tick={axisTick()} axisLine={false} tickLine={false} width={32} />
+              tick={axisTick()} axisLine={false} tickLine={false} width={34} />
             <Tooltip
               labelFormatter={(d) => fmtNice(d)}
               formatter={(v, name) => {
                 const j = Number(String(name).slice(1));
-                return [v, fields[j] ? fields[j].label : name];
+                const f = fields[j];
+                return [f?.unit ? `${v} ${f.unit}` : v, f ? f.label : name];
               }}
               {...tooltipProps()} />
             {fields.map((f, j) => (
-              <Line key={f.k} type="monotone" dataKey={"m" + j} stroke={palette[j]} strokeWidth={2}
-                dot={{ r: 2, fill: palette[j], strokeWidth: 0 }} connectNulls isAnimationActive={false} />
+              <Line key={f.k} type="monotone" dataKey={"m" + j} stroke={palette[j]} strokeWidth={2.25}
+                strokeLinecap="round" strokeLinejoin="round"
+                /* Dots only on hover: four overlaid series with a dot per day
+                   is 120 marks on a 340px-wide chart, which reads as noise. */
+                dot={false}
+                activeDot={{ r: 4, fill: palette[j], stroke: C.card, strokeWidth: 2 }}
+                connectNulls {...chartAnim()} animationBegin={j * 90} />
             ))}
           </LineChart>
         </ResponsiveContainer>
@@ -2485,35 +2544,41 @@ function MetricChart({ entries, field, color }) {
   const numeric = data.filter((p) => p.v != null).length;
   if (numeric < 3) {
     return (
-      <div className="flex flex-col items-center justify-center text-center px-6 rounded-xl"
-        style={{ height: 200, background: C.faint, color: C.sub }}>
-        <Icon name="trends" size={22} color={C.muted} />
-        <div className="text-sm mt-2">
-          {numeric === 0
-            ? `No “${field.label}” answers in the last 30 days.`
-            : `Only ${numeric} day${numeric === 1 ? "" : "s"} logged — the trend line appears at 3.`}
-        </div>
-      </div>
+      <ChartEmpty title={numeric === 0
+        ? `No “${field.label}” answers in the last 30 days.`
+        : `Only ${numeric} day${numeric === 1 ? "" : "s"} logged — the trend line appears at 3.`} />
     );
   }
+  /* Gradient ids must be unique per chart or a second chart on the same screen
+     inherits the first one's fill. */
+  const fadeId = `fhjFade_${String(field.k).replace(/\W/g, "_")}`;
   return (
-    <div style={{ width: "100%", height: 200 }}>
+    <div style={{ width: "100%", height: 210 }}>
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}>
-          <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 4" />
+        <ComposedChart data={data} margin={{ top: 10, right: 8, left: -2, bottom: 0 }}>
+          <ChartFade id={fadeId} color={color} />
+          <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 5" />
           <XAxis dataKey="d" tickFormatter={fmtShort} minTickGap={30}
-            tick={axisTick()} axisLine={false} tickLine={false} />
+            tick={axisTick()} axisLine={false} tickLine={false} tickMargin={8} />
           <YAxis domain={isScale ? [1, 10] : ["auto", "auto"]}
-            tick={axisTick()} axisLine={false} tickLine={false} width={32} />
+            tick={axisTick()} axisLine={false} tickLine={false} width={34} />
           <Tooltip
             labelFormatter={(d) => fmtNice(d)}
-            formatter={(v, name) => [v, name === "v" ? field.label : "7-day avg"]}
+            formatter={(v, name) => [
+              field.unit ? `${v} ${field.unit}` : v,
+              name === "v" ? field.label : "7-day avg",
+            ]}
             {...tooltipProps()} />
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2}
-            dot={{ r: 2.5, fill: color, strokeWidth: 0 }} connectNulls isAnimationActive={false} />
-          <Line type="monotone" dataKey="avg" stroke={C.avgLine} strokeWidth={1.5} strokeOpacity={0.9}
-            strokeDasharray="4 4" dot={false} connectNulls isAnimationActive={false} />
-        </LineChart>
+          <Area type="monotone" dataKey="v" stroke="none" fill={`url(#${fadeId})`}
+            connectNulls {...chartAnim()} />
+          <Line type="monotone" dataKey="avg" stroke={C.avgLine} strokeWidth={1.5} strokeOpacity={0.85}
+            strokeDasharray="4 5" dot={false} connectNulls {...chartAnim()} />
+          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2.5}
+            strokeLinecap="round" strokeLinejoin="round"
+            dot={{ r: 2, fill: color, strokeWidth: 0 }}
+            activeDot={{ r: 5, fill: color, stroke: C.card, strokeWidth: 2.5 }}
+            connectNulls {...chartAnim()} />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
@@ -2522,16 +2587,23 @@ function MetricChart({ entries, field, color }) {
 function WeeklyBars({ entries, field, color }) {
   const data = weeklyAverages(entries, field.k, 6);
   const isScale = field.type === "scale";
+  const last = data.length - 1;
   return (
-    <div style={{ width: "100%", height: 110 }}>
+    <div style={{ width: "100%", height: 118 }}>
       <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 4, right: 6, left: -14, bottom: 0 }}>
-          <XAxis dataKey="d" tick={axisTick()} axisLine={false} tickLine={false} />
+        <BarChart data={data} margin={{ top: 6, right: 8, left: -2, bottom: 0 }}>
+          <XAxis dataKey="d" tick={axisTick()} axisLine={false} tickLine={false} tickMargin={6} />
           <YAxis domain={isScale ? [0, 10] : ["auto", "auto"]}
-            tick={axisTick()} axisLine={false} tickLine={false} width={32} />
-          <Tooltip formatter={(v) => [v, "weekly avg"]}
-            {...tooltipProps()} />
-          <Bar dataKey="v" fill={color} radius={[5, 5, 0, 0]} isAnimationActive={false} />
+            tick={axisTick()} axisLine={false} tickLine={false} width={34} />
+          <Tooltip formatter={(v) => [field.unit ? `${v} ${field.unit}` : v, "weekly avg"]}
+            cursor={{ fill: C.faint }} {...tooltipProps()} />
+          <Bar dataKey="v" radius={[6, 6, 2, 2]} {...chartAnim()}>
+            {/* The current week is the one being asked about; the ones before
+                it are context, so they sit back a step. */}
+            {data.map((_, i) => (
+              <Cell key={i} fill={color} fillOpacity={i === last ? 1 : 0.42} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -2624,7 +2696,46 @@ function AiPatternCard({ pattern, onDismiss }) {
 
 /** The confirmation step. Nothing leaves the device until this is accepted,
     and it spells out the payload rather than describing it in the abstract. */
-function AiSendPreview({ summary, windowLabel, providerLabel, onCancel, onConfirm }) {
+/* The consent gate. Every outbound request in the app goes through this
+   component first, which is what makes "never silently transmit health data" a
+   structural property rather than a promise in the copy.
+
+   Two shapes: `lines` for a single-item send (one meal, one photo), and the
+   detailed journal-window disclosure when analysing patterns. Same rule
+   either way — the request is described before it is made, and Cancel is as
+   prominent as Send. */
+function AiSendPreview({ summary, windowLabel, providerLabel, onCancel, onConfirm, title, lines }) {
+  if (lines) {
+    return (
+      <Modal title={title || `Send this to ${providerLabel}?`} onClose={onCancel}>
+        <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+          This is the only part of {APP_NAME} that uses the internet. What's listed below is sent to
+          {" "}{providerLabel} using your own key, and nothing else from your journal goes with it.
+        </p>
+        <div className="mt-4 rounded-xl p-3.5" style={{ background: C.faint }}>
+          <div className="fhj-eyebrow mb-2.5">What gets sent</div>
+          <ul className="text-sm leading-relaxed flex flex-col gap-1.5">
+            {lines.map((l, i) => <li key={i}>· {l}</li>)}
+          </ul>
+          <div className="fhj-eyebrow mt-4 mb-2">What never gets sent</div>
+          <ul className="text-sm leading-relaxed flex flex-col gap-1.5" style={{ color: C.sub }}>
+            <li>· any other entry, photo, or note</li>
+            <li>· your name, or anything that identifies you</li>
+            <li>· your daily check-in answers</li>
+          </ul>
+        </div>
+        <p className="text-[11px] leading-relaxed mt-4" style={{ color: C.subtle }}>
+          Your provider's handling of API requests is governed by their terms, not by this app.
+          The rest of {APP_NAME} works exactly the same without this.
+        </p>
+        <div className="flex gap-2 mt-5 sticky bottom-0 pt-3 pb-0.5"
+          style={{ background: C.card, borderTop: `1px solid ${C.line}` }}>
+          <Button variant="secondary" block onClick={onCancel}>Cancel</Button>
+          <Button variant="primary" block onClick={onConfirm} icon="spark">Send</Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title={`Send this to ${providerLabel}?`} onClose={onCancel}>
       <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
@@ -3550,11 +3661,20 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
   );
 }
 
-function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun }) {
+function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
-  const selFields = metrics.map((k) => getField(tpl, k)).filter(Boolean);
+  /* A derived metric has to look like a survey question to the chart, the
+     picker and the axis formatter. This is the one place the two kinds meet;
+     everything downstream just sees a field. */
+  const fieldFor = (k) => {
+    const f = getField(tpl, k);
+    if (f) return f;
+    const m = derivedMetric(k);
+    return m ? { k: m.k, label: m.label, type: "number", dir: m.dir, unit: m.unit, sec: m.sec, derived: true } : null;
+  };
+  const selFields = metrics.map(fieldFor).filter(Boolean);
   const metricField = selFields[0] || keyField;
   const toggleMetric = (k) => setMetrics((prev) =>
     prev.includes(k)
@@ -3562,21 +3682,62 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
       : (prev.length >= 4 ? [...prev.slice(0, 3), k] : [...prev, k])); // compare up to 4
   /* Every chartable metric is offered, not just the first few that happen to
      fit — the picker scrolls, and says so. */
-  const metricOptions = useMemo(
-    () => tpl.chartMetrics
-      .map((k) => {
-        const f = getField(tpl, k);
-        if (!f) return null;
-        const idx = metrics.indexOf(k);
-        return {
-          k,
-          label: f.label,
-          dot: idx >= 0 && metrics.length > 1 ? CHART_PALETTE(tpl.color)[idx] : null,
-        };
-      })
-      .filter(Boolean),
-    [tpl, metrics]
+  /* Food and bowel logs are many-per-day, so they reach the chart as derived
+     daily metrics. Only the ones with real data behind them are offered — a
+     picker full of permanently flat lines is worse than a short picker. */
+  const chartDates = useMemo(() => {
+    const out = [];
+    for (let i = 29; i >= 0; i--) out.push(addDays(todayStr(), -i));
+    return out;
+  }, []);
+  const derived = useMemo(
+    () => availableDerivedMetrics(food, bowel, chartDates),
+    [food, bowel, chartDates]
   );
+
+  const metricOptions = useMemo(
+    () => [
+      ...tpl.chartMetrics.map((k) => {
+        const f = getField(tpl, k);
+        return f ? { k, label: f.label } : null;
+      }),
+      ...derived.map((m) => ({ k: m.k, label: m.label })),
+    ]
+      .filter(Boolean)
+      .map((o) => {
+        const idx = metrics.indexOf(o.k);
+        return { ...o, dot: idx >= 0 && metrics.length > 1 ? CHART_PALETTE(tpl.color)[idx] : null };
+      }),
+    [tpl, metrics, derived]
+  );
+
+  /* Which log sheet is open, if any. `null` = closed; an object carries the
+     row being edited (or {} for a new one). */
+  const [foodSheet, setFoodSheet] = useState(null);
+  const [bowelSheet, setBowelSheet] = useState(null);
+  const aiEnabled = !!ai?.enabled && !viewer;
+
+  /* Entries as the charts should see them: every logged day, plus any day that
+     has food or bowel data, with derived metrics folded in as answers. Kept
+     separate from `entries` so streaks, the calendar and exports are unchanged
+     by a day that only has a meal on it. */
+  const chartEntries = useMemo(() => {
+    if (!derived.length) return entries;
+    const byDate = new Map(entries.map((e) => [e.date, e]));
+    const dates = new Set([...entries.map((e) => e.date), ...chartDates]);
+    const out = [];
+    for (const date of [...dates].sort()) {
+      const base = byDate.get(date);
+      const answers = { ...(base?.answers || {}) };
+      let any = !!base;
+      for (const m of derived) {
+        const v = m.value({ food, bowel, date });
+        if (v != null) { answers[m.k] = v; any = true; }
+      }
+      if (any) out.push({ ...(base || { id: `d_${date}`, date }), date, answers });
+    }
+    return out;
+  }, [entries, derived, food, bowel, chartDates]);
 
   const today = entryOn(entries, todayStr());
   const streak = calcStreak(entries);
@@ -3638,59 +3799,86 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
             </div>
           </div>
         </div>
-        {!today && (
-          <button onClick={() => openLog(todayStr())}
-            className="fhj-btn fhj-btn-primary fhj-btn-block mt-4">
-            Log today
-          </button>
-        )}
+        <TodayNutritionStrip food={food} date={todayStr()} />
       </Card>
 
-      {/* backup nudge — the one thing this app can't do for you */}
-      {nudge.show && (
-        <Card className="mt-3" style={{ borderLeft: `3px solid ${C.accent}` }}>
-          <div className="fhj-eyebrow mb-1.5">Keep a copy</div>
-          <p className="text-sm leading-relaxed mb-4" style={{ color: C.sub }}>
-            {nudge.reason === "never"
-              ? `${entries.length} days are logged here and nowhere else. Save a backup file so a lost or wiped phone doesn't take them with it.`
-              : `Your last backup was ${nudge.ageDays} days ago, and you've logged since. A fresh one takes a couple of seconds.`}
-          </p>
-          <Button variant="primary" block onClick={goSettings}>Back up now</Button>
-        </Card>
-      )}
-
-      {/* photo progress */}
-      {photoFields.length > 0 && (
+      {/* ---------- Quick Add ---------- */}
+      {!viewer && (
         <>
-          <SectionTitle>Photo progress</SectionTitle>
-          {photoItems.length === 0 ? (
-            <Card>
-              <div className="text-sm mb-3.5 leading-relaxed" style={{ color: C.sub }}>
-                No photos yet — capture your first in today's log.
-              </div>
-              <Button variant="secondary" block onClick={() => openLog(todayStr())}>Go to today's log</Button>
-            </Card>
-          ) : (
-            <button onClick={goGallery} className="w-full text-left" aria-label="Open photo progress">
-              <Card tappable className="!p-3.5" style={{ padding: "0.875rem" }}>
-                <div className="flex items-center justify-between mb-2.5 gap-2">
-                  <div className="fhj-eyebrow">
-                    {photoItems.length} photo{photoItems.length > 1 ? "s" : ""}
-                  </div>
-                  <div className="text-[11px] shrink-0" style={{ color: C.subtle }}>last · {fmtNice(photoItems[0].date)}</div>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {latestPerField(photoItems).slice(0, 4).map((it) => (
-                    <div key={it.field.k} className="rounded-lg overflow-hidden aspect-square">
-                      <GalleryThumb id={it.photoId} />
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </button>
-          )}
+          <div className="fhj-section mt-6 fhj-cat-symptom">
+            <h2 className="fhj-section-title">Quick Add</h2>
+          </div>
+          <QuickAdd
+            checkedIn={!!today}
+            onCheckIn={() => openLog(todayStr())}
+            onFood={() => setFoodSheet({})}
+            onBowel={() => setBowelSheet({})}
+            onPhoto={photoFields.length > 0 ? () => openLog(todayStr()) : null} />
         </>
       )}
+
+      {/* ---------- Today's Logs ---------- */}
+      <div className="fhj-section mt-6 fhj-cat-symptom">
+        <h2 className="fhj-section-title">Today's Logs</h2>
+        {!!today && (
+          <button onClick={() => openLog(todayStr())} className="text-[11px] font-semibold"
+            style={{ color: C.accentText }}>Edit check-in</button>
+        )}
+      </div>
+      <TodayTimeline
+        entry={today} tpl={tpl} food={food} bowel={bowel} date={todayStr()}
+        onOpenEntry={openLog}
+        onOpenFood={(f) => !viewer && setFoodSheet(f)}
+        onOpenBowel={(b) => !viewer && setBowelSheet(b)} />
+
+      {/* ---------- Trends ---------- */}
+      <div className="fhj-section mt-6 fhj-cat-symptom">
+        <h2 className="fhj-section-title">Trends</h2>
+        <span className="text-[11px]" style={{ color: C.subtle }}>Last 30 days</span>
+      </div>
+      <Card>
+        <MetricPicker
+          options={metricOptions}
+          selected={metrics}
+          onToggle={toggleMetric}
+          max={4}
+          label="Metrics to chart"
+        />
+        {selFields.length > 1
+          ? <MultiMetricChart entries={chartEntries} fields={selFields} tint={tpl.color} />
+          : <MetricChart entries={chartEntries} field={metricField} color={tpl.color} />}
+        <div className="fhj-caption mt-2">
+          {selFields.length > 1
+            ? "One line per metric — touch the chart for a day's values"
+            : "Solid line: daily · dashed line: 7-day average"}
+        </div>
+        <div className="fhj-eyebrow mt-5 mb-1">
+          Weekly averages{selFields.length > 1 ? ` — ${metricField.label}` : ""}
+        </div>
+        <WeeklyBars entries={chartEntries} field={metricField} color={tpl.color} />
+      </Card>
+
+      {/* week-over-week comparison cards — the same question as the chart
+          above, asked at a coarser resolution */}
+      <div className="fhj-eyebrow mt-5 mb-2">This week vs last week</div>
+      <div className="grid grid-cols-2 gap-2">
+        {tpl.dashboardMetrics.map((k) => {
+          const f = getField(tpl, k);
+          const t = trendFor(entries, k, f.dir);
+          return (
+            <Card key={k} className="!p-3.5" style={{ padding: "0.875rem" }}>
+              <div className="text-xs font-medium truncate" style={{ color: C.sub }}>{f.label}</div>
+              <div className="font-display text-2xl leading-none mt-2 tabular-nums">{fmt1(t.a)}</div>
+              <div className="mt-1.5"><TrendArrow trend={t} dir={f.dir} /></div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* ---------- Possible Patterns ----------
+          Locally calculated, plus optional AI observations. */}
+      <PatternsSection tpl={tpl} entries={entries} insights={insights}
+        ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} aiAutoRun={aiAutoRun} />
 
       {/* reports entry points */}
       {(() => {
@@ -3733,48 +3921,38 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         );
       })()}
 
-      {/* week-over-week comparison cards */}
-      <SectionTitle>This week vs last week</SectionTitle>
-
-      <div className="grid grid-cols-2 gap-2">
-        {tpl.dashboardMetrics.map((k) => {
-          const f = getField(tpl, k);
-          const t = trendFor(entries, k, f.dir);
-          return (
-            <Card key={k} className="!p-3.5" style={{ padding: "0.875rem" }}>
-              <div className="text-xs font-medium truncate" style={{ color: C.sub }}>{f.label}</div>
-              <div className="font-display text-2xl leading-none mt-2 tabular-nums">{fmt1(t.a)}</div>
-              <div className="mt-1.5"><TrendArrow trend={t} dir={f.dir} /></div>
+      {/* photo progress */}
+      {photoFields.length > 0 && (
+        <>
+          <SectionTitle>Photo progress</SectionTitle>
+          {photoItems.length === 0 ? (
+            <Card>
+              <div className="text-sm mb-3.5 leading-relaxed" style={{ color: C.sub }}>
+                No photos yet — capture your first in today's log.
+              </div>
+              <Button variant="secondary" block onClick={() => openLog(todayStr())}>Go to today's log</Button>
             </Card>
-          );
-        })}
-      </div>
-
-      {/* trend chart */}
-      <SectionTitle>30-day trend</SectionTitle>
-      <Card>
-        <MetricPicker
-          options={metricOptions}
-          selected={metrics}
-          onToggle={toggleMetric}
-          max={4}
-          label="Metrics to chart"
-        />
-        {selFields.length > 1
-          ? <MultiMetricChart entries={entries} fields={selFields} tint={tpl.color} />
-          : <MetricChart entries={entries} field={metricField} color={tpl.color} />}
-        <div className="fhj-caption mt-2">
-          {selFields.length > 1 ? "One line per metric — dots mark logged days" : "Solid line: daily · dashed line: 7-day average"}
-        </div>
-        <div className="fhj-eyebrow mt-5 mb-1">
-          Weekly averages{selFields.length > 1 ? ` — ${metricField.label}` : ""}
-        </div>
-        <WeeklyBars entries={entries} field={metricField} color={tpl.color} />
-      </Card>
-
-      {/* insights — locally calculated, plus optional AI observations */}
-      <PatternsSection tpl={tpl} entries={entries} insights={insights}
-        ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} aiAutoRun={aiAutoRun} />
+          ) : (
+            <button onClick={goGallery} className="w-full text-left" aria-label="Open photo progress">
+              <Card tappable className="!p-3.5" style={{ padding: "0.875rem" }}>
+                <div className="flex items-center justify-between mb-2.5 gap-2">
+                  <div className="fhj-eyebrow">
+                    {photoItems.length} photo{photoItems.length > 1 ? "s" : ""}
+                  </div>
+                  <div className="text-[11px] shrink-0" style={{ color: C.subtle }}>last · {fmtNice(photoItems[0].date)}</div>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {latestPerField(photoItems).slice(0, 4).map((it) => (
+                    <div key={it.field.k} className="rounded-lg overflow-hidden aspect-square">
+                      <GalleryThumb id={it.photoId} />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </button>
+          )}
+        </>
+      )}
 
       {/* recent entries */}
       <SectionTitle>Recent entries</SectionTitle>
@@ -3806,9 +3984,41 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         })}
       </Card>
 
+      {/* backup nudge — the one thing this app can't do for you */}
+      {nudge.show && (
+        <Card className="mt-3" style={{ borderLeft: `3px solid ${C.accent}` }}>
+          <div className="fhj-eyebrow mb-1.5">Keep a copy</div>
+          <p className="text-sm leading-relaxed mb-4" style={{ color: C.sub }}>
+            {nudge.reason === "never"
+              ? `${entries.length} days are logged here and nowhere else. Save a backup file so a lost or wiped phone doesn't take them with it.`
+              : `Your last backup was ${nudge.ageDays} days ago, and you've logged since. A fresh one takes a couple of seconds.`}
+          </p>
+          <Button variant="primary" block onClick={goSettings}>Back up now</Button>
+        </Card>
+      )}
+
       <Button variant="outline" block icon="download" className="mt-6" onClick={goExport}>
         Export data
       </Button>
+
+      {foodSheet && (
+        <FoodLogSheet
+          initial={foodSheet.id ? foodSheet : null}
+          date={todayStr()}
+          aiEnabled={aiEnabled}
+          onSave={(log) => { onSaveFood(log); setFoodSheet(null); }}
+          onDelete={foodSheet.id ? (log) => { onDeleteFood(log); setFoodSheet(null); } : null}
+          onClose={() => setFoodSheet(null)} />
+      )}
+      {bowelSheet && (
+        <BowelLogSheet
+          initial={bowelSheet.id ? bowelSheet : null}
+          date={todayStr()}
+          aiEnabled={aiEnabled}
+          onSave={(log) => { onSaveBowel(log); setBowelSheet(null); }}
+          onDelete={bowelSheet.id ? (log) => { onDeleteBowel(log); setBowelSheet(null); } : null}
+          onClose={() => setBowelSheet(null)} />
+      )}
     </div>
   );
 }
@@ -3928,8 +4138,8 @@ function download(blob, filename) {
 function metaCols(profile, e) {
   return metaColsTyped(profile, getProfileTemplate(profile), e);
 }
-function wideTable(profile, entries) {
-  return buildWideTable(getProfileTemplate(profile), profile, entries);
+function wideTable(profile, entries, food = []) {
+  return buildWideTable(getProfileTemplate(profile), profile, entries, food);
 }
 
 function ExportScreen({ db, setDb }) {
@@ -3946,11 +4156,13 @@ function ExportScreen({ db, setDb }) {
   }, [range, from, to]);
 
   const inRange = entriesFor(db).filter((e) => e.date >= bounds.start && e.date <= bounds.end);
+  const foodInRange = logsInRange(db.food || [], bounds.start, bounds.end);
+  const bowelInRange = logsInRange(db.bowel || [], bounds.start, bounds.end);
   const count = inRange.length;
   const stamp = `${bounds.start === "0000-01-01" ? "all-time" : bounds.start + "_to_" + bounds.end}`;
 
   const exportCSV = () => {
-    const { header, rows } = wideTable(profile, inRange);
+    const { header, rows } = wideTable(profile, inRange, foodInRange);
     const csv = toCSV([header, ...rows]);
     download(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }),
       `health-journal_${stamp}.csv`);
@@ -3973,6 +4185,8 @@ function ExportScreen({ db, setDb }) {
       ["Insights", "Possible patterns computed from the last 30 days (not proof of cause)"],
       ["Reports", "Saved weekly/monthly report summaries in this date range"],
       ["Photos", "Photo legend — date, question, body part, and linked rating for each photo (images stay in the app / full backup)"],
+      ["Food", "One row per meal. Every nutrient has a value column and a _source column: \"user\" is a number you entered, \"ai\" is an estimate"],
+      ["Bowel", "One row per bowel movement. ai_* columns are what a model suggested from a photo, kept separate from what you recorded"],
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(readme), "README");
 
@@ -3984,7 +4198,7 @@ function ExportScreen({ db, setDb }) {
     }];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(profRows), "Profile");
 
-    const { header, rows } = wideTable(profile, inRange);
+    const { header, rows } = wideTable(profile, inRange, foodInRange);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), "Entries");
 
     const tpl = getProfileTemplate(profile);
@@ -4007,6 +4221,18 @@ function ExportScreen({ db, setDb }) {
         : XLSX.utils.aoa_to_sheet([["No photos in this date range."]]),
       "Photos");
 
+    const foodTbl = buildFoodTable(foodInRange);
+    XLSX.utils.book_append_sheet(wb,
+      foodTbl.rows.length ? XLSX.utils.aoa_to_sheet([foodTbl.header, ...foodTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No food logged in this date range."]]),
+      "Food");
+
+    const bowelTbl = buildBowelTable(bowelInRange);
+    XLSX.utils.book_append_sheet(wb,
+      bowelTbl.rows.length ? XLSX.utils.aoa_to_sheet([bowelTbl.header, ...bowelTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No bowel movements logged in this date range."]]),
+      "Bowel");
+
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     download(new Blob([out], { type: "application/octet-stream" }),
       `health-journal_${stamp}.xlsx`);
@@ -4017,6 +4243,7 @@ function ExportScreen({ db, setDb }) {
       app: APP_NAME, exportedAt: new Date().toISOString(),
       dateRange: bounds.label, disclaimer: DISCLAIMER,
       profile, entries: inRange,
+      food: foodInRange, bowel: bowelInRange,
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
     };
     download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
@@ -4027,7 +4254,7 @@ function ExportScreen({ db, setDb }) {
   const chip = (active, label, onClick, key) => (
     <button key={key || label} onClick={onClick}
       className="px-3 py-1.5 rounded-full text-sm font-medium"
-      style={{ background: active ? C.accent : C.faint, color: active ? "#fff" : C.ink }}>
+      style={{ background: active ? C.accent : C.faint, color: active ? C.onAccent : C.ink }}>
       {label}
     </button>
   );
@@ -4511,9 +4738,9 @@ function FitbitImportScreen({ db, setDb, goBack }) {
       <input ref={inputRef} type="file" multiple accept=".json,.csv" className="hidden"
         onChange={(e) => onFiles(e.target.files)} />
       <button onClick={() => inputRef.current && inputRef.current.click()} disabled={busy}
-        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 mt-3 disabled:opacity-50"
-        style={{ background: C.accent }}>
-        <Icon name="log" size={17} color="#fff" /> {busy ? "Reading files…" : parsed ? "Choose different files" : "Choose Fitbit files"}
+        className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-3 disabled:opacity-50"
+        style={{ background: C.accent, color: C.onAccent }}>
+        <Icon name="log" size={17} color={C.onAccent} /> {busy ? "Reading files…" : parsed ? "Choose different files" : "Choose Fitbit files"}
       </button>
 
       {parsed && (
@@ -4563,8 +4790,7 @@ function FitbitImportScreen({ db, setDb, goBack }) {
             </div>
           )}
           <button onClick={doImport} disabled={!hasData}
-            className="w-full py-3 rounded-xl text-sm font-semibold text-white mt-3 disabled:opacity-40"
-            style={{ background: C.accent }}>
+            className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
             Import now
           </button>
         </Card>
@@ -4611,6 +4837,7 @@ async function buildFullBackup(db) {
     app: APP_NAME, kind: "full", schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(), disclaimer: DISCLAIMER,
     profile: db.profile, entries: db.entries, reports: db.reports || [],
+    food: db.food || [], bowel: db.bowel || [],
     // Past AI observations travel with the journal, but the opt-in does not:
     // turning on a feature that talks to an external service is a decision
     // made per device, by the person holding it, not inherited from a file.
@@ -4652,6 +4879,8 @@ function validateBackup(obj) {
       entries: obj.entries.length,
       photos: photos.length,
       reports: Array.isArray(obj.reports) ? obj.reports.length : 0,
+      food: Array.isArray(obj.food) ? obj.food.length : 0,
+      bowel: Array.isArray(obj.bowel) ? obj.bowel.length : 0,
       from: dates[0] || null, to: dates[dates.length - 1] || null,
       name: (obj.profile.name || "").trim(),
       exportedAt: obj.exportedAt || null,
@@ -4675,6 +4904,7 @@ async function restoreBackup(obj, setDb) {
   }
   const next = migrateDb({
     profile: obj.profile, entries: obj.entries, reports: Array.isArray(obj.reports) ? obj.reports : [],
+    food: obj.food, bowel: obj.bowel,
     // `enabled` is deliberately not restored — see buildFullBackup.
     ai: { ...DEFAULT_AI, analysis: obj.ai?.analysis ?? null, dismissed: Array.isArray(obj.ai?.dismissed) ? obj.ai.dismissed : [] },
     ack: true, onboarded: true,
@@ -4803,7 +5033,7 @@ function ReminderCard({ profile, onSave }) {
 
       <div className="mt-3 flex flex-col gap-2">
         <button onClick={addToCalendar}
-          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+          className="fhj-btn fhj-btn-primary fhj-btn-block">
           Add {formatTime(reminder.time)} reminder to my calendar
         </button>
         <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
@@ -4959,7 +5189,7 @@ function DataDurabilityCard({ db, setDb }) {
       )}
       <div className="flex flex-col gap-2">
         <button onClick={fullBackup} disabled={!!busy}
-          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: C.accent }}>
+          className="fhj-btn fhj-btn-primary fhj-btn-block">
           {busy === "backup" ? "Building backup…" : "Full backup (entries + photos)"}
         </button>
         <button onClick={() => fileRef.current && fileRef.current.click()} disabled={!!busy}
@@ -5396,7 +5626,7 @@ function DisclaimerModal({ onAck }) {
         <p className="text-sm leading-relaxed mb-4" style={{ color: C.sub }}>
           The app highlights <i>possible patterns</i> in what you log. It never concludes that something caused a symptom.
         </p>
-        <button onClick={onAck} className="w-full py-3 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+        <button onClick={onAck} className="fhj-btn fhj-btn-primary fhj-btn-block">
           I understand
         </button>
       </div>
@@ -5521,7 +5751,7 @@ function AddCustomQuestion({ onAdd }) {
         <button onClick={() => setOpen(false)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{ background: C.card, border: `1px solid ${C.line}` }}>Cancel</button>
         <button disabled={!label.trim() || (needsOptions && !options.trim())}
           onClick={() => { onAdd({ label, kind, options, unit, higherBetter, quick, category, bodyPart, side, angle, rated }); setLabel(""); setOptions(""); setUnit(""); setKind("scale"); setHigherBetter(false); setQuick(true); setCategory("skin"); setBodyPart(""); setSide(""); setAngle(""); setRated(true); setOpen(false); }}
-          className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: C.accent }}>Add</button>
+          className="fhj-btn fhj-btn-primary flex-1">Add</button>
       </div>
     </div>
   );
@@ -5787,7 +6017,7 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
             {CAMERA_TIMERS.map(([v, l]) => (
               <button key={v} onClick={() => setCameraTimer(v)}
                 className="flex-1 py-2 rounded-xl text-sm font-semibold"
-                style={{ background: cameraTimer === v ? C.accent : C.faint, color: cameraTimer === v ? "#fff" : C.ink }}>
+                style={{ background: cameraTimer === v ? C.accent : C.faint, color: cameraTimer === v ? C.onAccent : C.ink }}>
                 {l}
               </button>
             ))}
@@ -5797,7 +6027,7 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
 
       <AddCustomQuestion onAdd={addCustom} />
 
-      <button onClick={goBack} className="w-full mt-5 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+      <button onClick={goBack} className="fhj-btn fhj-btn-primary fhj-btn-block mt-5">
         Done
       </button>
     </div>
@@ -5834,12 +6064,12 @@ function PhotoCompareView({ field, tpl, items, baselinePhotoId, initialPhotoId, 
       <div className="flex gap-2 mb-3">
         <button onClick={() => setShowing("a")}
           className="flex-1 py-2 rounded-xl text-xs font-semibold"
-          style={{ background: showing === "a" ? tpl.color : C.faint, color: showing === "a" ? "#fff" : C.ink }}>
+          style={{ background: showing === "a" ? tpl.color : C.faint, color: showing === "a" ? readableInk(tpl.color) : C.ink }}>
           Baseline · {baselineItem ? fmtNice(baselineItem.date) : "—"}
         </button>
         <button onClick={() => setShowing("b")}
           className="flex-1 py-2 rounded-xl text-xs font-semibold"
-          style={{ background: showing === "b" ? tpl.color : C.faint, color: showing === "b" ? "#fff" : C.ink }}>
+          style={{ background: showing === "b" ? tpl.color : C.faint, color: showing === "b" ? readableInk(tpl.color) : C.ink }}>
           Selected · {selectedItem ? fmtNice(selectedItem.date) : "—"}
         </button>
       </div>
@@ -5933,7 +6163,7 @@ function PhotoGalleryScreen({ profile, entries, tpl, onSetBaseline, goBack }) {
         {categories.map((c) => (
           <button key={c} onClick={() => setCategory(c)}
             className="px-3 py-1.5 rounded-full text-xs font-medium"
-            style={{ background: category === c ? tpl.color : C.faint, color: category === c ? "#fff" : C.ink }}>
+            style={{ background: category === c ? tpl.color : C.faint, color: category === c ? readableInk(tpl.color) : C.ink }}>
             {c === "all" ? "All" : (PHOTO_CATEGORIES.find(([v]) => v === c)?.[1] || c)}
           </button>
         ))}
@@ -5943,7 +6173,7 @@ function PhotoGalleryScreen({ profile, entries, tpl, onSetBaseline, goBack }) {
           {bodyParts.map((b) => (
             <button key={b} onClick={() => setBodyPart(b)}
               className="px-3 py-1.5 rounded-full text-xs font-medium"
-              style={{ background: bodyPart === b ? tpl.color : C.faint, color: bodyPart === b ? "#fff" : C.ink }}>
+              style={{ background: bodyPart === b ? tpl.color : C.faint, color: bodyPart === b ? readableInk(tpl.color) : C.ink }}>
               {b === "all" ? "All areas" : b}
             </button>
           ))}
@@ -5953,7 +6183,7 @@ function PhotoGalleryScreen({ profile, entries, tpl, onSetBaseline, goBack }) {
         {[["30", "30d"], ["90", "90d"], ["all", "All time"]].map(([v, l]) => (
           <button key={v} onClick={() => setRange(v)}
             className="px-3 py-1.5 rounded-full text-xs font-medium"
-            style={{ background: range === v ? C.ink : C.faint, color: range === v ? "#fff" : C.sub }}>
+            style={{ background: range === v ? C.ink : C.faint, color: range === v ? readableInk(C.ink) : C.sub }}>
             {l}
           </button>
         ))}
@@ -5969,8 +6199,11 @@ function PhotoGalleryScreen({ profile, entries, tpl, onSetBaseline, goBack }) {
                 className="relative rounded-lg overflow-hidden aspect-square">
                 <GalleryThumb id={it.photoId} />
                 {it.rating != null && (
-                  <span className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                    style={{ background: colorFor(Math.round((it.rating / (it.field.scaleMax || 10)) * 10) || 1, it.field.dir) }}>
+                  <span className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                    style={(() => {
+                      const fill = colorFor(Math.round((it.rating / (it.field.scaleMax || 10)) * 10) || 1, it.field.dir);
+                      return { background: fill, color: readableInk(fill), boxShadow: `0 0 0 1.5px ${C.card}` };
+                    })()}>
                     {it.rating}
                   </span>
                 )}
@@ -6482,14 +6715,18 @@ function ReportCards({ cards, tint }) {
             /* Hidden when printing — the print masthead already carries the
                title, range, and day count, and this card's white-on-tint text
                is unreadable once print styles flatten backgrounds to paper. */
-            <Card key={i} className="mb-3 relative overflow-hidden no-print" style={{ background: tint, border: "none" }}>
+            /* Ink is derived, not literal: `tint` is the live accent, which is
+               a pale blue in dark mode and a deep one in light mode. A fixed
+               white here was legible in exactly one of those. */
+            <Card key={i} className="mb-3 relative overflow-hidden no-print"
+              style={{ background: tint, border: "none", color: readableInk(tint) }}>
               <AmbientGlow tint={C.accent} second={C.warn} opacity={0.3} />
-              <div className="text-[10px] font-semibold uppercase tracking-wider relative" style={{ color: "rgba(255,255,255,0.75)" }}>
+              <div className="text-[10px] font-semibold uppercase tracking-wider relative" style={{ opacity: 0.75 }}>
                 {card.periodType === "week" ? "Weekly report" : "Monthly report"}
               </div>
-              <div className="font-display text-3xl text-white mt-1">{card.title}</div>
-              <div className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.85)" }}>{card.rangeLabel}</div>
-              <div className="text-xs mt-2" style={{ color: "rgba(255,255,255,0.75)" }}>{card.days} logged day{card.days === 1 ? "" : "s"}</div>
+              <div className="font-display text-3xl mt-1">{card.title}</div>
+              <div className="text-sm mt-1" style={{ opacity: 0.85 }}>{card.rangeLabel}</div>
+              <div className="text-xs mt-2" style={{ opacity: 0.75 }}>{card.days} logged day{card.days === 1 ? "" : "s"}</div>
             </Card>
           );
         }
@@ -6777,7 +7014,8 @@ function SwipeCard({ card, onDecide, tint, topmost, flingRef }) {
         <div className="absolute top-4 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
           style={{
             [opinion === "include" ? "left" : "right"]: "1rem",
-            background: opinion === "include" ? C.good : C.subtle, color: "#fff",
+            background: opinion === "include" ? C.good : C.subtle,
+            color: readableInk(opinion === "include" ? C.good : C.subtle),
             transform: `rotate(${opinion === "include" ? -8 : 8}deg)`,
           }}>
           {opinion === "include" ? "Include" : "Skip"}
@@ -6826,7 +7064,7 @@ function SwipeDeck({ catalog, initialPrefs, tint, onDone }) {
           </button>
         )}
         <button disabled={!ok} onClick={() => onDone(choices)}
-          className="w-full py-3.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: tint }}>
+          className="fhj-btn fhj-btn-primary fhj-btn-block">
           Show my report
         </button>
       </div>
@@ -6852,9 +7090,9 @@ function SwipeDeck({ catalog, initialPrefs, tint, onDone }) {
           <Icon name="x" size={15} color={C.ink} /> Skip
         </button>
         <button onClick={() => decideViaButton(true)}
-          className="flex-1 py-3.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
-          style={{ background: tint }} aria-label="include this card">
-          <Icon name="check" size={15} color="#fff" /> Include
+          className="flex-1 py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+          style={{ background: tint, color: readableInk(tint) }} aria-label="include this card">
+          <Icon name="check" size={15} color={readableInk(tint)} /> Include
         </button>
       </div>
       <div className="text-center text-xs mt-4" style={{ color: C.sub }} aria-live="polite">
@@ -7041,7 +7279,7 @@ function ReportScreen({ db, setDb, params, goBack }) {
   const segBtn = (t, label) => (
     <button onClick={() => { if (type !== t) { feedback("select"); setType(t); } }}
       className="flex-1 py-2 rounded-full text-sm font-semibold transition-colors"
-      style={type === t ? { background: tpl.color, color: "#fff" } : { color: C.sub }}
+      style={type === t ? { background: tpl.color, color: readableInk(tpl.color) } : { color: C.sub }}
       aria-pressed={type === t}>
       {label}
     </button>
@@ -7123,7 +7361,7 @@ function ReportScreen({ db, setDb, params, goBack }) {
         <div className="flex flex-col gap-2 mt-1">
           {!saved && (
             <button onClick={saveReport} disabled={alreadySaved}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: tpl.color }}>
+              className="fhj-btn fhj-btn-primary fhj-btn-block">
               {alreadySaved ? "Saved to report history" : "Save this report"}
             </button>
           )}
@@ -7316,7 +7554,7 @@ function EmptyState({ icon = "trends", title, text, actionLabel, onAction }) {  
       {title && <div className="font-display text-lg mb-1">{title}</div>}
       <div className="text-sm leading-relaxed" style={{ color: C.sub }}>{text}</div>
       {actionLabel && (
-        <button onClick={onAction} className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+        <button onClick={onAction} className="fhj-btn fhj-btn-primary mt-4">
           {actionLabel}
         </button>
       )}
@@ -7375,7 +7613,7 @@ function FinishCelebration({ streak, tint, onDone }) {
         <div className="text-sm font-medium mt-3">{line}</div>
         <div className="text-[11px] mt-2" style={{ color: C.sub }}>Saved on this device only.</div>
       </Card>
-      <button onClick={onDone} className="w-full mt-3 py-3.5 rounded-xl text-sm font-semibold text-white" style={{ background: tint }}>
+      <button onClick={onDone} className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
         Done
       </button>
     </div>
@@ -7462,7 +7700,836 @@ async function loadSampleData(setDb) {
 }
 
 
-function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun }) {
+/* =====================================================================
+   Food & bowel logging
+   =====================================================================
+
+   These two categories share a shape the daily survey doesn't have: many
+   entries per day, each with its own clock time, and each optionally carrying
+   a photo and a model's reading of it.
+
+   The rule that shapes every component below is that a number the user typed
+   and a number a model guessed must never be indistinguishable. That is why
+   NutrientRow takes a `source` and renders differently for each, why the AI
+   block sits in its own bordered panel rather than pre-filling the form, and
+   why "Use these" is an explicit action instead of a default.
+   ===================================================================== */
+
+/** Take a subtree out of both the tab order and the accessibility tree while
+    `active`. Used when a confirmation sheet opens over a form: without it the
+    form's own Cancel button is still tabbable and still announced, behind the
+    dialog that is asking about it. Set imperatively because React 18 does not
+    forward the `inert` attribute. */
+function useInert(active) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (active) el.setAttribute("inert", "");
+    else el.removeAttribute("inert");
+  }, [active]);
+  return ref;
+}
+
+/** Split a stored data URL into the { mime, data } pair the AI layer wants.
+    Photos are saved as `data:image/jpeg;base64,…`; the wire formats want the
+    payload without the prefix. */
+function dataUrlToImage(dataUrl) {
+  const m = /^data:([^;,]+);base64,(.+)$/.exec(String(dataUrl || ""));
+  return m ? { mime: m[1], data: m[2] } : null;
+}
+
+/** The stored AI connection, or null. Re-read when the opt-in flips so turning
+    the feature on in Settings doesn't need a reload to take effect here. */
+function useAiConnection(enabled) {
+  const [conn, setConn] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (!enabled) { setConn(null); return; }
+    loadConnection().then((c) => { if (live) setConn(c || null); }).catch(() => {});
+    return () => { live = false; };
+  }, [enabled]);
+  return conn;
+}
+
+/** Save a captured shot under its own photo id and hand the id back. */
+async function savePhotoFor(category, date, shot) {
+  const id = `${category}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  await savePhotos([{
+    id, full: shot.full, thumb: shot.thumb,
+    fieldKey: category, date, takenAt: new Date().toISOString(),
+  }]);
+  return id;
+}
+
+/** Photo capture + preview + remove, for the two new log sheets. */
+function LogPhotoField({ category, date, photoId, onChange, label = "Add a photo" }) {
+  const src = usePhoto(photoId, "thumb");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div>
+      {photoId ? (
+        <div className="flex items-center gap-3">
+          <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0"
+            style={{ border: `1.5px solid ${C.line}`, background: C.faint }}>
+            {src ? <img src={src} alt="" className="fhj-photo" /> : null}
+          </div>
+          <Button variant="ghost" size="sm" icon="trash"
+            onClick={async () => { const id = photoId; onChange(null); await deletePhotos([id]).catch(() => {}); }}>
+            Remove photo
+          </Button>
+        </div>
+      ) : (
+        <CaptureButton label={busy ? "Saving…" : label} tint={C.accent}
+          variant="secondary" icon="camera"
+          onPick={async (shot) => {
+            setBusy(true);
+            try { onChange(await savePhotoFor(category, date, shot)); }
+            catch (e) { window.alert("Couldn't save that photo — the device may be out of space."); }
+            finally { setBusy(false); }
+          }} />
+      )}
+    </div>
+  );
+}
+
+/** One nutrient: the value, where it came from, and an input to override it.
+    An estimated value is shown in the AI hue with a dashed underline; typing
+    over it makes it the user's, permanently. */
+function NutrientRow({ nutrient, value, source, onChange }) {
+  const def = nutrientDef(nutrient);
+  return (
+    <label className="flex items-center gap-2.5 py-1.5">
+      <span className="text-xs flex-1 min-w-0" style={{ color: C.sub }}>{def.label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        className="fhj-input"
+        style={{
+          width: "5.5rem", minHeight: 38, padding: "0.375rem 0.5rem", textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+          color: source === "ai" ? C.lavenderText : C.ink,
+          borderColor: source === "ai" ? C.lavender : C.line,
+        }}
+        placeholder="–"
+        value={value == null ? "" : String(value)}
+        aria-label={`${def.label} in ${def.unit}${source === "ai" ? ", currently an AI estimate" : ""}`}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (raw === "") { onChange(null); return; }
+          const n = Number(raw);
+          if (isFinite(n) && n >= 0) onChange(n);
+        }} />
+      <span className="text-[11px] w-8 shrink-0" style={{ color: C.muted }}>{def.unit}</span>
+    </label>
+  );
+}
+
+/** The model's reading of a meal, kept in its own panel so it reads as a
+    suggestion rather than as data that has already been accepted. */
+function FoodEstimatePanel({ result, onUse, onDiscard, onRerun, busy }) {
+  const [open, setOpen] = useState(false);
+  const shown = NUTRIENT_KEYS
+    .map((k) => ({ k, v: result.nutrition?.[k] }))
+    .filter((n) => typeof n.v === "number");
+  const micros = result.nutrition?.micros || [];
+
+  return (
+    <div className="fhj-cat-ai rounded-xl p-3.5 mt-3"
+      style={{ background: C.lavenderSoft, border: `1.5px solid ${C.lavender}` }}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="fhj-ai-badge">AI Estimated</span>
+        <span className="text-[11px]" style={{ color: C.subtle }}>
+          {result.confidence === "high" ? "Clear enough to be confident"
+            : result.confidence === "medium" ? "A reasonable guess"
+            : "A rough guess"}
+        </span>
+      </div>
+
+      {result.identified && (
+        <div className="text-sm mb-2" style={{ color: C.ink }}>
+          Looks like <span className="font-semibold">{result.identified}</span>
+        </div>
+      )}
+
+      {shown.length === 0 ? (
+        <div className="text-xs" style={{ color: C.sub }}>
+          It couldn't put numbers to this one. Adding a description or a serving size usually helps.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+          {shown.map(({ k, v }) => (
+            <div key={k} className="flex items-baseline justify-between gap-2">
+              <span className="text-[11px]" style={{ color: C.sub }}>{nutrientDef(k).label}</span>
+              <span className="text-sm font-semibold tabular-nums" style={{ color: C.lavenderText }}>
+                {formatNutrient(k, v)}
+                <span className="text-[10px] font-normal ml-0.5" style={{ color: C.subtle }}>{nutrientDef(k).unit}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(micros.length > 0 || result.note) && (
+        <>
+          <button type="button" onClick={() => setOpen((v) => !v)}
+            className="text-[11px] font-semibold mt-2.5 inline-flex items-center gap-1"
+            style={{ color: C.lavenderText }} aria-expanded={open}>
+            {open ? "Hide detail" : "What else it said"}
+            <Icon name={open ? "up" : "down"} size={13} color={C.lavenderText} />
+          </button>
+          <div className={"fhj-expand" + (open ? " is-open" : "")}>
+            <div>
+              <div className="fhj-expand-body pt-2">
+                {micros.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {micros.map((m, i) => (
+                      <span key={i} className="fhj-badge fhj-badge-neutral">{m.label} {m.amount}</span>
+                    ))}
+                  </div>
+                )}
+                {result.note && (
+                  <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>{result.note}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <p className="text-[10px] leading-relaxed mt-2.5" style={{ color: C.subtle }}>
+        An estimate from {result.source === "photo" ? "the photo" : result.source === "text" ? "your description" : "the photo and your description"},
+        not a measurement. Edit anything that looks off — your own numbers always win.
+      </p>
+
+      <div className="flex gap-2 mt-3">
+        <Button size="sm" onClick={onUse} disabled={busy || shown.length === 0}>Use these</Button>
+        <Button size="sm" variant="secondary" onClick={onRerun} disabled={busy}>
+          {busy ? "Working…" : "Try again"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDiscard} disabled={busy}>Discard</Button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- the food sheet ---------- */
+
+function FoodLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) {
+  const [log, setLog] = useState(() => initial || newFoodLog({ date }));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [confirm, setConfirm] = useState(null); // pending send, awaiting consent
+  const conn = useAiConnection(aiEnabled);
+  const abortRef = useRef(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const patch = (p) => setLog((prev) => ({ ...prev, ...p, updatedAt: new Date().toISOString() }));
+  const setNutrient = (k, v) => setLog((prev) => {
+    const nutrition = { ...(prev.nutrition || {}) };
+    if (v == null) delete nutrition[k]; else nutrition[k] = v;
+    return { ...prev, nutrition, updatedAt: new Date().toISOString() };
+  });
+
+  const canEstimate = !!conn && (!!log.photoId || !!log.description.trim() || !!log.serving?.trim() || log.quantity != null);
+
+  /* Nothing is sent until this returns. The sheet describes the payload, the
+     user presses Send — there is no path from "took a photo" to "photo left
+     the device" that skips this step. */
+  const askToEstimate = async () => {
+    setErr("");
+    let image = null;
+    if (log.photoId) {
+      const raw = await loadPhotoData(log.photoId);
+      image = dataUrlToImage(raw);
+    }
+    setConfirm({ image, summary: summariseFoodRequest({ ...log, image }) });
+  };
+
+  const runEstimate = async () => {
+    const pending = confirm;
+    setConfirm(null);
+    if (!pending) return;
+    setBusy(true); setErr("");
+    abortRef.current = new AbortController();
+    try {
+      const result = await analyseFood(
+        conn,
+        {
+          description: log.description, serving: log.serving,
+          quantity: log.quantity, unit: log.unit, image: pending.image,
+        },
+        { signal: abortRef.current.signal }
+      );
+      setLog((prev) => ({ ...prev, ai: result, updatedAt: new Date().toISOString() }));
+    } catch (e) {
+      if (e?.name !== "AbortError") setErr(e?.message || "That didn't work. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolved = effectiveNutrition(log);
+  const title = initial ? "Edit meal" : "Log food";
+  const bodyRef = useInert(!!confirm);
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="fhj-cat-food" ref={bodyRef}>
+        {/* meal + time */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {MEALS.map((m) => (
+            <button key={m.id} type="button" onClick={() => { feedback("select"); patch({ meal: m.id }); }}
+              className={"fhj-chip" + (log.meal === m.id ? " is-active" : "")}
+              aria-pressed={log.meal === m.id}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 mb-3">
+          <label className="flex-1">
+            <span className="fhj-eyebrow block mb-1">Date</span>
+            <input type="date" className="fhj-input" value={log.date}
+              onChange={(e) => patch({ date: e.target.value })} />
+          </label>
+          <label className="flex-1">
+            <span className="fhj-eyebrow block mb-1">Time</span>
+            <input type="time" className="fhj-input" value={log.time}
+              onChange={(e) => patch({ time: e.target.value })} />
+          </label>
+        </div>
+
+        <label className="block mb-3">
+          <span className="fhj-eyebrow block mb-1">What did you eat?</span>
+          <textarea className="fhj-input" rows={2} placeholder="Chicken salad with olive oil and feta"
+            value={log.description} onChange={(e) => patch({ description: e.target.value })} />
+        </label>
+
+        <div className="flex gap-2 mb-3">
+          <label className="flex-1 min-w-0">
+            <span className="fhj-eyebrow block mb-1">Serving</span>
+            <input className="fhj-input" placeholder="1 bowl" value={log.serving || ""}
+              onChange={(e) => patch({ serving: e.target.value })} />
+          </label>
+          <label style={{ width: "5.5rem" }}>
+            <span className="fhj-eyebrow block mb-1">Amount</span>
+            <input type="number" inputMode="decimal" className="fhj-input" placeholder="150"
+              value={log.quantity == null ? "" : String(log.quantity)}
+              onChange={(e) => {
+                const v = e.target.value;
+                patch({ quantity: v === "" ? undefined : (isFinite(Number(v)) ? Number(v) : undefined) });
+              }} />
+          </label>
+          <label style={{ width: "5rem" }}>
+            <span className="fhj-eyebrow block mb-1">Unit</span>
+            <select className="fhj-input" value={log.unit || ""} onChange={(e) => patch({ unit: e.target.value || undefined })}>
+              <option value="">–</option>
+              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Photo</span>
+          <LogPhotoField category="food" date={log.date} photoId={log.photoId}
+            onChange={(id) => patch({ photoId: id || undefined })} label="Add a photo of the meal" />
+        </div>
+
+        {/* AI estimate */}
+        {aiEnabled && conn ? (
+          log.ai ? (
+            <FoodEstimatePanel
+              result={log.ai} busy={busy}
+              onUse={() => { feedback("select"); setLog((prev) => acceptEstimate(prev)); }}
+              onDiscard={() => setLog((prev) => discardEstimate(prev))}
+              onRerun={askToEstimate} />
+          ) : (
+            <div className="mt-1 mb-1">
+              <Button variant="outline" block icon="spark" onClick={askToEstimate} disabled={!canEstimate || busy}>
+                {busy ? "Estimating…" : "Estimate nutrition with AI"}
+              </Button>
+              <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
+                {canEstimate
+                  ? "You'll see exactly what gets sent before anything leaves this device."
+                  : "Add a photo or describe the meal first."}
+              </p>
+            </div>
+          )
+        ) : null}
+
+        {err && (
+          <div className="text-xs mt-2 p-2.5 rounded-lg" style={{ background: C.dangerBg, color: C.dangerInk }}>{err}</div>
+        )}
+
+        {/* nutrition — always editable by hand, with or without AI */}
+        <details className="mt-3" open={!!log.nutrition || !!log.ai}>
+          <summary className="fhj-eyebrow cursor-pointer py-1.5">Nutrition</summary>
+          <div className="pt-1">
+            {resolved.map((n) => (
+              <NutrientRow key={n.k} nutrient={n.k} value={n.value} source={n.source}
+                onChange={(v) => setNutrient(n.k, v)} />
+            ))}
+            {hasAiValues(log) && (
+              <p className="text-[10px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+                Values in lavender are AI estimates. Type over any of them to make it yours.
+              </p>
+            )}
+          </div>
+        </details>
+
+        <label className="block mt-3">
+          <span className="fhj-eyebrow block mb-1">Notes</span>
+          <textarea className="fhj-input" rows={2} placeholder="Anything worth remembering"
+            value={log.notes || ""} onChange={(e) => patch({ notes: e.target.value })} />
+        </label>
+
+        <div className="flex gap-2 mt-4">
+          {onDelete && (
+            <Button variant="danger" size="sm" icon="trash" onClick={() => { if (window.confirm("Delete this meal?")) onDelete(log); }}>
+              Delete
+            </Button>
+          )}
+          <div className="flex-1" />
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => { feedback("save"); onSave(log); }}>Save</Button>
+        </div>
+      </div>
+
+      {confirm && (
+        <AiSendPreview
+          title="Send this for an estimate?"
+          lines={[
+            confirm.summary.sendsPhoto ? "The photo of this meal" : null,
+            confirm.summary.sendsText ? `What you wrote: “${confirm.summary.textParts.join(" · ")}”` : null,
+          ].filter(Boolean)}
+          providerLabel={PROVIDERS[conn?.provider]?.label || "your AI provider"}
+          onCancel={() => setConfirm(null)}
+          onConfirm={runEstimate} />
+      )}
+    </Modal>
+  );
+}
+
+/* ---------- the bowel sheet ---------- */
+
+/** 0–3 severity, as four labelled buttons rather than a slider — faster on a
+    phone and readable without dragging anything. */
+function Severity03({ label, value, onChange }) {
+  return (
+    <div className="mb-3">
+      <span className="fhj-eyebrow block mb-1.5">{label}</span>
+      <div className="flex gap-1.5">
+        {SEVERITY_0_3.map((l, i) => (
+          <button key={l} type="button"
+            onClick={() => { feedback("tap"); onChange(value === i ? undefined : i); }}
+            aria-pressed={value === i}
+            className={"fhj-chip flex-1 justify-center" + (value === i ? " is-active" : "")}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) {
+  const [log, setLog] = useState(() => initial || newBowelLog({ date }));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const conn = useAiConnection(aiEnabled);
+  const abortRef = useRef(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const patch = (p) => setLog((prev) => ({ ...prev, ...p, updatedAt: new Date().toISOString() }));
+
+  const runAnalysis = async () => {
+    setConfirm(false);
+    if (!log.photoId || !conn) return;
+    setBusy(true); setErr("");
+    abortRef.current = new AbortController();
+    try {
+      const raw = await loadPhotoData(log.photoId);
+      const image = dataUrlToImage(raw);
+      if (!image) throw new Error("Couldn't read that photo.");
+      const result = await analyseBowelPhoto(conn, image, { signal: abortRef.current.signal });
+      setLog((prev) => ({ ...prev, ai: result, updatedAt: new Date().toISOString() }));
+    } catch (e) {
+      if (e?.name !== "AbortError") setErr(e?.message || "That didn't work. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* Suggestions are never written straight into the log — the user presses
+     "Use these", and only the fields they haven't already answered change. */
+  const applySuggestion = () => {
+    feedback("select");
+    setLog((prev) => ({
+      ...prev,
+      bristol: prev.bristol ?? prev.ai?.bristol,
+      color: prev.color ?? prev.ai?.color,
+      consistency: prev.consistency ?? prev.ai?.consistency,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const suggestion = log.ai;
+  const hasSuggestion = suggestion && (suggestion.bristol != null || suggestion.color || suggestion.consistency || suggestion.form);
+
+  const bodyRef = useInert(confirm);
+
+  return (
+    <Modal title={initial ? "Edit entry" : "Log bowel movement"} onClose={onClose}>
+      <div className="fhj-cat-bowel" ref={bodyRef}>
+        <div className="flex gap-2 mb-3">
+          <label className="flex-1">
+            <span className="fhj-eyebrow block mb-1">Date</span>
+            <input type="date" className="fhj-input" value={log.date}
+              onChange={(e) => patch({ date: e.target.value })} />
+          </label>
+          <label className="flex-1">
+            <span className="fhj-eyebrow block mb-1">Time</span>
+            <input type="time" className="fhj-input" value={log.time}
+              onChange={(e) => patch({ time: e.target.value })} />
+          </label>
+        </div>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Bristol type</span>
+          <div className="flex flex-col gap-1.5">
+            {BRISTOL.map((b) => {
+              const on = log.bristol === b.type;
+              return (
+                <button key={b.type} type="button"
+                  onClick={() => { feedback("tap"); patch({ bristol: on ? undefined : b.type }); }}
+                  aria-pressed={on}
+                  className="flex items-center gap-3 px-3 py-2 rounded-xl text-left"
+                  style={{
+                    background: on ? C.claySoft : C.faint,
+                    border: `1.5px solid ${on ? C.clay : "transparent"}`,
+                    boxShadow: on ? C.shadowPop : "none",
+                  }}>
+                  <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-sm font-bold"
+                    style={{ background: on ? C.clay : C.card, color: on ? readableInk(C.clay) : C.sub }}>
+                    {b.type}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold" style={{ color: C.ink }}>{b.label}</span>
+                    <span className="block text-[11px]" style={{ color: C.subtle }}>{b.desc}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Amount</span>
+          <div className="flex gap-1.5">
+            {BOWEL_AMOUNTS.map((a) => (
+              <button key={a.id} type="button"
+                onClick={() => { feedback("tap"); patch({ amount: log.amount === a.id ? undefined : a.id }); }}
+                aria-pressed={log.amount === a.id}
+                className={"fhj-chip flex-1 justify-center" + (log.amount === a.id ? " is-active" : "")}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Colour</span>
+          <div className="flex flex-wrap gap-1.5">
+            {BOWEL_COLORS.map((c) => (
+              <button key={c} type="button"
+                onClick={() => { feedback("tap"); patch({ color: log.color === c ? undefined : c }); }}
+                aria-pressed={log.color === c}
+                className={"fhj-chip" + (log.color === c ? " is-active" : "")}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Consistency</span>
+          <div className="flex flex-wrap gap-1.5">
+            {BOWEL_CONSISTENCY.map((c) => (
+              <button key={c} type="button"
+                onClick={() => { feedback("tap"); patch({ consistency: log.consistency === c ? undefined : c }); }}
+                aria-pressed={log.consistency === c}
+                className={"fhj-chip" + (log.consistency === c ? " is-active" : "")}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Severity03 label="Urgency" value={log.urgency} onChange={(v) => patch({ urgency: v })} />
+        <Severity03 label="Straining" value={log.straining} onChange={(v) => patch({ straining: v })} />
+        <Severity03 label="Discomfort" value={log.discomfort} onChange={(v) => patch({ discomfort: v })} />
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Photo (optional)</span>
+          <LogPhotoField category="bowel" date={log.date} photoId={log.photoId}
+            onChange={(id) => patch({ photoId: id || undefined, ai: id ? log.ai : undefined })} />
+          <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
+            Stays on this device. Nothing is sent anywhere unless you ask for the photo to be analysed.
+          </p>
+        </div>
+
+        {aiEnabled && conn && log.photoId && (
+          hasSuggestion ? (
+            <div className="fhj-cat-ai rounded-xl p-3.5 mb-3"
+              style={{ background: C.lavenderSoft, border: `1.5px solid ${C.lavender}` }}>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="fhj-ai-badge">AI Suggested</span>
+                <span className="text-[11px]" style={{ color: C.subtle }}>
+                  {suggestion.confidence === "high" ? "Clear photo" : suggestion.confidence === "medium" ? "Fairly clear" : "Hard to read"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestion.bristol != null && <span className="fhj-badge fhj-badge-neutral">Type {suggestion.bristol}</span>}
+                {suggestion.color && <span className="fhj-badge fhj-badge-neutral">{suggestion.color}</span>}
+                {suggestion.consistency && <span className="fhj-badge fhj-badge-neutral">{suggestion.consistency}</span>}
+                {suggestion.form && <span className="fhj-badge fhj-badge-neutral">{suggestion.form}</span>}
+              </div>
+              {suggestion.note && (
+                <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.sub }}>{suggestion.note}</p>
+              )}
+              <p className="text-[10px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                A description of what's visible in the photo — nothing more. It can't tell you what anything means,
+                and it won't try.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <Button size="sm" onClick={applySuggestion}>Use these</Button>
+                <Button size="sm" variant="ghost" onClick={() => patch({ ai: undefined })}>Discard</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-3">
+              <Button variant="outline" block icon="spark" onClick={() => setConfirm(true)} disabled={busy}>
+                {busy ? "Looking…" : "Describe the photo with AI"}
+              </Button>
+              {log.ai && !hasSuggestion && (
+                <p className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
+                  It couldn't make anything out clearly enough to suggest. Fill the fields in yourself above.
+                </p>
+              )}
+            </div>
+          )
+        )}
+
+        {err && (
+          <div className="text-xs mb-3 p-2.5 rounded-lg" style={{ background: C.dangerBg, color: C.dangerInk }}>{err}</div>
+        )}
+
+        <label className="block">
+          <span className="fhj-eyebrow block mb-1">Notes</span>
+          <textarea className="fhj-input" rows={2} placeholder="Anything worth remembering"
+            value={log.notes || ""} onChange={(e) => patch({ notes: e.target.value })} />
+        </label>
+
+        <div className="flex gap-2 mt-4">
+          {onDelete && (
+            <Button variant="danger" size="sm" icon="trash" onClick={() => { if (window.confirm("Delete this entry?")) onDelete(log); }}>
+              Delete
+            </Button>
+          )}
+          <div className="flex-1" />
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => { feedback("save"); onSave(log); }}>Save</Button>
+        </div>
+      </div>
+
+      {confirm && (
+        <AiSendPreview
+          title="Send this photo?"
+          lines={["The photo attached to this entry", "Nothing else from your journal"]}
+          providerLabel={PROVIDERS[conn?.provider]?.label || "your AI provider"}
+          onCancel={() => setConfirm(false)}
+          onConfirm={runAnalysis} />
+      )}
+    </Modal>
+  );
+}
+
+/* ---------- Quick Add ----------
+   Four tactile tiles, one per thing worth logging. This is the most-pressed
+   control in the app and the reason the chunky-button treatment exists. */
+
+function QuickAdd({ checkedIn, onCheckIn, onFood, onBowel, onPhoto }) {
+  const tiles = [
+    {
+      id: "checkin", cat: "fhj-cat-symptom", icon: "log",
+      label: "Check-in", sub: checkedIn ? "Done today" : "A couple of taps",
+      done: checkedIn, onClick: onCheckIn,
+    },
+    { id: "food", cat: "fhj-cat-food", icon: "food", label: "Food", sub: "Meal or drink", onClick: onFood },
+    { id: "bowel", cat: "fhj-cat-bowel", icon: "bowel", label: "Bowel", sub: "Quick log", onClick: onBowel },
+    onPhoto && { id: "photo", cat: "fhj-cat-photo", icon: "camera", label: "Photo", sub: "Progress shot", onClick: onPhoto },
+  ].filter(Boolean);
+
+  return (
+    <div className="fhj-tiles">
+      {tiles.map((t) => (
+        <button key={t.id} type="button"
+          onClick={() => { feedback("tap"); t.onClick(); }}
+          className={`fhj-tile fhj-pop ${t.cat}${t.done ? " is-done" : ""}`}>
+          <span className="fhj-tile-icon">
+            <Icon name={t.done ? "check" : t.icon} size={17} color="currentColor" />
+          </span>
+          <span>
+            <span className="fhj-tile-label block">{t.label}</span>
+            <span className="fhj-tile-sub block">{t.sub}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Today's Logs ----------
+   Everything logged today in the order it happened, whatever kind it is. The
+   daily check-in has no clock time of its own, so it borrows the moment it was
+   first saved — which is the honest answer and keeps the ordering stable. */
+
+function timeOfEntry(entry) {
+  const iso = entry?.createdAt || entry?.updatedAt;
+  if (!iso) return "00:00";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "00:00" : localTime(d);
+}
+
+function TimelineRow({ cat, icon, time, title, meta, badge, thumbId, onClick }) {
+  const src = usePhoto(thumbId, "thumb");
+  const Row = onClick ? "button" : "div";
+  return (
+    <Row
+      {...(onClick ? { type: "button", onClick } : {})}
+      className={`fhj-tl-item ${cat} w-full text-left`}>
+      <span className="fhj-tl-gutter">
+        <span className="fhj-tl-dot"><Icon name={icon} size={11} color="currentColor" /></span>
+      </span>
+      <span className="fhj-tl-body">
+        <span className="flex items-center gap-2 flex-wrap">
+          {time && <span className="fhj-tl-time">{prettyTime(time)}</span>}
+          {badge}
+        </span>
+        <span className="fhj-tl-title block">{title}</span>
+        {meta && <span className="fhj-tl-meta block">{meta}</span>}
+      </span>
+      {thumbId && (
+        <span className="w-11 h-11 rounded-lg overflow-hidden shrink-0 self-center"
+          style={{ border: `1.5px solid ${C.line}`, background: C.faint }}>
+          {src ? <img src={src} alt="" className="fhj-photo" /> : null}
+        </span>
+      )}
+    </Row>
+  );
+}
+
+function TodayTimeline({ entry, tpl, food, bowel, date, onOpenEntry, onOpenFood, onOpenBowel }) {
+  const rows = [];
+
+  if (entry) {
+    const v = entry.answers?.[tpl.keyMetric];
+    const keyField = getField(tpl, tpl.keyMetric);
+    const answered = Object.values(entry.answers || {}).filter((x) => x != null && x !== "").length;
+    rows.push({
+      key: `entry_${entry.id}`, time: timeOfEntry(entry), cat: "fhj-cat-symptom", icon: "log",
+      title: "Daily check-in",
+      meta: [
+        keyField && v != null ? `${keyField.label}: ${v}` : null,
+        `${answered} answer${answered === 1 ? "" : "s"}`,
+      ].filter(Boolean).join(" · "),
+      onClick: () => onOpenEntry(date),
+    });
+  }
+
+  for (const f of foodOn(food, date)) {
+    rows.push({
+      key: f.id, time: f.time, cat: "fhj-cat-food", icon: "food",
+      title: f.description?.trim() || f.ai?.identified || mealLabel(f.meal),
+      meta: [mealLabel(f.meal), foodSummary(f)].filter(Boolean).join(" · "),
+      badge: hasAiValues(f) ? <span className="fhj-ai-badge">AI Estimated</span> : null,
+      thumbId: f.photoId,
+      onClick: () => onOpenFood(f),
+    });
+  }
+
+  for (const b of bowelOn(bowel, date)) {
+    rows.push({
+      key: b.id, time: b.time, cat: "fhj-cat-bowel", icon: "bowel",
+      title: "Bowel movement",
+      meta: bowelSummary(b) || "Logged",
+      thumbId: b.photoId,
+      onClick: () => onOpenBowel(b),
+    });
+  }
+
+  rows.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+  if (!rows.length) {
+    return (
+      <Card>
+        <div className="fhj-empty fhj-cat-symptom">
+          <span className="fhj-empty-art"><Icon name="clock" size={22} color="currentColor" /></span>
+          <span className="fhj-empty-title">Nothing logged yet today</span>
+          <span className="fhj-empty-text">
+            Whatever you add above will show up here, in the order it happened.
+          </span>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="!py-1.5" style={{ paddingTop: "0.375rem", paddingBottom: "0.375rem" }}>
+      <div className="fhj-tl">
+        {rows.map(({ key, ...row }) => <TimelineRow key={key} {...row} />)}
+      </div>
+    </Card>
+  );
+}
+
+/** Today's food totals, shown under the hero number when there is anything to
+    show. Says when a total leans on an estimate rather than quietly folding
+    the two together. */
+function TodayNutritionStrip({ food, date }) {
+  const totals = dayTotals(food, date);
+  if (!totals.meals) return null;
+  const shown = NUTRIENTS.filter((n) => n.primary && totals[n.k] != null);
+  if (!shown.length) {
+    return (
+      <div className="text-[11px] mt-3 pt-3" style={{ color: C.subtle, borderTop: `1px solid ${C.line}` }}>
+        {totals.meals} meal{totals.meals === 1 ? "" : "s"} logged · no nutrition recorded
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="fhj-eyebrow">Food today</span>
+        {totals.partlyEstimated && <span className="fhj-ai-badge">Partly estimated</span>}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {shown.map((n) => (
+          <div key={n.k} className="flex items-baseline gap-1">
+            <span className="text-sm font-bold tabular-nums" style={{ color: C.ink }}>
+              {formatNutrient(n.k, totals[n.k])}
+            </span>
+            <span className="text-[10px]" style={{ color: C.subtle }}>{n.unit === "kcal" ? "kcal" : `${n.unit} ${n.label.toLowerCase()}`}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun, food, bowel, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
   return (
     <div className="px-4 pb-10">
       <div className="flex items-start justify-between pt-6 pb-2">
@@ -7494,7 +8561,9 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
       </div>
       <TrendsScreen profile={profile} entries={entries} openLog={openLog} goExport={goExport} goGallery={goGallery}
         goReport={goReport} reports={reports} openSavedReport={openSavedReport} deleteSavedReport={deleteSavedReport}
-        goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} aiAutoRun={aiAutoRun} />
+        goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} aiAutoRun={aiAutoRun}
+        food={food} bowel={bowel} onSaveFood={onSaveFood} onDeleteFood={onDeleteFood}
+        onSaveBowel={onSaveBowel} onDeleteBowel={onDeleteBowel} />
     </div>
   );
 }
@@ -7706,8 +8775,8 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
   const chipBtn = (on, label, onClick, key) => (
     <button key={key || label} onClick={onClick}
       className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-      style={{ background: on ? tint : C.faint, color: on ? "#fff" : C.ink, minHeight: 40 }}>
-      {on && <Icon name="check" size={13} color="#fff" />}{label}
+      style={{ background: on ? tint : C.faint, color: on ? readableInk(tint) : C.ink, minHeight: 40 }}>
+      {on && <Icon name="check" size={13} color={readableInk(tint)} />}{label}
     </button>
   );
 
@@ -7733,8 +8802,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     );
     actions = (
       <div className="flex flex-col gap-2">
-        <button onClick={() => setStep(1)} className="w-full py-3.5 rounded-xl text-sm font-semibold text-white"
-          style={{ background: C.accent }}>I understand — set me up</button>
+        <button onClick={() => setStep(1)} className="fhj-btn fhj-btn-primary fhj-btn-block">I understand — set me up</button>
         <button onClick={onLoadSample} className="w-full py-2.5 rounded-xl text-sm font-medium"
           style={{ background: C.faint, color: C.sub }}>Just exploring? Load example data</button>
       </div>
@@ -7756,7 +8824,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
                 style={{ background: C.card, border: `2px solid ${on ? t.color : C.line}` }}>
                 <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                   style={{ background: on ? t.color : C.faint }}>
-                  {on ? <Icon name="check" size={17} color="#fff" /> : <div className="w-3 h-3 rounded-full" style={{ background: t.color }} />}
+                  {on ? <Icon name="check" size={17} color={readableInk(t.color)} /> : <div className="w-3 h-3 rounded-full" style={{ background: t.color }} />}
                 </div>
                 <div className="min-w-0">
                   <div className="font-display text-lg leading-snug">{t.label}</div>
@@ -7774,8 +8842,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     );
     actions = (
       <button onClick={() => setStep(2)} disabled={!mods.length}
-        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white disabled:opacity-30"
-        style={{ background: tint }}>
+        className="fhj-btn fhj-btn-primary fhj-btn-block">
         {mods.length ? "Continue" : "Pick at least one to continue"}
       </button>
     );
@@ -7822,8 +8889,8 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
                       <button key={f.k}
                         onClick={() => setEnabled((prev) => { const n = new Set(prev); on ? n.delete(f.k) : n.add(f.k); return n; })}
                         className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-                        style={{ background: on ? s.color : C.faint, color: on ? "#fff" : C.sub, minHeight: 40 }}>
-                        {on && <Icon name="check" size={13} color="#fff" />}{f.label}
+                        style={{ background: on ? s.color : C.faint, color: on ? readableInk(s.color) : C.sub, minHeight: 40 }}>
+                        {on && <Icon name="check" size={13} color={readableInk(s.color)} />}{f.label}
                       </button>
                     );
                   })}
@@ -7838,9 +8905,9 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
             <div className="flex flex-wrap gap-1.5 mb-2">
               {customs.map((f) => (
                 <button key={f.k} onClick={() => setCustoms((prev) => prev.filter((x) => x.k !== f.k))}
-                  className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5 text-white"
-                  style={{ background: tint, minHeight: 40 }}>
-                  {f.label} <Icon name="x" size={12} color="#fff" />
+                  className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
+                  style={{ background: tint, color: readableInk(tint), minHeight: 40 }}>
+                  {f.label} <Icon name="x" size={12} color={readableInk(tint)} />
                 </button>
               ))}
             </div>
@@ -7851,8 +8918,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     );
     actions = (
       <button onClick={() => setStep(3)} disabled={!enabled.size}
-        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white disabled:opacity-30"
-        style={{ background: tint }}>
+        className="fhj-btn fhj-btn-primary fhj-btn-block">
         {enabled.size ? "Continue" : "Keep at least one question"}
       </button>
     );
@@ -7874,9 +8940,9 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
           <div className="flex flex-wrap gap-1.5">
             {spots.map((s) => (
               <button key={s.part + s.side} onClick={() => toggleSpot(s)}
-                className="px-3 py-1.5 rounded-full text-sm font-medium inline-flex items-center gap-1.5 text-white"
-                style={{ background: tint }}>
-                {spotLabel(s)} <Icon name="x" size={12} color="#fff" />
+                className="px-3 py-1.5 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
+                style={{ background: tint, color: readableInk(tint) }}>
+                {spotLabel(s)} <Icon name="x" size={12} color={readableInk(tint)} />
               </button>
             ))}
           </div>
@@ -7887,7 +8953,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(4)} className="w-full py-3.5 rounded-xl text-sm font-semibold text-white" style={{ background: tint }}>
+      <button onClick={() => setStep(4)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         {spots.length ? "Continue" : "Skip for now"}
       </button>
     );
@@ -7936,7 +9002,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(5)} className="w-full py-3.5 rounded-xl text-sm font-semibold text-white" style={{ background: tint }}>
+      <button onClick={() => setStep(5)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         Continue
       </button>
     );
@@ -7964,7 +9030,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     );
     actions = (
       <div className="flex flex-col gap-2">
-        <button onClick={() => finish("log")} className="w-full py-3.5 rounded-xl text-sm font-semibold text-white" style={{ background: tint }}>
+        <button onClick={() => finish("log")} className="fhj-btn fhj-btn-primary fhj-btn-block">
           Start my first check-in
         </button>
         <button onClick={() => finish("dashboard")} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
@@ -8023,6 +9089,11 @@ function migrateDb(data) {
   if (!d.profile.prefs) d.profile.prefs = { sound: false, haptics: true };
   d.ai = { ...DEFAULT_AI, ...(d.ai || {}) };
   if (!Array.isArray(d.ai.dismissed)) d.ai.dismissed = [];
+  /* Food and bowel logs arrive from three places — a fresh install, an older
+     journal that predates them, and a hand-editable backup file — so they are
+     sanitised on every load rather than trusted on any of them. */
+  d.food = sanitizeFoodLogs(d.food);
+  d.bowel = sanitizeBowelLogs(d.bowel);
   d.schemaVersion = SCHEMA_VERSION;
   return d;
 }
@@ -8043,7 +9114,7 @@ class ErrorBoundary extends React.Component {
               Going back to the Dashboard usually clears this up.
             </p>
             <button onClick={() => { this.setState({ error: null }); this.props.onRecover && this.props.onRecover(); }}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white" style={{ background: C.accent }}>
+              className="fhj-btn fhj-btn-primary fhj-btn-block">
               Back to Dashboard
             </button>
           </Card>
@@ -8438,9 +9509,26 @@ export default function App({ viewer = false }) {
     const cur = prev.ai || DEFAULT_AI;
     return { ...prev, ai: typeof updater === "function" ? updater(cur) : { ...cur, ...updater } };
   });
+  /* Food and bowel logs are upserted by id, so editing a row and adding one
+     are the same code path. Deletes take the photo with them — an orphaned
+     blob is invisible storage the user can never reclaim. */
+  const upsertLog = (slice) => (log) => setDb((prev) => {
+    const rows = prev[slice] || [];
+    const i = rows.findIndex((r) => r.id === log.id);
+    const next = i >= 0 ? rows.map((r) => (r.id === log.id ? log : r)) : [...rows, log];
+    return { ...prev, [slice]: next };
+  });
+  const removeLog = (slice) => (log) => {
+    setDb((prev) => ({ ...prev, [slice]: (prev[slice] || []).filter((r) => r.id !== log.id) }));
+    if (log.photoId) deletePhotos([log.photoId]).catch(() => {});
+  };
+
   const dashProps = {
     profile, entries, openLog: goToLog,
     viewer,
+    food: db.food || [], bowel: db.bowel || [],
+    onSaveFood: upsertLog("food"), onDeleteFood: removeLog("food"),
+    onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     goExport: () => setScreen("export"), goSettings: () => setScreen("settings"),
     goSetup: () => setScreen("setup"), goGallery: () => setScreen("gallery"),
     goReport, reports: db.reports, openSavedReport, deleteSavedReport,

@@ -20,13 +20,29 @@ export const THEME_STORAGE_KEY = "fhj_theme_v1";
 
 /* ---------- palettes ----------
 
-   Dark takes its cues from the deep charcoal/slate + blurple family: a near
-   black-blue ground, surfaces that lift by a few points of lightness rather
-   than by shadow, hairline borders, and exactly one saturated accent. Light is
-   the same structure rebuilt for paper-white, not the dark palette inverted.
+   Soft Clinical. The reference is a well-made paper notebook and a calm
+   clinic waiting room, not a hospital chart and not a SaaS dashboard.
+
+   Dark is **soft graphite**: a warm-neutral charcoal, deliberately not the
+   blue-black that every developer tool ships. Surfaces lift by a few points of
+   lightness; borders are visible rather than hairline, because the neobrutalist
+   half of the brief needs an edge it can thicken.
+
+   Light is **warm off-white** — paper, with a faint cream cast — rebuilt at
+   the same structure rather than inverted from dark.
+
+   The accent family is muted blue (primary), sage (steady/positive), lavender
+   (anything the AI touched) and clay (the earthier of the two new tracking
+   categories). They are chosen to sit next to each other in a chart without
+   competing, and to stay calm at large fill sizes.
 
    Accent fills always carry `onAccent` text; `accentText` is the separate,
-   contrast-checked value for accent-coloured *text* on a page background. */
+   contrast-checked value for accent-coloured *text* on a page background.
+
+   In dark mode the accent is a *light* blue carrying dark ink, not a saturated
+   fill carrying white. Two reasons: white-on-blue can only clear AA if the blue
+   is dark enough to look muddy against graphite, and a chunky light-on-dark
+   button is what makes the neobrutalist press feel tactile instead of heavy. */
 
 export type Tokens = {
   /* surfaces */
@@ -65,11 +81,31 @@ export type Tokens = {
   goodSoft: string;
   dangerBg: string;
   dangerInk: string;
+  /* category accents.
+     Each tracking category owns one hue so a food card, a bowel card and a
+     symptom card are told apart before any label is read. `*Text` is the
+     contrast-checked value for that hue used as *text*; the bare token is a
+     fill/stroke and is only guaranteed against `card` at large-text ratio. */
+  sage: string;
+  sageText: string;
+  sageSoft: string;
+  lavender: string;
+  lavenderText: string;
+  lavenderSoft: string;
+  clay: string;
+  clayText: string;
+  claySoft: string;
   /* chrome */
   overlay: string;
   shimmer: string;
   shadow: string;
   shadowLg: string;
+  /* Neobrutalist offset shadows: a hard, un-blurred drop with no alpha ramp.
+     Used sparingly — primary buttons, the selected metric, Quick Add tiles —
+     and always paired with a visible border, which is what keeps it reading as
+     "tactile" rather than "1990s bevel". */
+  shadowPop: string;
+  shadowPopLg: string;
   focus: string;
   /* charts */
   grid: string;
@@ -80,94 +116,120 @@ export type Tokens = {
 };
 
 const DARK: Tokens = {
-  bg: "#0E1015",
-  bgElevated: "#14171E",
-  card: "#171A22",
-  cardHover: "#1C2029",
-  faint: "#20242E",
-  faintHover: "#272C37",
+  bg: "#141519",
+  bgElevated: "#1A1C21",
+  card: "#1E2026",
+  cardHover: "#25272E",
+  faint: "#2A2D35",
+  faintHover: "#32353E",
 
-  line: "#252A34",
-  lineStrong: "#343B49",
+  line: "#31343D",
+  lineStrong: "#464A55",
 
-  ink: "#E8EAF0",
-  sub: "#9AA2B4",
-  subtle: "#838BA0",
-  muted: "#666F85",
+  ink: "#ECEBE7",
+  sub: "#ADAFB8",
+  subtle: "#9A9CA6",
+  muted: "#787B86",
 
-  accent: "#5B63E8",
-  accentHover: "#6D74F0",
-  accentText: "#A8AEFF",
-  accentSoft: "rgba(91,99,232,0.18)",
-  accentLine: "rgba(91,99,232,0.42)",
-  onAccent: "#FFFFFF",
+  accent: "#8FB0E3",
+  accentHover: "#A3C0EA",
+  accentText: "#A6C3EA",
+  accentSoft: "rgba(143,176,227,0.15)",
+  accentLine: "rgba(143,176,227,0.40)",
+  onAccent: "#121419",
 
-  good: "#4FBF87",
-  warn: "#DFAE4B",
-  alert: "#E5854F",
-  bad: "#EC6A63",
-  goodSoft: "rgba(79,191,135,0.16)",
-  dangerBg: "rgba(236,106,99,0.14)",
-  dangerInk: "#F09B95",
+  good: "#7FBE9E",
+  warn: "#DCBB78",
+  alert: "#DFA079",
+  bad: "#E08B85",
+  goodSoft: "rgba(127,190,158,0.15)",
+  dangerBg: "rgba(224,139,133,0.13)",
+  dangerInk: "#E6A29D",
 
-  overlay: "rgba(5,7,11,0.74)",
-  shimmer: "#252A34",
-  shadow: "0 4px 16px rgba(0,0,0,0.36)",
-  shadowLg: "0 12px 36px rgba(0,0,0,0.48)",
-  focus: "#8B92FF",
+  sage: "#7FBE9E",
+  sageText: "#94CBAD",
+  sageSoft: "rgba(127,190,158,0.15)",
+  lavender: "#B49EE0",
+  lavenderText: "#C3B1E8",
+  lavenderSoft: "rgba(180,158,224,0.16)",
+  clay: "#D9A183",
+  clayText: "#E3B49B",
+  claySoft: "rgba(217,161,131,0.15)",
 
-  grid: "#232833",
-  avgLine: "#5D6577",
-  chart2: "#E0B45C",
-  chart3: "#4FB3D9",
-  chart4: "#EC6A63",
+  overlay: "rgba(10,11,14,0.72)",
+  shimmer: "#2A2D35",
+  shadow: "0 4px 16px rgba(0,0,0,0.34)",
+  shadowLg: "0 14px 38px rgba(0,0,0,0.46)",
+  shadowPop: "3px 3px 0 rgba(0,0,0,0.55)",
+  shadowPopLg: "5px 5px 0 rgba(0,0,0,0.55)",
+  focus: "#A6C3EA",
+
+  grid: "#2B2E36",
+  avgLine: "#6A6E7A",
+  chart2: "#DCBB78",
+  chart3: "#7BC2B6",
+  chart4: "#B49EE0",
 };
 
 const LIGHT: Tokens = {
-  bg: "#F6F7F9",
+  bg: "#F4F1EB",
   bgElevated: "#FFFFFF",
-  card: "#FFFFFF",
-  cardHover: "#FAFBFD",
-  faint: "#EEF0F4",
-  faintHover: "#E5E8EF",
+  card: "#FDFBF7",
+  cardHover: "#F8F5EF",
+  faint: "#EDE9E1",
+  faintHover: "#E4DFD5",
 
-  line: "#E3E6EC",
-  lineStrong: "#CBD1DB",
+  line: "#E0DACE",
+  lineStrong: "#C4BCAB",
 
-  ink: "#1A1D26",
-  sub: "#5C6474",
-  subtle: "#646C7E",
-  muted: "#7C8494",
+  ink: "#23252B",
+  sub: "#5A5E68",
+  subtle: "#63666F",
+  // Dark enough to clear 3:1 on `faint`, which is the warmest/darkest surface
+  // a placeholder ever sits on. At #878A93 it measured 2.85 there.
+  muted: "#7F828B",
 
-  accent: "#4F57DF",
-  accentHover: "#4149CE",
-  accentText: "#4048CE",
-  accentSoft: "rgba(79,87,223,0.10)",
-  accentLine: "rgba(79,87,223,0.32)",
+  accent: "#3D6AAF",
+  accentHover: "#345C99",
+  accentText: "#355F9F",
+  accentSoft: "rgba(61,106,175,0.10)",
+  accentLine: "rgba(61,106,175,0.30)",
   onAccent: "#FFFFFF",
 
-  good: "#2A8256",
-  warn: "#966D12",
+  good: "#33795A",
+  warn: "#8A6516",
   // Kept a step darker than it looks like it needs to be: at #B65F2C it lands
   // within a hair of the white/black ink crossover, where neither label clears
   // AA on it. See the readableInk test.
-  alert: "#AE5526",
-  bad: "#C0413A",
-  goodSoft: "rgba(42,130,86,0.10)",
-  dangerBg: "#FBECEA",
-  dangerInk: "#98302A",
+  alert: "#A85427",
+  bad: "#B54039",
+  goodSoft: "rgba(51,121,90,0.10)",
+  dangerBg: "#F9EAE7",
+  dangerInk: "#8F2F29",
 
-  overlay: "rgba(26,29,38,0.44)",
-  shimmer: "#F2F4F8",
-  shadow: "0 2px 10px rgba(26,29,38,0.06)",
-  shadowLg: "0 10px 32px rgba(26,29,38,0.10)",
-  focus: "#4F57DF",
+  sage: "#33795A",
+  sageText: "#2E6E52",
+  sageSoft: "rgba(51,121,90,0.10)",
+  lavender: "#68499F",
+  lavenderText: "#5F4293",
+  lavenderSoft: "rgba(104,73,159,0.10)",
+  clay: "#A05A34",
+  clayText: "#8F502D",
+  claySoft: "rgba(160,90,52,0.10)",
 
-  grid: "#E8EBF0",
-  avgLine: "#A6AEBD",
-  chart2: "#B8862A",
-  chart3: "#2E7FA8",
-  chart4: "#C0413A",
+  overlay: "rgba(35,37,43,0.42)",
+  shimmer: "#EFEBE3",
+  shadow: "0 2px 10px rgba(60,50,35,0.07)",
+  shadowLg: "0 10px 32px rgba(60,50,35,0.11)",
+  shadowPop: "3px 3px 0 rgba(60,50,35,0.18)",
+  shadowPopLg: "5px 5px 0 rgba(60,50,35,0.18)",
+  focus: "#3D6AAF",
+
+  grid: "#E6E1D7",
+  avgLine: "#A9A395",
+  chart2: "#946A18",
+  chart3: "#276F66",
+  chart4: "#68499F",
 };
 
 export const PALETTES: Record<ThemeName, Tokens> = { dark: DARK, light: LIGHT };

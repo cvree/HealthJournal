@@ -1,5 +1,121 @@
 # Changelog
 
+## 1.4.0
+
+### A new visual system
+
+The app was functional and plain. It now has a design system rather than a set of
+conventions — *Soft Clinical* with a deliberate hint of neobrutalism, applied through shared
+tokens and components instead of screen by screen.
+
+- **New palettes.** Dark is soft graphite — a warm-neutral charcoal rather than the blue-black
+  every developer tool ships. Light is warm off-white, rebuilt at the same structure rather than
+  inverted. The accent family is muted blue, sage, lavender and clay, chosen to sit beside each
+  other in a chart without competing.
+- **A tactile register, used sparingly.** Borders one notch above a hairline, hard offset
+  shadows, and a press that travels exactly the shadow's own offset so the element lands flush
+  instead of shrinking. It appears on primary actions, Quick Add tiles and selected metrics —
+  and nowhere else, which is what keeps it reading as emphasis rather than as a house style.
+- **Bold section titles** in the display face, each with a small category-tinted bar, so a food
+  section and a symptom section are told apart before either is read.
+- **25 hand-rolled primary buttons** across the app were replaced with the shared primitive.
+  They had baked in white-on-accent text, which was correct for the old dark blurple accent and
+  unreadable on the new one; ink is now derived from the fill everywhere via `readableInk()`.
+- New reusable components: Quick Add tiles, timeline rows, AI provenance badges, empty states,
+  skeletons, expandable cards, photo transitions, category tinting.
+- **Dark mode is still the default**, light mode is a first-class option, and the choice is
+  still read before first paint — the pre-paint script is now pinned to the real palette values
+  by a test, because it duplicates two of them and could silently drift.
+- Contrast is enforced in both themes by `tests/theme.test.ts`, now covering the category hues
+  as fills *and* as text.
+
+### Food tracking
+
+- Log a meal or drink with the category, date and time, description, serving, weight/quantity,
+  notes, and a photo.
+- **Optional AI estimation** from a photo, from text, or from both. With both, an explicitly
+  stated quantity is treated as fact — the model estimates around it rather than overriding it
+  with a guess about a typical portion.
+- Estimates can cover calories, protein, carbs, fat, fiber, sugar, sodium and notable
+  micronutrients, and every one of them is labelled **AI Estimated** and editable.
+- **A number you entered and a number a model guessed are never stored in the same field.** The
+  effective value is yours if present and the estimate otherwise, and the UI can always say
+  which one it drew. "Use these" copies an estimate across to become yours — which also makes it
+  immune to a later re-run.
+- Values are rounded to a resolution the method can actually support, and an estimated calorie
+  count reads "about 520 kcal" rather than "520 kcal".
+
+### Bowel movement tracking
+
+- Quick log with date and time, Bristol type (all seven, with their descriptions), amount,
+  colour, consistency, urgency, straining, discomfort, notes, and an optional photo.
+- **Optional** photo analysis suggests observable attributes only — Bristol type, colour,
+  consistency, form. It never diagnoses: the prompt forbids it four ways, and
+  `normaliseBowelResult` drops any field that strays into interpretation regardless of what the
+  model returns. Suggestions are never written into the log; the user accepts them.
+- A photo stays on the device unless the user explicitly asks for that photo to be analysed.
+
+### One AI integration, five uses
+
+- Pattern analysis, food text, food image, food image + text, and bowel image now share one
+  integration — the same stored connection, model resolution, retry-once-if-the-model-is-gone
+  behaviour, redaction, and output normalisation.
+- **Every outbound request passes through the same consent sheet**, which describes exactly
+  what is about to be sent before it goes. Nothing is sent on save, in the background, or on a
+  retry without asking again.
+- A model that reads text but not images now says so, instead of surfacing a raw 400.
+- AI remains entirely optional. With it switched off there is no analysis button anywhere, and
+  the app makes no network request at all.
+
+### A simpler dashboard
+
+Rebuilt around five sections: **Today**, **Quick Add**, **Today's Logs**, **Trends**, and
+**Possible Patterns**, with reports, photos and recent entries below them.
+
+- Quick Add is four tactile tiles — check-in, food, bowel, photo.
+- Today's Logs is one timeline carrying every kind of entry in the order it happened, tinted by
+  category, with photo thumbnails and AI badges where they apply.
+- Today's food totals appear on the hero card, and say when a total leans on an estimate.
+
+### Trends
+
+- Food and bowel logs are many-per-day, so they reach the 30-day chart as **derived daily
+  metrics** — calories, each macro, bowel movement count, average Bristol type, urgency,
+  straining, discomfort. Only metrics with real data behind them are offered.
+- Calorie and macro metrics are deliberately directionless: colouring a calorie count red would
+  be the app giving dietary advice through a palette choice.
+- The chart itself is more polished — a soft gradient wash under the line, a draw-in animation
+  that respects `prefers-reduced-motion`, rounded joins, hover dots, units in the tooltip, and a
+  weekly-average bar chart where the current week stands forward.
+- **Fixed: the Y axis was clipping two-digit ticks** — a negative left margin cut the leading
+  digit, so "10" rendered as "L0".
+
+### Export
+
+- XLSX gains **Food** and **Bowel** sheets, one row per log. Every nutrient has a value column
+  *and* a `_source` column saying whether it was entered or estimated — a spreadsheet is exactly
+  where someone would go looking for that distinction.
+- The daily table and CSV gain that day's nutrition totals, and a flag for a day whose totals
+  lean on an estimate.
+- Full backups and JSON exports carry food and bowel logs; restoring sanitises every row, so one
+  malformed entry in a hand-edited file can't cost the user the other three hundred.
+
+### Fixed
+
+- **A truncation hole in the bowel-photo safety filter.** Descriptive fields were cut to length
+  *before* being screened, so a sentence like "pale, which can indicate a liver condition" had
+  the flagged word sliced in half and passed through intact enough to still read as a diagnosis.
+  Screening now runs on the whole string.
+- **Stacked dialogs were mislabelled and leaky.** Every `Modal` used the same `aria-labelledby`
+  id, so a confirmation sheet announced the heading of the form underneath it; and that form's
+  own Cancel button stayed focusable behind the dialog asking about it. Ids are now per-instance
+  and the covered form is made `inert`.
+- Times restored from a backup are validated, not just shape-checked — `25:99` used to pass and
+  then sort into the middle of the timeline.
+
+107 new tests (`tests/tracking.test.ts`, `tests/aiFoodBowel.test.ts`, `tests/foodBowelUi.test.tsx`,
+plus palette and pre-paint coverage); **324 total across 17 suites**.
+
 ## 1.3.0
 
 ### Fixed

@@ -6,6 +6,8 @@
    redesign can't quietly regress into unreadable grey-on-grey. */
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   PALETTES, C, luminance, readableInk, initTheme, setThemePreference,
   readThemePreference, getTheme, getThemePreference, resolveTheme, onThemeChange,
@@ -152,8 +154,55 @@ describe("contrast", () => {
           expect(contrast(series, p.card)).toBeGreaterThanOrEqual(LARGE);
         }
       });
+
+      /* The category hues are what tell a food card from a bowel card from a
+         symptom card before any label is read, so they carry the same burden
+         the accent does: legible as a fill, and legible as text. */
+      it("category hues read as fills", () => {
+        for (const hue of ["sage", "lavender", "clay"] as const) {
+          expect(contrast(p[hue], p.card), hue).toBeGreaterThanOrEqual(LARGE);
+          expect(contrast(readableInk(p[hue]), p[hue]), `ink on ${hue}`).toBeGreaterThanOrEqual(BODY);
+        }
+      });
+
+      it("category hues read as text", () => {
+        for (const hue of ["sageText", "lavenderText", "clayText"] as const) {
+          expect(contrast(p[hue], p.card), hue).toBeGreaterThanOrEqual(BODY);
+          expect(contrast(p[hue], p.bg), hue).toBeGreaterThanOrEqual(BODY);
+        }
+      });
+
+      it("offset shadows are hard-edged, not blurred", () => {
+        // A neobrutalist drop with a blur radius is just a soft shadow wearing
+        // a costume. Both offsets must have a zero third length.
+        for (const s of [p.shadowPop, p.shadowPopLg]) {
+          expect(s).toMatch(/^-?\d+px -?\d+px 0 /);
+        }
+      });
     });
   }
+});
+
+/* The inline script in index.html/viewer.html paints --fhj-bg before React
+   mounts, so a cold start doesn't flash the wrong colour. It has to duplicate
+   two values from the palettes, which means it can silently drift out of sync
+   with them — this is the only thing stopping that. */
+describe("pre-paint script", () => {
+  // Not import.meta.url — this suite runs under jsdom, where that resolves to
+  // an http: URL that readFileSync refuses.
+  const html = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
+  const viewer = readFileSync(resolve(process.cwd(), "viewer.html"), "utf8");
+
+  it("uses the real palette background in both documents", () => {
+    for (const [name, doc] of [["index", html], ["viewer", viewer]] as const) {
+      expect(doc, name).toContain(`"${PALETTES.light.bg}" : "${PALETTES.dark.bg}"`);
+      expect(doc, name).toContain(`content="${PALETTES.dark.bg}"`);
+    }
+  });
+
+  it("uses the real palette secondary ink where it sets one", () => {
+    expect(html).toContain(`"${PALETTES.light.sub}" : "${PALETTES.dark.sub}"`);
+  });
 });
 
 describe("readableInk", () => {

@@ -19,9 +19,27 @@
 
 export type ProviderId = "gemini" | "openrouter" | "custom";
 
+/** An image to reason over. Base64 *without* the `data:` prefix — both wire
+    formats want the bare payload, and carrying the prefix around is how it
+    ends up double-encoded in one of them. */
+export type ChatImage = {
+  mime: string; // "image/jpeg" | "image/png" | …
+  data: string; // base64
+};
+
 export type ChatRequest = {
   system: string;
   user: string;
+  /** Optional image input. Only sent when the caller supplies one, which is
+      only ever after the user has explicitly asked for photo analysis. */
+  image?: ChatImage | null;
+  /** JSON schema the reply must match. Defaults to the pattern-analysis one so
+      existing callers are unchanged. */
+  schema?: Record<string, unknown>;
+  /** Shape description appended to the system prompt for OpenAI-compatible
+      providers, which accept `json_object` but not a schema. */
+  jsonHint?: string;
+  maxTokens?: number;
   signal?: AbortSignal;
 };
 
@@ -255,20 +273,31 @@ export async function chat(conn: Connection, req: ChatRequest): Promise<string> 
   const base = baseUrlFor(conn);
   const model = conn.model;
   if (!model) throw Object.assign(new Error("No model selected"), { status: 0 });
+  const schema = req.schema || RESPONSE_SCHEMA;
+  const maxTokens = req.maxTokens || 2400;
 
   if (conn.provider === "gemini") {
+    /* Gemini takes the image as an inline part alongside the text. Image first
+       is deliberate: the model reads parts in order, and the text is usually
+       "here is what I ate", which only means something once it has seen it. */
+    const userParts: any[] = [];
+    if (req.image) {
+      userParts.push({ inlineData: { mimeType: req.image.mime, data: req.image.data } });
+    }
+    userParts.push({ text: req.user });
+
     const res = await fetch(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders(conn) },
       signal: req.signal,
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: req.system }] },
-        contents: [{ role: "user", parts: [{ text: req.user }] }],
+        contents: [{ role: "user", parts: userParts }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 2400,
+          maxOutputTokens: maxTokens,
           responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
+          responseSchema: schema,
         },
       }),
     });
@@ -283,7 +312,15 @@ export async function chat(conn: Connection, req: ChatRequest): Promise<string> 
       : "";
   }
 
-  // OpenAI-compatible
+  // OpenAI-compatible. An image goes in the multipart content array as a data
+  // URL; providers that support vision all take this shape.
+  const content: any = req.image
+    ? [
+        { type: "image_url", image_url: { url: `data:${req.image.mime};base64,${req.image.data}` } },
+        { type: "text", text: req.user },
+      ]
+    : req.user;
+
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(conn) },
@@ -291,11 +328,11 @@ export async function chat(conn: Connection, req: ChatRequest): Promise<string> 
     body: JSON.stringify({
       model,
       temperature: 0.3,
-      max_tokens: 2400,
+      max_tokens: maxTokens,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: req.system + JSON_INSTRUCTION },
-        { role: "user", content: req.user },
+        { role: "system", content: req.system + (req.jsonHint || JSON_INSTRUCTION) },
+        { role: "user", content },
       ],
     }),
   });
@@ -305,6 +342,25 @@ export async function chat(conn: Connection, req: ChatRequest): Promise<string> 
   }
   const payload = await res.json();
   return String(payload?.choices?.[0]?.message?.content ?? "");
+}
+
+/** True when a provider error means "this model can't look at pictures".
+
+    There is no way to tell a vision model from a text model by its ID without
+    hard-coding a list of names, which is the exact mistake that broke this
+    feature once already. So photo analysis attempts the request and reads the
+    refusal — which providers do report clearly, because it is a common thing
+    to get wrong. The caller turns this into "this model is text-only, pick
+    another or describe the meal instead" rather than a raw 400. */
+export function isNoVision(status: number, body: string): boolean {
+  if (status !== 400 && status !== 415 && status !== 422) return false;
+  const t = String(body || "");
+  return (
+    /does not support (image|vision|multimodal)/i.test(t) ||
+    /(image|vision|multimodal).{0,24}not supported/i.test(t) ||
+    /only supports text/i.test(t) ||
+    /invalid.{0,20}image/i.test(t)
+  );
 }
 
 /** True when a provider error means "that model is gone", which is recoverable
