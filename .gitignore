@@ -7,3 +7,7 @@ exports/*
 
 # Build cruft that should never be committed again
 *.zip
+# Vite writes these next to the config when it loads a TS config, and does not
+# always clean them up if the dev server dies mid-start.
+vite.config.ts.timestamp-*
+vite.config.ts.timestamp-*.mjs

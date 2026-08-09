@@ -1011,6 +1011,23 @@ textarea.fhj-input {
   transition-delay: 60ms;
 }
 
+/* ---------- category accordions (survey editor) ----------
+   The header is the only thing on screen when a drawer is shut, so it carries
+   the neobrutalist edge: a real border that thickens on open, a press that
+   actually moves, and a chevron that rotates rather than swapping glyph. */
+
+.fhj-acc-head {
+  transition: background var(--fhj-ease) ease, border-color var(--fhj-ease) ease,
+    transform 120ms var(--fhj-out);
+}
+.fhj-acc-head:active {
+  transform: scale(0.992);
+}
+.fhj-acc-chev {
+  display: inline-flex;
+  transition: transform var(--fhj-ease) var(--fhj-out);
+}
+
 /* ---------- photos ----------
    Photos fade up as they decode rather than popping in at full opacity, which
    is what makes a gallery of them feel settled instead of flickery. */

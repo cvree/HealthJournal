@@ -1,7 +1,9 @@
-/* Optional ambient backdrop (Vanta FOG). Deliberately quiet:
-   - opt-in via Settings ("Ambient backdrop"), off by default
-   - lazy-loads three + vanta only when enabled (keeps initial bundle lean)
-   - disabled automatically under prefers-reduced-motion
+/* Ambient backdrop (Vanta FOG). On by default, and deliberately quiet:
+   - on for new installs, one switch in Settings, remembered per device
+   - lazy-loads three + vanta *after* first paint, at idle, so a WebGL scene
+     never competes with the app booting or with the first tap of a log
+   - stands down on its own under prefers-reduced-motion, on a low-memory or
+     low-core device, and while the tab is in the background
    - fixed behind the app at low opacity so cards/text stay fully readable
    - keyed to the active theme: the fog is built from the same tokens as the
      rest of the app, and torn down and rebuilt when the theme changes, so a
@@ -17,12 +19,59 @@ function hexToInt(hex: string, fallback: number): number {
   return m ? parseInt(m[1], 16) : fallback;
 }
 
+/* A full-screen shader on a two-core phone with 2GB of RAM costs more than the
+   atmosphere is worth. Both hints are advisory and widely absent, so the test
+   only rejects devices that positively report being small. */
+function deviceCanAfford(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const mem = (navigator as any).deviceMemory;
+  if (typeof mem === "number" && mem > 0 && mem < 4) return false;
+  const cores = navigator.hardwareConcurrency;
+  if (typeof cores === "number" && cores > 0 && cores < 4) return false;
+  return true;
+}
+
+/** Wait for the browser to be genuinely idle, falling back to a plain timeout
+    where requestIdleCallback isn't implemented (Safari, at time of writing). */
+function whenIdle(fn: () => void): () => void {
+  const ric = (window as any).requestIdleCallback;
+  if (typeof ric === "function") {
+    const id = ric(fn, { timeout: 2500 });
+    return () => (window as any).cancelIdleCallback?.(id);
+  }
+  const id = window.setTimeout(fn, 1200);
+  return () => window.clearTimeout(id);
+}
+
 export default function VantaBackdrop({ enabled }: { enabled: boolean }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const effectRef = useRef<any>(null);
   const [theme, setTheme] = useState(getTheme);
+  /* Reduced-motion is a live preference, not a boot-time constant: someone
+     turning it on in the OS should see the fog stop without reloading. */
+  const [reduced, setReduced] = useState(prefersReducedMotion);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => onThemeChange(setTheme), []);
+
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  /* Backgrounding the tab already stops rAF, but Vanta keeps a WebGL context
+     and its buffers alive. Dropping the scene entirely gives the GPU memory
+     back while the app isn't on screen. */
+  useEffect(() => {
+    const onVis = () => setVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  const active = enabled && !reduced && visible && deviceCanAfford();
 
   useEffect(() => {
     let cancelled = false;
@@ -33,8 +82,14 @@ export default function VantaBackdrop({ enabled }: { enabled: boolean }) {
       }
     };
 
-    if (enabled && !prefersReducedMotion() && ref.current) {
-      teardown(); // rebuild on a theme change rather than tint a stale scene
+    if (!active || !ref.current) {
+      teardown();
+      return;
+    }
+
+    teardown(); // rebuild on a theme change rather than tint a stale scene
+    const cancelIdle = whenIdle(() => {
+      if (cancelled) return;
       Promise.all([import("three"), import("vanta/dist/vanta.fog.min")]).then(
         ([THREE, VANTA]: any[]) => {
           if (cancelled || !ref.current) return;
@@ -55,17 +110,16 @@ export default function VantaBackdrop({ enabled }: { enabled: boolean }) {
         },
         () => {} /* load failure -> plain background, no error surfaced */
       );
-    } else {
-      teardown();
-    }
+    });
 
     return () => {
       cancelled = true;
+      cancelIdle();
       teardown();
     };
-  }, [enabled, theme]);
+  }, [active, theme]);
 
-  if (!enabled || prefersReducedMotion()) return null;
+  if (!active) return null;
   return (
     <div
       ref={ref}

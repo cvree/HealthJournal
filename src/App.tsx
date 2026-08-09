@@ -18,6 +18,7 @@ import {
   serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped,
   buildFoodTable, buildBowelTable, logsInRange,
 } from "./lib/exports";
+import { playSound, setSoundEnabled, suspendSound, resumeSound } from "./lib/sound";
 import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
 import { createPinRecord, verifyPin } from "./lib/lock";
 import {
@@ -607,6 +608,107 @@ function orderFields(fields, order) {
   return [...fields].sort((a, b) => (idx.has(a.k) ? idx.get(a.k) : 999) - (idx.has(b.k) ? idx.get(b.k) : 999));
 }
 
+/* ---------- question categories ----------
+
+   Packs are how questions arrive; categories are how people think about them.
+   Someone hunting for "how do I stop being asked about my knees" is looking
+   for Pain, not for "Joint Pain / Mobility pack, third row". So the editor
+   groups by subject, and the pack a question came from stays visible on the
+   row itself.
+
+   The mapping is an explicit key list rather than a clever inference, because
+   a question landing in a surprising drawer is worse than a long constant. The
+   `sec`/type fallbacks below only catch anything a future pack forgets to
+   register, so nothing can ever vanish from the editor. */
+
+const CATEGORY_ORDER = [
+  "symptoms", "pain", "sleep", "mood", "energy", "digestion", "food", "bowel",
+  "hydration", "activity", "meds", "vitals", "skincare", "triggers", "photos", "custom", "other",
+];
+
+const CATEGORY_META = {
+  symptoms: { label: "Symptoms", icon: "warn", color: "#C2643F" },
+  pain:     { label: "Pain", icon: "target", color: "#B4504F" },
+  sleep:    { label: "Sleep", icon: "moon", color: "#6E63C8" },
+  mood:     { label: "Mood", icon: "spark", color: "#8A63C8" },
+  energy:   { label: "Energy", icon: "sunrise", color: "#C79A3F" },
+  digestion:{ label: "Digestion", icon: "snack", color: "#4E8F6E" },
+  food:     { label: "Food", icon: "food", color: "#3F8FC2" },
+  bowel:    { label: "Bowel movements", icon: "bowel", color: "#8A7A5E" },
+  hydration:{ label: "Hydration", icon: "drink", color: "#3FA8C2" },
+  activity: { label: "Activity", icon: "trends", color: "#5B9E4F" },
+  meds:     { label: "Medications & supplements", icon: "star", color: "#7A6FD0" },
+  vitals:   { label: "Vitals & body", icon: "device", color: "#C25B7A" },
+  skincare: { label: "Skin care & products", icon: "sun", color: "#0E8578" },
+  triggers: { label: "Triggers & environment", icon: "search", color: "#9A7B4F" },
+  photos:   { label: "Photos", icon: "camera", color: "#5B63E8" },
+  custom:   { label: "Your own questions", icon: "plus", color: "#8A63C8" },
+  other:    { label: "Other", icon: "sliders", color: "#7C8497" },
+};
+
+/* key -> category. Grouped by destination so it reads as the taxonomy it is. */
+const FIELD_CATEGORY = {};
+const _cat = (cat, keys) => keys.forEach((k) => { FIELD_CATEGORY[k] = cat; });
+
+_cat("symptoms", [
+  "overall_symptom_severity", "overall_skin_severity", "overall_gut_severity", "overall_allergy_severity",
+  "itch", "dryness", "redness", "rash", "hair_skin", "swelling", "flare_day",
+  "neck_severity", "scalp_severity", "left_hand_severity", "right_hand_severity",
+  "face_severity", "arms_severity", "legs_severity", "torso_severity",
+  "brain_fog", "breathlessness", "dizziness", "palpitations", "cold_intolerance", "heat_intolerance",
+  "aura", "light_sensitivity", "sound_sensitivity", "migraine_today",
+  "congestion", "eye_irritation", "flushing", "itching_hives",
+]);
+_cat("pain", [
+  "overall_pain", "joint_pain", "muscle_aches", "abdominal_pain", "pain_areas",
+  "headache", "headache_severity", "headache_hours", "neck_tension",
+  "stiffness", "stiffness_morning", "stiffness_minutes",
+]);
+_cat("sleep", ["sleep_quality", "sleep_hours", "sleep_duration_min", "sleep_score"]);
+_cat("mood", ["mood", "stress", "anxiety", "wellbeing", "focus", "gratitude"]);
+_cat("energy", ["energy", "fatigue", "pem", "crash_day", "paced_today", "exercise_tolerance", "standing_tolerance", "time_upright"]);
+_cat("digestion", ["digestion_comfort", "bloating", "gas", "nausea", "gi_upset"]);
+_cat("food", [
+  "foods", "food_tags", "offplan_tags", "offplan_detail", "diet_adherence",
+  "non_carnivore_foods", "ate_out", "new_food_today", "hunger", "cravings",
+]);
+_cat("bowel", ["bowel_movement", "bowel_movements", "stool_type", "urgency"]);
+_cat("hydration", ["water_intake", "salt_electrolytes"]);
+_cat("activity", ["activity", "exercised_today", "mobility", "steps", "active_minutes", "screen_time", "time_outdoors", "social_time"]);
+_cat("meds", [
+  "medication_taken", "medication_detail", "med_effect",
+  "antihistamine_taken", "antihistamine_detail",
+  "pain_relief_taken", "pain_relief_detail",
+  "treatment_used", "treatment_detail",
+]);
+_cat("vitals", ["weight", "waist", "blood_pressure", "resting_hr", "standing_hr", "avg_hr"]);
+_cat("skincare", ["moisturized_today", "showered_today", "shower_temp", "new_product_today"]);
+_cat("triggers", ["possible_triggers", "sweat_level"]);
+
+/* `sec` is a decent second guess for anything unregistered — packs name their
+   sections in the same language the categories use. */
+const SEC_CATEGORY = {
+  "Symptoms": "symptoms", "Skin today": "symptoms", "Head today": "symptoms",
+  "Body areas": "symptoms", "Reactions today": "symptoms", "Joints today": "pain",
+  "Gut today": "digestion", "Digestion": "digestion", "Bathroom": "bowel",
+  "Diet": "food", "Food": "food", "Hydration": "hydration",
+  "Movement": "activity", "Sleep & activity": "activity", "Capacity": "energy", "Tolerance": "energy",
+  "Relief": "meds", "Care": "meds", "Vitals": "vitals", "Body": "vitals",
+  "Photos": "photos", "Progress photos": "photos",
+  "Possible triggers": "triggers", "Habits": "activity",
+  "How you feel": "mood", "Today": "mood", "Reflection": "mood", "Lifestyle": "mood",
+  "Wearable (imported)": "activity", "Custom": "custom",
+};
+
+/** Which drawer a question lives in. Photos and custom questions win outright —
+    they are how people look for those two, whatever the question is about. */
+function categoryOf(field) {
+  if (!field) return "other";
+  if (field.custom) return "custom";
+  if (field.type === "photo") return "photos";
+  return FIELD_CATEGORY[field.k] || SEC_CATEGORY[field.sec] || "other";
+}
+
 /* Profile objects are replaced immutably on every edit, so a WeakMap keyed on
    the object itself is a correct (and GC-safe) memo — every screen calls this
    on each render. */
@@ -681,10 +783,26 @@ function computeProfileTemplate(profile) {
 
 /* ---------- sample data ---------- */
 
+/* ---------- feedback & atmosphere defaults ----------
+
+   Sound and the moving backdrop ship **on**. They are most of what makes the
+   app feel like a place rather than a form, and an off-by-default delight is a
+   delight almost nobody ever sees. Both are one switch away in Settings, both
+   are remembered, and both stand down on their own: the backdrop never runs
+   under prefers-reduced-motion, and audio only ever exists after a real tap.
+
+   `prefsVersion` is what keeps this from being rude. A journal saved before
+   these defaults changed ran with sound and backdrop off, and that silence was
+   the app's promise, not an unset field — so LEGACY_PREFS is what an old
+   install gets backfilled with, and anything already chosen is never touched. */
+const DEFAULT_PREFS = { sound: true, haptics: true, backdrop: true, prefsVersion: 2 };
+const LEGACY_PREFS = { sound: false, haptics: true, backdrop: false, prefsVersion: 1 };
+
 function blankProfile() {
   const now = new Date().toISOString();
   return { id: "p_self", name: "", modules: [], disabledFields: [], customQuestions: [],
-    fieldOrder: [], fieldOverrides: {}, photoBaselines: {}, cameraTimer: 3, createdAt: now, updatedAt: now };
+    fieldOrder: [], fieldOverrides: {}, photoBaselines: {}, cameraTimer: 3,
+    prefs: { ...DEFAULT_PREFS }, createdAt: now, updatedAt: now };
 }
 
 /* Ships with one example setup: Eczema/Skin + a few Carnivore/Diet questions.
@@ -698,7 +816,8 @@ function genSampleData() {
     id: "p_self", name: "Connor", modules: ["eczema", "carnivore"],
     disabledFields: ["waist", "energy", "mood", "cravings", "hunger", "digestion_comfort",
       "bloating", "gas", "nausea", "bowel_movement", "activity", "water_intake", "salt_electrolytes", "offplan_tags"],
-    customQuestions: [], fieldOrder: [], fieldOverrides: {}, photoBaselines: {}, cameraTimer: 3, createdAt: nowIso, updatedAt: nowIso,
+    customQuestions: [], fieldOrder: [], fieldOverrides: {}, photoBaselines: {}, cameraTimer: 3,
+    prefs: { ...DEFAULT_PREFS }, createdAt: nowIso, updatedAt: nowIso,
   };
   const entries = [];
   const push = (date, answers, notes, detailed) =>
@@ -5554,10 +5673,10 @@ function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
 }
 
 function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete }) {
-  const prefs = db.profile.prefs || { sound: false, haptics: true };
+  const prefs = db.profile.prefs || DEFAULT_PREFS;
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
-    profile: { ...prev.profile, prefs: { ...(prev.profile.prefs || { sound: false, haptics: true }), ...patch }, updatedAt: new Date().toISOString() },
+    profile: { ...prev.profile, prefs: { ...(prev.profile.prefs || DEFAULT_PREFS), ...patch }, updatedAt: new Date().toISOString() },
   }));
   const setReportPrefs = (reportPrefs) => setDb((prev) => ({
     ...prev, profile: { ...prev.profile, reportPrefs, updatedAt: new Date().toISOString() },
@@ -5590,14 +5709,33 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
             label="Vibration feedback" desc="A tiny buzz on taps and saves" />
         )}
         <SwitchRow
-          on={prefs.sound === true}
-          onChange={(on) => { setPrefs({ sound: on }); if (on) { FB.prefs = { ...prefs, sound: true }; feedback("save"); } }}
-          label="Sounds" desc="Subtle ticks and chimes — off unless you turn them on" />
+          on={prefs.sound !== false}
+          onChange={(on) => {
+            setPrefs({ sound: on });
+            // Flip the engine before the sound plays, or the confirmation of
+            // "sounds on" is itself silent.
+            FB.prefs = { ...prefs, sound: on };
+            setSoundEnabled(on);
+            if (on) feedback("save");
+          }}
+          label="Sounds"
+          desc="Soft taps, a warm note when something saves, and a small chord when the day's journal is done. Quiet by design." />
+        {prefs.sound !== false && (
+          <div className="flex flex-wrap gap-1.5 pb-3 -mt-1">
+            {[["tap", "Tap"], ["save", "Save"], ["quickadd", "Quick Add"], ["complete", "Finish"]].map(([v, l]) => (
+              <button key={v} type="button" onClick={() => feedback(v)}
+                className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                style={{ background: "transparent", color: C.sub, border: `1px solid ${C.lineStrong}` }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
         <SwitchRow
-          on={prefs.backdrop === true}
-          onChange={(on) => setPrefs({ backdrop: on })}
+          on={prefs.backdrop !== false}
+          onChange={(on) => { setPrefs({ backdrop: on }); feedback(on ? "toggleOn" : "toggleOff"); }}
           label="Ambient backdrop"
-          desc="A soft moving background behind the app. Skipped automatically when your device prefers reduced motion." />
+          desc="A soft moving background behind the app. Skipped automatically when your device prefers reduced motion, or on a low-powered phone." />
       </Card>
 
       <AiSettingsCard ai={db.ai} setAi={setAi} db={db} onSetupComplete={onAiSetupComplete} />
@@ -5913,24 +6051,45 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
     setOrder((prev) => prev.filter((ok) => ok !== k));
   };
 
+  /* Packs overlap heavily — sleep quality, stress, fatigue and brain fog each
+     appear in four or five of them. The rest of the app dedupes by key (see
+     computeProfileTemplate), and the copy above promises shared questions are
+     "only asked once", but this editor used to list one row per pack per key:
+     four identical "Brain fog" rows, all four writing the same answer. First
+     pack wins, and the row remembers everyone who asked for it. */
   const naturalFields = useMemo(() => {
-    const out = [];
+    const byKey = new Map();
     for (const mk of modules) {
       const t = TEMPLATES[mk];
       if (!t) continue;
-      for (const f of t.fields) out.push({ ...f, moduleLabel: t.label, moduleColor: t.color });
+      for (const f of t.fields) {
+        const hit = byKey.get(f.k);
+        if (hit) { hit.sharedWith.push(t.label); continue; }
+        byKey.set(f.k, { ...f, moduleLabel: t.label, moduleColor: t.color, sharedWith: [t.label] });
+      }
     }
-    for (const cq of customQuestions) out.push({ ...cq, moduleLabel: "Custom", moduleColor: C.accent });
-    return out;
+    for (const cq of customQuestions) {
+      if (byKey.has(cq.k)) continue;
+      byKey.set(cq.k, { ...cq, moduleLabel: "Custom", moduleColor: C.accent, sharedWith: ["Custom"] });
+    }
+    return Array.from(byKey.values());
   }, [modules, customQuestions]);
   const displayFields = useMemo(() => orderFields(naturalFields, order), [naturalFields, order]);
 
-  const moveField = (k, dir) => {
+  /* Reordering swaps a question with its neighbour *inside its own drawer*,
+     writing the swap back into the one global order. Swapping against the raw
+     global neighbour would fling the question into a different category the
+     moment you tapped the arrow, which reads as the app losing it. */
+  const moveWithin = (k, dir, siblingKeys) => {
     const list = displayFields.map((f) => f.k);
-    const i = list.indexOf(k), j = i + dir;
-    if (j < 0 || j >= list.length) return;
+    const s = siblingKeys.indexOf(k);
+    const target = siblingKeys[s + dir];
+    if (target === undefined) return;
+    const i = list.indexOf(k), j = list.indexOf(target);
+    if (i < 0 || j < 0) return;
     [list[i], list[j]] = [list[j], list[i]];
     setOrder(list);
+    feedback("reorder");
   };
   const getFlag = (f, flag) => {
     const o = overrides[f.k]?.[flag];
@@ -5949,44 +6108,80 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
 
   /* The question list used to be one flat run of every question from every
      enabled pack — routinely sixty rows, with the thing you came to change
-     somewhere in the middle. It is grouped by pack now, collapsed by default,
-     with a filter across the top.
+     somewhere in the middle. It is grouped into collapsed drawers now, with a
+     filter across the top and a running count on every header.
 
-     Sections are keyed by pack label rather than by `sec`, because that is the
-     grouping the user themselves chose when they turned packs on. Reordering
-     still operates on the whole ordered list, so moving a question up out of
-     its section works exactly as before. */
+     Subject ("Symptoms", "Sleep", "Photos") is the default grouping because
+     that is how someone describes what they came to change. Grouping by pack
+     is still one tap away, for anyone who thinks in the packs they switched
+     on. Either way the drawers start shut, so the screen opens at about a
+     screenful however many questions are configured. */
   const [query, setQuery] = useState("");
+  const [groupBy, setGroupBy] = useState("category"); // "category" | "pack"
   const [openSections, setOpenSections] = useState(() => new Set());
 
   const q = query.trim().toLowerCase();
-  const matches = (f) => !q || f.label.toLowerCase().includes(q) || (f.moduleLabel || "").toLowerCase().includes(q);
+  const matches = (f) =>
+    !q ||
+    f.label.toLowerCase().includes(q) ||
+    (f.moduleLabel || "").toLowerCase().includes(q) ||
+    (f.sec || "").toLowerCase().includes(q) ||
+    (CATEGORY_META[categoryOf(f)]?.label || "").toLowerCase().includes(q);
 
   const sections = useMemo(() => {
     const map = new Map();
-    displayFields.forEach((f, i) => {
-      const key = f.moduleLabel || "Other";
-      if (!map.has(key)) map.set(key, { label: key, color: f.moduleColor, fields: [] });
-      // The index into the *whole* ordered list, so the arrows keep moving a
-      // question through the real order rather than within its section.
-      map.get(key).fields.push({ field: f, index: i });
-    });
-    return Array.from(map.values());
-  }, [displayFields]);
+    for (const f of displayFields) {
+      const id = groupBy === "pack" ? (f.moduleLabel || "Other") : categoryOf(f);
+      const meta = groupBy === "pack"
+        ? { label: f.moduleLabel || "Other", color: f.moduleColor, icon: "sliders" }
+        : CATEGORY_META[id] || CATEGORY_META.other;
+      if (!map.has(id)) map.set(id, { id, label: meta.label, color: meta.color, icon: meta.icon, fields: [] });
+      map.get(id).fields.push(f);
+    }
+    const out = Array.from(map.values());
+    if (groupBy === "category") {
+      out.sort((a, b) => CATEGORY_ORDER.indexOf(a.id) - CATEGORY_ORDER.indexOf(b.id));
+    }
+    // Arrows step through this list, so each section carries its own key order.
+    return out.map((s) => ({ ...s, keys: s.fields.map((f) => f.k) }));
+  }, [displayFields, groupBy]);
 
   const visibleSections = useMemo(
     () => sections
-      .map((s) => ({ ...s, fields: s.fields.filter((r) => matches(r.field)) }))
+      .map((s) => ({ ...s, fields: s.fields.filter(matches) }))
       .filter((s) => s.fields.length > 0),
     [sections, q]
   );
 
-  const toggleSection = (label) => setOpenSections((prev) => {
-    const next = new Set(prev);
-    if (next.has(label)) next.delete(label); else next.add(label);
-    return next;
-  });
-  const allOpen = visibleSections.length > 0 && visibleSections.every((s) => openSections.has(s.label));
+  const matchCount = useMemo(
+    () => visibleSections.reduce((n, s) => n + s.fields.length, 0),
+    [visibleSections]
+  );
+
+  const toggleSection = (id) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    feedback("expand");
+  };
+  const allOpen = visibleSections.length > 0 && visibleSections.every((s) => openSections.has(s.id));
+
+  /* Which drawers have ever been opened, so their rows can stay mounted and
+     animate shut instead of vanishing. A drawer nobody touched costs nothing. */
+  const everOpened = useRef(new Set()).current;
+  for (const s of visibleSections) if (!!q || openSections.has(s.id)) everOpened.add(s.id);
+
+  /* Switching the grouping shuts everything: the open set is keyed by section
+     id, and a category id left over from the other mode opens nothing. */
+  const chooseGroupBy = (next) => {
+    if (next === groupBy) return;
+    setGroupBy(next);
+    setOpenSections(new Set());
+    everOpened.clear();
+    feedback("select");
+  };
 
   return (
     <div className="px-4 pb-10 pt-3">
@@ -6020,9 +6215,11 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
 
       <div className="fhj-eyebrow mt-1">Questions</div>
       <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
-        Reorder with the arrows, use the checkbox to turn a question off entirely, and tap a pill
-        to control where it appears. A <b style={{ color: C.ink }}>filled</b> pill means the
-        question shows up there; a dashed one means it's hidden from that screen.
+        Questions are filed by subject and start closed — open one category at a time, or search
+        to jump straight to a question. Inside a category: the arrows reorder, the checkbox turns
+        a question off entirely, and the pills control where it appears. A{" "}
+        <b style={{ color: C.ink }}>filled</b> pill means the question shows up there; a dashed one
+        means it's hidden from that screen.
       </p>
       {displayFields.filter((f) => !disabledFields.has(f.k)).length === 0 && (
         <div className="mt-1.5 px-3 py-2.5 rounded-xl text-sm" style={{ background: C.dangerBg, color: C.dangerInk }}>
@@ -6034,15 +6231,44 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
           <div className="text-sm py-3" style={{ color: C.sub }}>Turn on a question pack above, or add your own question below.</div>
         )}
         {displayFields.length > 0 && (
-          <div className="flex items-center gap-2 mb-2.5">
-            <input className="fhj-input" type="search" placeholder="Find a question"
-              value={query} onChange={(e) => setQuery(e.target.value)}
-              aria-label="Filter questions" style={{ minHeight: 40 }} />
-            <Button size="sm" variant="ghost" className="shrink-0 whitespace-nowrap"
-              onClick={() => setOpenSections(allOpen ? new Set() : new Set(visibleSections.map((x) => x.label)))}>
-              {allOpen ? "Collapse" : "Expand all"}
-            </Button>
-          </div>
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <input className="fhj-input" type="search" placeholder="Find a question"
+                value={query} onChange={(e) => setQuery(e.target.value)}
+                aria-label="Filter questions" style={{ minHeight: 40 }} />
+              {query.trim() ? (
+                <Button size="sm" variant="ghost" className="shrink-0 whitespace-nowrap"
+                  onClick={() => setQuery("")}>Clear</Button>
+              ) : (
+                <Button size="sm" variant="ghost" className="shrink-0 whitespace-nowrap"
+                  onClick={() => {
+                    feedback("expand");
+                    setOpenSections(allOpen ? new Set() : new Set(visibleSections.map((x) => x.id)));
+                  }}>
+                  {allOpen ? "Collapse" : "Expand all"}
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="fhj-eyebrow shrink-0" style={{ margin: 0 }}>Group by</span>
+              <div className="flex gap-1" role="group" aria-label="Group questions by">
+                {[["category", "Subject"], ["pack", "Pack"]].map(([v, l]) => (
+                  <button key={v} type="button" onClick={() => chooseGroupBy(v)} aria-pressed={groupBy === v}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                    style={groupBy === v
+                      ? { background: C.accent, color: C.onAccent, border: `1px solid ${C.accent}` }
+                      : { background: "transparent", color: C.sub, border: `1px solid ${C.lineStrong}` }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[10.5px] ml-auto shrink-0" aria-live="polite" style={{ color: C.subtle }}>
+                {q
+                  ? `${matchCount} match${matchCount === 1 ? "" : "es"}`
+                  : `${displayFields.length} question${displayFields.length === 1 ? "" : "s"} · ${visibleSections.length} categor${visibleSections.length === 1 ? "y" : "ies"}`}
+              </span>
+            </div>
+          </>
         )}
 
         {displayFields.length > 0 && visibleSections.length === 0 && (
@@ -6054,25 +6280,45 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
         {visibleSections.map((sec) => {
           /* A search result is useless inside a collapsed section, so a live
              query forces every matching section open. */
-          const open = !!q || openSections.has(sec.label);
+          const open = !!q || openSections.has(sec.id);
           const total = sec.fields.length;
-          const enabled = sec.fields.filter((r) => !disabledFields.has(r.field.k)).length;
+          const enabled = sec.fields.filter((f) => !disabledFields.has(f.k)).length;
           return (
-            <div key={sec.label} className="mb-2">
-              <button type="button" onClick={() => toggleSection(sec.label)} aria-expanded={open}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left"
-                style={{ background: C.faint, border: `1.5px solid ${open ? C.lineStrong : "transparent"}` }}>
-                <span className="w-1 h-5 rounded-full shrink-0" style={{ background: sec.color || C.accent }} />
+            <div key={sec.id} className="mb-2">
+              <button type="button" onClick={() => toggleSection(sec.id)} aria-expanded={open}
+                className="fhj-acc-head w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left"
+                style={{
+                  background: open ? C.card : C.faint,
+                  border: `1.5px solid ${open ? C.lineStrong : "transparent"}`,
+                }}>
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: (sec.color || C.accent) + "1f" }}>
+                  <Icon name={sec.icon || "sliders"} size={15} color={sec.color || C.accent} />
+                </span>
                 <span className="flex-1 min-w-0">
                   <span className="text-sm font-bold block truncate" style={{ color: C.ink }}>{sec.label}</span>
                   <span className="text-[10.5px] block" style={{ color: C.subtle }}>
-                    {enabled} of {total} on
+                    {total} question{total === 1 ? "" : "s"} · {enabled} of {total} on
                   </span>
                 </span>
-                <Icon name={open ? "up" : "down"} size={16} color={C.sub} />
+                {enabled > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                    style={{ background: (sec.color || C.accent) + "1f", color: sec.color || C.accentText }}>
+                    {enabled}
+                  </span>
+                )}
+                <span className="fhj-acc-chev shrink-0" style={{ transform: open ? "rotate(180deg)" : "none" }}>
+                  <Icon name="down" size={16} color={C.sub} />
+                </span>
               </button>
 
-              {open && <div className="pt-2">{sec.fields.map(({ field: f, index: i }) => {
+              {/* Rows are only built once a drawer has been opened, so a
+                  sixty-question setup still mounts about a screenful. Once
+                  built they stay, which is what lets the close animate too. */}
+              {(open || everOpened.has(sec.id)) && (
+              <div className={"fhj-expand" + (open ? " is-open" : "")} aria-hidden={!open}>
+              <div><div className="fhj-expand-body pt-2">{sec.fields.map((f) => {
+          const i = sec.keys.indexOf(f.k);
           const on = !disabledFields.has(f.k);
           return (
             <div key={f.k} className="rounded-xl mb-2 overflow-hidden"
@@ -6083,18 +6329,19 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
               }}>
               <div className="flex items-center gap-2 px-2.5 py-2.5">
                 <div className="flex flex-col shrink-0">
-                  <button onClick={() => moveField(f.k, -1)} disabled={i === 0}
+                  <button onClick={() => moveWithin(f.k, -1, sec.keys)} disabled={i <= 0}
                     aria-label={`move ${f.label} up`}
                     className="w-7 h-6 flex items-center justify-center rounded-md disabled:opacity-20">
                     <Icon name="up" size={14} color={C.sub} />
                   </button>
-                  <button onClick={() => moveField(f.k, 1)} disabled={i === displayFields.length - 1}
+                  <button onClick={() => moveWithin(f.k, 1, sec.keys)} disabled={i === sec.keys.length - 1}
                     aria-label={`move ${f.label} down`}
                     className="w-7 h-6 flex items-center justify-center rounded-md disabled:opacity-20">
                     <Icon name="down" size={14} color={C.sub} />
                   </button>
                 </div>
-                <button onClick={() => toggleField(f.k)} role="switch" aria-checked={on}
+                <button onClick={() => { toggleField(f.k); feedback(on ? "toggleOff" : "toggleOn"); }}
+                  role="switch" aria-checked={on}
                   className="flex-1 min-w-0 text-left flex items-center gap-2.5 py-1">
                   <span className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0"
                     style={on
@@ -6104,13 +6351,20 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
                   </span>
                   <span className="min-w-0">
                     <span className="text-sm block truncate">{f.label}</span>
-                    {f.sec && f.sec !== f.moduleLabel && (
-                      <span className="text-[10.5px] block truncate" style={{ color: C.subtle }}>{f.sec}</span>
-                    )}
+                    {/* Whichever way the list is grouped, the row still says
+                        where the question came from and what it sits with — and
+                        that turning it off turns it off for every pack asking. */}
+                    <span className="text-[10.5px] block truncate" style={{ color: C.subtle }}>
+                      {[
+                        groupBy === "pack" ? f.sec : f.moduleLabel,
+                        groupBy === "pack" ? null : f.sec,
+                        f.sharedWith?.length > 1 ? `shared by ${f.sharedWith.length} packs` : null,
+                      ].filter(Boolean).join(" · ")}
+                    </span>
                   </span>
                 </button>
                 {f.custom && (
-                  <button onClick={() => removeCustom(f.k)} aria-label={`delete ${f.label}`}
+                  <button onClick={() => { feedback("delete"); removeCustom(f.k); }} aria-label={`delete ${f.label}`}
                     className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
                     <Icon name="x" size={15} color={C.subtle} />
                   </button>
@@ -6121,7 +6375,7 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
                   {VISIBILITY_FLAGS.map(([flag, label]) => {
                     const flagOn = getFlag(f, flag);
                     return (
-                      <button key={flag} onClick={() => toggleFlag(f, flag)}
+                      <button key={flag} onClick={() => { feedback(flagOn ? "toggleOff" : "toggleOn"); toggleFlag(f, flag); }}
                         aria-pressed={flagOn}
                         aria-label={`${f.label}: ${flagOn ? "shown in" : "hidden from"} ${label}`}
                         className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
@@ -6195,7 +6449,9 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
               )}
             </div>
           );
-              })}</div>}
+              })}</div></div>
+              </div>
+              )}
             </div>
           );
         })}
@@ -7621,50 +7877,36 @@ function ReportHistoryList({ reports, openSaved, deleteSaved }) {
    shared empty state
    ============================================================ */
 
-const FB = { prefs: { sound: false, haptics: true }, ctx: null };
+const FB = { prefs: DEFAULT_PREFS, ctx: null };
 const hapticsSupported = () => typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
 
-function playTone(seq) {
-  // seq: [{f, t, d}] frequency Hz, start offset s, duration s
-  try {
-    if (!FB.ctx) FB.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = FB.ctx;
-    if (ctx.state === "suspended") ctx.resume();
-    const now = ctx.currentTime;
-    for (const { f, t, d } of seq) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine"; osc.frequency.value = f;
-      gain.gain.setValueAtTime(0.0001, now + t);
-      gain.gain.exponentialRampToValueAtTime(0.12, now + t + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + t + d);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(now + t); osc.stop(now + t + d + 0.02);
-    }
-  } catch (e) { /* audio unavailable — stay silent */ }
-}
+/* Haptics stayed a flat pattern table; the audio moved out to lib/sound.ts,
+   which is a proper little instrument rather than six fixed beeps. The two are
+   kept in one call so a call site says what the person did — `feedback("save")`
+   — and the app decides how that is expressed. */
+const HAPTIC_PATTERNS = {
+  tap: 10, select: 15, include: 15, skip: 8, expand: 8, nav: 8, reorder: 12,
+  toggleOn: 14, toggleOff: 10, delete: [12, 24],
+  batch: [10, 30, 10], quickadd: [12, 20], save: [20, 40],
+  complete: [18, 40, 18], milestone: [30, 50, 30],
+};
+
+/* Finishing the journal and hitting a streak happen once a day, and they are
+   the two moments the app most wants to land. The rattle guard below exists
+   for repeated taps, so they are exempt from it — otherwise a celebration that
+   happens to follow a tap by 30ms is silently dropped. */
+const UNMISSABLE = new Set(["complete", "milestone"]);
 
 let lastFb = 0;
 function feedback(type) {
   const now = Date.now();
-  if (now - lastFb < 40) return; // debounce
+  if (now - lastFb < 40 && !UNMISSABLE.has(type)) return; // rattle guard
   lastFb = now;
-  if (FB.prefs.haptics && hapticsSupported()) {
-    const pat = { tap: 10, select: 15, include: 15, skip: 8, batch: [10, 30, 10], save: [20, 40], milestone: [30, 50, 30] }[type] || 10;
+  if (FB.prefs.haptics !== false && hapticsSupported()) {
+    const pat = HAPTIC_PATTERNS[type] || 10;
     try { navigator.vibrate(pat); } catch (e) { /* ignore */ }
   }
-  if (FB.prefs.sound && typeof window !== "undefined") {
-    const seqs = {
-      tap: [{ f: 660, t: 0, d: 0.05 }],
-      select: [{ f: 880, t: 0, d: 0.06 }],
-      include: [{ f: 740, t: 0, d: 0.05 }, { f: 988, t: 0.05, d: 0.07 }],
-      skip: [{ f: 392, t: 0, d: 0.05 }],
-      batch: [{ f: 660, t: 0, d: 0.06 }, { f: 880, t: 0.07, d: 0.07 }],
-      save: [{ f: 587, t: 0, d: 0.08 }, { f: 880, t: 0.09, d: 0.11 }],
-      milestone: [{ f: 587, t: 0, d: 0.07 }, { f: 740, t: 0.08, d: 0.07 }, { f: 988, t: 0.16, d: 0.12 }],
-    };
-    playTone(seqs[type] || seqs.tap);
-  }
+  playSound(type);
 }
 
 /* 7-day median of a scale before `date` — the "same as usual" ghost value. */
@@ -7783,7 +8025,9 @@ function FinishCelebration({ streak, tint, onDone }) {
     365: "A whole year, one day at a time.",
   };
   const milestone = MILESTONE_LINES[streak];
-  useEffect(() => { if (milestone) feedback("milestone"); }, []); // eslint-disable-line
+  /* Finishing the day's journal always gets a sound; a streak milestone gets
+     the longer one. This is the single moment the app is allowed to sing. */
+  useEffect(() => { feedback(milestone ? "milestone" : "complete"); }, []); // eslint-disable-line
   const lines = ["Steady wins.", "Logged and done.", "Small taps, real history.", "Future-you says thanks.", "Another day on the record."];
   const line = milestone || lines[streak % lines.length];
   return (
@@ -9030,7 +9274,7 @@ function QuickAdd({ checkedIn, onCheckIn, onFood, onBowel, onPhoto }) {
     <div className="fhj-tiles">
       {tiles.map((t) => (
         <button key={t.id} type="button"
-          onClick={() => { feedback("tap"); t.onClick(); }}
+          onClick={() => { feedback("quickadd"); t.onClick(); }}
           className={`fhj-tile fhj-pop ${t.cat}${t.done ? " is-done" : ""}`}>
           <span className="fhj-tile-icon">
             <Icon name={t.done ? "check" : t.icon} size={17} color="currentColor" />
@@ -9330,7 +9574,7 @@ function buildOnboardProfile(sel) {
   return {
     id: "p_self", name: (sel.name || "").trim(), modules: [...sel.modules],
     disabledFields: disabled, customQuestions: custom, fieldOrder: [], fieldOverrides: overrides,
-    photoBaselines: {}, cameraTimer: 3, createdAt: now, updatedAt: now,
+    photoBaselines: {}, cameraTimer: 3, prefs: { ...DEFAULT_PREFS }, createdAt: now, updatedAt: now,
   };
 }
 
@@ -9742,7 +9986,23 @@ function migrateDb(data) {
   const d = { ...data };
   if (!Array.isArray(d.reports)) d.reports = [];
   d.profile = { ...d.profile };
-  if (!d.profile.prefs) d.profile.prefs = { sound: false, haptics: true };
+  /* An install that predates the prefs object ran silent, with no backdrop.
+     Backfilling it with today's on-by-default values would switch on sound and
+     a moving background under someone who never asked for either — so it gets
+     the behaviour it already had. New profiles are born with DEFAULT_PREFS in
+     blankProfile()/onboarding, and anything already saved passes through
+     untouched apart from filling in keys that did not exist yet. */
+  if (!d.profile.prefs) {
+    d.profile.prefs = { ...LEGACY_PREFS };
+  } else {
+    const p = { ...d.profile.prefs };
+    const base = p.prefsVersion >= 2 ? DEFAULT_PREFS : LEGACY_PREFS;
+    for (const k of ["sound", "haptics", "backdrop"]) {
+      if (p[k] === undefined) p[k] = base[k];
+    }
+    if (p.prefsVersion === undefined) p.prefsVersion = 1;
+    d.profile.prefs = p;
+  }
   d.ai = { ...DEFAULT_AI, ...(d.ai || {}) };
   if (!Array.isArray(d.ai.dismissed)) d.ai.dismissed = [];
   /* Food and bowel logs arrive from three places — a fresh install, an older
@@ -9846,8 +10106,19 @@ export default function App({ viewer = false }) {
 
   // keep the module-level feedback helper in sync with saved prefs
   useEffect(() => {
-    if (db?.profile?.prefs) FB.prefs = db.profile.prefs;
+    if (db?.profile?.prefs) {
+      FB.prefs = db.profile.prefs;
+      setSoundEnabled(db.profile.prefs.sound !== false);
+    }
   }, [db?.profile?.prefs]);
+
+  /* Hand the audio hardware back while the app is in the background. Without
+     this, a phone keeps the output route open behind a locked screen. */
+  useEffect(() => {
+    const onVis = () => (document.hidden ? suspendSound() : resumeSound());
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -10267,7 +10538,7 @@ export default function App({ viewer = false }) {
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.ink }}>
-      <VantaBackdrop enabled={db.profile?.prefs?.backdrop === true} />
+      <VantaBackdrop enabled={db.profile?.prefs?.backdrop !== false} />
       {/* Keyboard and screen-reader users land on the nav-skip before the
           header controls; it stays out of the way until it's focused. */}
       <a href="#main" className="fhj-skip">Skip to main content</a>
@@ -10310,7 +10581,7 @@ export default function App({ viewer = false }) {
                 const color = active ? C.accentText : C.sub;
                 return (
                   <button key={n.id}
-                    onClick={() => setScreen(n.id)}
+                    onClick={() => { if (screen !== n.id) feedback("nav"); setScreen(n.id); }}
                     aria-current={active ? "page" : undefined}
                     className="flex-1 flex flex-col items-center justify-center gap-1 relative"
                     style={{ minHeight: 56, background: active ? C.accentSoft : "transparent" }}>
@@ -10351,4 +10622,5 @@ export const __internals = {
   entriesFor, calcStreak, avgWindow, SCHEMA_VERSION,
   SwipeDeck, FinishCelebration, feedback, FB, hapticsSupported,
   rangeForOffset, offsetOfPeriod, minPeriodOffset, ReportScreen,
+  DEFAULT_PREFS, LEGACY_PREFS, categoryOf, CATEGORY_META, CATEGORY_ORDER,
 };

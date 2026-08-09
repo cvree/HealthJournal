@@ -138,7 +138,12 @@ describe("haptics & sound settings", () => {
     const db = sample();
     db.profile.prefs = { sound: true, haptics: false, backdrop: true };
     const back = I.migrateDb(JSON.parse(JSON.stringify(db)));
-    expect(back.profile.prefs).toEqual({ sound: true, haptics: false, backdrop: true });
+    // Every choice comes back exactly as it was set — including the two that
+    // now default the other way for new installs.
+    expect(back.profile.prefs).toMatchObject({ sound: true, haptics: false, backdrop: true });
+    // Migration stamps which generation of defaults these came from, so a
+    // future change to the defaults can tell a choice from an unset field.
+    expect(back.profile.prefs.prefsVersion).toBe(1);
   });
 });
 

@@ -1,5 +1,85 @@
 # Changelog
 
+## 1.6.0
+
+### The question editor is filed by subject, not by pack
+
+1.5.0 grouped the editor into one collapsible section per pack, which was the
+right shape and the wrong axis. Nobody arrives thinking "Joint Pain / Mobility
+pack, third row" — they arrive thinking *I want to stop being asked about my
+knees*. And a pack drawer is still forty rows once it's open.
+
+- **Categories, not packs**: Symptoms, Pain, Sleep, Mood, Energy, Digestion,
+  Food, Bowel movements, Hydration, Activity, Medications & supplements, Vitals
+  & body, Skin care, Triggers, Photos, and your own questions. Every question
+  in every pack is filed explicitly, so nothing lands in a surprising drawer;
+  a test walks all eleven packs and fails if anything falls through to "Other".
+- **Grouping by pack is still one tap away** for anyone who thinks in the packs
+  they switched on.
+- **Every header carries its own count** — "12 questions · 8 of 12 on" — so the
+  shape of a setup is readable without opening anything.
+- **Search spans questions, packs, sections and category names**, with a live
+  match count, and forces matching drawers open.
+- **Rows are only built once a drawer is opened.** With every pack enabled —
+  about 120 questions, the largest setup the app allows — the editor now opens
+  with *no* question rows rendered at all, and the biggest single category is
+  under half the total.
+- **The arrows reorder inside a category.** They used to swap against the raw
+  global neighbour, which flung a question into a different drawer the moment
+  you tapped one; the swap is still written into the one global order.
+
+### A sound of its own
+
+The old feedback layer was six sine beeps at fixed pitches — the sound of a
+microwave, on a screen where someone is recording how much pain they were in
+today. `src/lib/sound.ts` replaces it with a small instrument built from one
+primitive: an oscillator, an envelope, and a whisper of filtered noise so a tap
+reads as a finger on a surface rather than a tone generator.
+
+- **A voice per action**, not per event type: a tactile tap, a warmer select, a
+  two-note switch that rises to turn on and falls to turn off, a quiet drawer,
+  a low navigation cue that is deliberately not a confirmation, a wooden knock
+  for reordering, a satisfying pluck for Quick Add, a warm rising third when
+  something saves, and an F–A–C arpeggio with a soft bell for finishing the
+  day's journal.
+- **It never repeats itself.** Every voice detunes a few cents, and the tactile
+  sounds walk an F pentatonic in a shuffled bag rather than replaying one pitch.
+  Twenty taps sound like an instrument, not twenty notifications.
+- **Quiet and short.** Master sits low behind a lowpass and a soft limiter;
+  taps are under 90ms and nothing but the completion moment runs past a third
+  of a second. Nothing is wired to scroll, hover or focus.
+- **Finishing the day is unmissable.** The rattle guard that stops fast taps
+  from buzzing used to be able to swallow a once-a-day celebration that
+  happened to follow a tap by 30ms; completions and milestones skip it.
+- Audio is created lazily on a real gesture, and the context is handed back
+  while the app is in the background.
+
+### Sound and the ambient backdrop now ship on
+
+Both are most of what makes this feel like a place rather than a form, and an
+off-by-default delight is one almost nobody sees.
+
+- **New journals arrive with sound, haptics and the moving backdrop on**, each
+  one switch away in Settings, and Settings can now play a sample of each sound.
+- **Nothing existing is overwritten.** Prefs carry a version stamp: a journal
+  that predates these defaults ran silent with a still background, and that was
+  the app's behaviour rather than an unset field, so it keeps it. Anything
+  already chosen passes through untouched.
+- **The backdrop stands down on its own** — under `prefers-reduced-motion`
+  (now watched live, so switching it on in the OS stops the fog without a
+  reload), on a device reporting under 4GB or under four cores, and while the
+  tab is in the background, where it releases the WebGL context entirely.
+- It loads at idle after first paint, so a 600kB shader chunk never competes
+  with the app booting.
+
+### Fixed
+
+- **A question shared by several packs was listed once per pack.** Brain fog is
+  in four packs, so the editor showed four identical rows, all four writing the
+  same answer — while the copy above them promised shared questions are "only
+  asked once", and the rest of the app already deduped by key. One row now,
+  labelled with how many packs are asking for it.
+
 ## 1.5.0
 
 ### Food tracking that keeps up with a real day

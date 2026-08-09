@@ -61,14 +61,47 @@ const sectionHeaders = () =>
     .filter((b) => /\d+ of \d+ on/.test(b.textContent || "")) as HTMLElement[];
 
 describe("questions are grouped, not one long run", () => {
-  it("shows one collapsible section per enabled pack", async () => {
+  it("files questions under subject categories, not one flat list", async () => {
     await mountApp();
     await openSetup();
     const headers = sectionHeaders();
     expect(headers.length).toBeGreaterThan(1);
-    expect(headers.map((h) => h.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining("Eczema / Skin")])
+    const text = headers.map((h) => h.textContent);
+    // Subject is the default grouping: a pack's questions get split across the
+    // categories they actually belong to.
+    for (const cat of ["Symptoms", "Sleep", "Food", "Photos"]) {
+      expect(text).toEqual(expect.arrayContaining([expect.stringContaining(cat)]));
+    }
+    // Categories with nothing in them are not rendered at all.
+    expect(text.some((t) => /Pain/.test(t || ""))).toBe(false);
+  });
+
+  it("still groups by pack for anyone who thinks that way", async () => {
+    await mountApp();
+    await openSetup();
+    fireEvent.click(screen.getByRole("button", { name: "Pack" }));
+    await waitFor(() =>
+      expect(sectionHeaders().map((h) => h.textContent)).toEqual(
+        expect.arrayContaining([expect.stringContaining("Eczema / Skin")])
+      )
     );
+  });
+
+  it("shuts every drawer when the grouping changes", async () => {
+    await mountApp();
+    await openSetup();
+    fireEvent.click(sectionHeaders()[0]);
+    expect(sectionHeaders()[0].getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Pack" }));
+    await waitFor(() => {
+      for (const h of sectionHeaders()) expect(h.getAttribute("aria-expanded")).toBe("false");
+    });
+  });
+
+  it("counts the questions in a category on its header", async () => {
+    await mountApp();
+    await openSetup();
+    expect(sectionHeaders()[0].textContent).toMatch(/\d+ questions? · \d+ of \d+ on/);
   });
 
   it("starts collapsed, so the screen opens short", async () => {
@@ -101,6 +134,60 @@ describe("questions are grouped, not one long run", () => {
     for (const h of sectionHeaders()) expect(h.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
     for (const h of sectionHeaders()) expect(h.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+/* The actual complaint was length, so this is the measurement of the fix: turn
+   every pack on — about 120 questions, the worst configuration the app allows —
+   and count what the screen is actually asked to render. */
+describe("a maximal setup still opens short", () => {
+  const allPacks = async () => {
+    const { __internals: I } = await import("../src/App");
+    await mountApp((db) => {
+      db.profile.modules = Object.keys(I.TEMPLATES);
+      db.profile.disabledFields = [];
+    });
+    await openSetup();
+  };
+  /* Question rows are the tall things; the switch inside each one is the
+     cheapest way to count them without matching on the pack switches above. */
+  const questionRows = () =>
+    [...document.querySelectorAll('button[role="switch"][aria-checked]')]
+      .filter((b) => b.querySelector("span > span"));
+
+  it("renders no question rows at all until a category is opened", async () => {
+    await allPacks();
+    expect(sectionHeaders().length).toBeGreaterThan(8);
+    expect(questionRows().length).toBe(0);
+  });
+
+  it("renders only the opened category, not the other hundred questions", async () => {
+    await allPacks();
+    const header = sectionHeaders()[0];
+    const total = Number(/of (\d+) on/.exec(header.textContent || "")![1]);
+    fireEvent.click(header);
+    await waitFor(() => expect(questionRows().length).toBe(total));
+    // The open drawer is a slice, not the list: even the largest category in
+    // the largest possible setup is well under half of everything configured.
+    const everything = Number(/(\d+) questions? ·/.exec(document.body.textContent || "")![1]);
+    expect(total).toBeLessThan(everything / 2);
+  });
+
+  it("puts a searched question on screen without opening anything else", async () => {
+    await allPacks();
+    fireEvent.change(screen.getByLabelText("Filter questions"), { target: { value: "brain fog" } });
+    await waitFor(() => expect(questionRows().length).toBe(1));
+    expect(document.body.textContent).toContain("Brain fog");
+  });
+
+  it("lists a question shared by several packs exactly once", async () => {
+    await allPacks();
+    // Brain fog is in POTS, Fatigue, Thyroid and Autoimmune. The rest of the
+    // app stores one answer for it, so the editor must offer one row.
+    fireEvent.change(screen.getByLabelText("Filter questions"), { target: { value: "brain fog" } });
+    await waitFor(() => expect(questionRows().length).toBe(1));
+    // And it says so, because one row for four packs needs explaining.
+    expect(document.body.textContent).toMatch(/shared by \d+ packs/);
   });
 });
 
@@ -158,15 +245,33 @@ describe("per-question controls still work inside a section", () => {
     });
   });
 
-  it("keeps the reorder arrows operating on the whole ordered list", async () => {
+  it("keeps the reorder arrows operating inside the open category", async () => {
     await mountApp();
     await openSetup();
     fireEvent.click(sectionHeaders()[0]);
-    // The very first question in the list can't move up.
-    const up = screen.getAllByRole("button", { name: /move .* up/ })[0];
-    expect(up).toHaveProperty("disabled", true);
-    const down = screen.getAllByRole("button", { name: /move .* down/ })[0];
-    expect(down).toHaveProperty("disabled", false);
+    // The first question in the category can't move up; the last can't move down.
+    const ups = screen.getAllByRole("button", { name: /move .* up/ });
+    const downs = screen.getAllByRole("button", { name: /move .* down/ });
+    expect(ups[0]).toHaveProperty("disabled", true);
+    expect(downs[0]).toHaveProperty("disabled", false);
+    expect(downs[downs.length - 1]).toHaveProperty("disabled", true);
+  });
+
+  it("reorders within a category rather than flinging a question out of it", async () => {
+    await mountApp();
+    await openSetup();
+    const header = sectionHeaders()[0];
+    fireEvent.click(header);
+    const labels = () =>
+      [...document.querySelectorAll('button[role="switch"][aria-checked]')]
+        .map((b) => b.querySelector("span > span")?.textContent)
+        .filter(Boolean);
+    const before = labels();
+    const second = before[1];
+    fireEvent.click(screen.getAllByRole("button", { name: /move .* up/ })[1]);
+    await waitFor(() => expect(labels()[0]).toBe(second));
+    // Same category, same population — only the order moved.
+    expect(new Set(labels())).toEqual(new Set(before));
   });
 });
 
