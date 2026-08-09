@@ -8,7 +8,8 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion } from "./lib/motion";
-import VantaBackdrop from "./components/VantaBackdrop";
+import AmbientBackdrop from "./components/AmbientBackdrop";
+import AppearancePanel from "./components/AppearancePanel";
 import RecoveryScreen from "./components/RecoveryScreen";
 import ViewerLanding from "./components/ViewerLanding";
 import LockScreen from "./components/LockScreen";
@@ -32,9 +33,7 @@ import {
   isIOSWebBrowser, isStandalone,
 } from "./lib/durability";
 import { screenFromSearch, clearDeepLink } from "./lib/deeplink";
-import {
-  C, readableInk, getThemePreference, setThemePreference, getTheme, onThemeChange,
-} from "./lib/theme";
+import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
 import {
   MEALS, mealLabel, mealForTime, UNITS, BRISTOL, bristolLabel, BOWEL_COLORS,
@@ -66,7 +65,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.7.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -794,9 +793,31 @@ function computeProfileTemplate(profile) {
    `prefsVersion` is what keeps this from being rude. A journal saved before
    these defaults changed ran with sound and backdrop off, and that silence was
    the app's promise, not an unset field — so LEGACY_PREFS is what an old
-   install gets backfilled with, and anything already chosen is never touched. */
-const DEFAULT_PREFS = { sound: true, haptics: true, backdrop: true, prefsVersion: 2 };
-const LEGACY_PREFS = { sound: false, haptics: true, backdrop: false, prefsVersion: 1 };
+   install gets backfilled with, and anything already chosen is never touched.
+
+   v3 raises the floor on feedback: sound on, and the vibration motor driven at
+   its top setting rather than the polite one. */
+const DEFAULT_PREFS = {
+  sound: true, haptics: true, hapticStrength: "vivid", backdrop: true, prefsVersion: 3,
+};
+const LEGACY_PREFS = {
+  sound: false, haptics: true, hapticStrength: "vivid", backdrop: false, prefsVersion: 1,
+};
+
+/* One-way door: an install that had explicitly switched the old backdrop off
+   keeps a plain surface, but only until the device store has an opinion of its
+   own. After that the chooser owns the setting and this never fires again. */
+const BACKDROP_MIGRATED_KEY = "fhj_backdrop_migrated_v1";
+function migrateBackdropPref(prefs) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (localStorage.getItem(BACKDROP_MIGRATED_KEY)) return;
+    localStorage.setItem(BACKDROP_MIGRATED_KEY, "1");
+    if (prefs?.backdrop === false) setBackdrop("off");
+  } catch {
+    /* storage blocked — the default backdrop is still a fine backdrop */
+  }
+}
 
 function blankProfile() {
   const now = new Date().toISOString();
@@ -5491,30 +5512,10 @@ function DataDurabilityCard({ db, setDb }) {
    it has to be readable synchronously before the first paint (see the inline
    script in index.html) — otherwise every cold start flashes white. */
 function AppearanceCard() {
-  const [pref, setPref] = useState(getThemePreference);
-  const choose = (next) => {
-    setPref(next);
-    setThemePreference(next);
-    feedback("select");
-  };
   return (
     <Card className="mt-3">
       <div className="fhj-eyebrow mb-2.5">Appearance</div>
-      <Segmented
-        label="Theme"
-        value={pref}
-        onChange={choose}
-        options={[
-          { value: "dark", label: "Dark" },
-          { value: "light", label: "Light" },
-          { value: "system", label: "System" },
-        ]}
-      />
-      <p className="text-[11.5px] leading-relaxed mt-2.5" style={{ color: C.subtle }}>
-        {pref === "system"
-          ? "Following your device's light/dark setting, and switching with it."
-          : `Always ${pref}. Remembered on this device.`}
-      </p>
+      <AppearancePanel onChoice={() => feedback("select")} />
     </Card>
   );
 }
@@ -5703,10 +5704,48 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-1">Taps & sounds</div>
         {hapticsSupported() && (
-          <SwitchRow
-            on={prefs.haptics !== false}
-            onChange={(on) => { setPrefs({ haptics: on }); if (on) feedback("select"); }}
-            label="Vibration feedback" desc="A tiny buzz on taps and saves" />
+          <>
+            <SwitchRow
+              on={prefs.haptics !== false}
+              onChange={(on) => {
+                setPrefs({ haptics: on });
+                FB.prefs = { ...prefs, haptics: on };
+                if (on) feedback("select");
+              }}
+              label="Vibration feedback" desc="A buzz on taps and saves" />
+            {prefs.haptics !== false && (
+              <div className="pb-3 -mt-1">
+                <div className="flex gap-1.5">
+                  {HAPTIC_LEVELS.map(([v, l]) => {
+                    const active = (prefs.hapticStrength || DEFAULT_PREFS.hapticStrength) === v;
+                    return (
+                      <button key={v} type="button"
+                        aria-pressed={active}
+                        onClick={() => {
+                          setPrefs({ hapticStrength: v });
+                          // Buzz at the new strength, not the old one, so the
+                          // control demonstrates itself as it is pressed.
+                          FB.prefs = { ...prefs, hapticStrength: v };
+                          feedback("save");
+                        }}
+                        className="flex-1 py-2 rounded-lg text-[11.5px] font-semibold"
+                        style={{
+                          background: active ? C.accent : "transparent",
+                          color: active ? C.onAccent : C.sub,
+                          border: `1px solid ${active ? C.accent : C.lineStrong}`,
+                        }}>
+                        {l}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                  Phones expose vibration length, not intensity — a stronger setting
+                  is a longer pulse, which reads as a firmer one.
+                </p>
+              </div>
+            )}
+          </>
         )}
         <SwitchRow
           on={prefs.sound !== false}
@@ -5731,11 +5770,6 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
             ))}
           </div>
         )}
-        <SwitchRow
-          on={prefs.backdrop !== false}
-          onChange={(on) => { setPrefs({ backdrop: on }); feedback(on ? "toggleOn" : "toggleOff"); }}
-          label="Ambient backdrop"
-          desc="A soft moving background behind the app. Skipped automatically when your device prefers reduced motion, or on a low-powered phone." />
       </Card>
 
       <AiSettingsCard ai={db.ai} setAi={setAi} db={db} onSetupComplete={onAiSetupComplete} />
@@ -7891,6 +7925,29 @@ const HAPTIC_PATTERNS = {
   complete: [18, 40, 18], milestone: [30, 50, 30],
 };
 
+/* The web has no amplitude control — `navigator.vibrate` takes durations and
+   nothing else. Strength is therefore expressed the only way the platform
+   allows: a longer pulse, which a phone's motor renders as a firmer one.
+
+   The gaps between pulses in a multi-part pattern are scaled far less than the
+   pulses themselves (see below), because stretching the silences too turns a
+   crisp double-tap into two separate events. */
+const HAPTIC_SCALE = { soft: 0.6, medium: 1, strong: 1.7, vivid: 2.4 };
+const HAPTIC_GAP_SCALE = { soft: 0.9, medium: 1, strong: 1.15, vivid: 1.25 };
+const HAPTIC_LEVELS = [
+  ["soft", "Soft"], ["medium", "Medium"], ["strong", "Strong"], ["vivid", "Vivid"],
+];
+
+/** Scale a pattern for the chosen strength. Even indices are pulses, odd ones
+    are the silences between them, which is how `navigator.vibrate` reads an
+    array. A single number is one pulse. */
+function scaleHaptic(pattern, strength) {
+  const pulse = HAPTIC_SCALE[strength] ?? HAPTIC_SCALE.vivid;
+  const gap = HAPTIC_GAP_SCALE[strength] ?? HAPTIC_GAP_SCALE.vivid;
+  const scaleOne = (v, i) => Math.max(1, Math.round(v * (i % 2 === 0 ? pulse : gap)));
+  return Array.isArray(pattern) ? pattern.map(scaleOne) : scaleOne(pattern, 0);
+}
+
 /* Finishing the journal and hitting a streak happen once a day, and they are
    the two moments the app most wants to land. The rattle guard below exists
    for repeated taps, so they are exempt from it — otherwise a celebration that
@@ -7903,7 +7960,7 @@ function feedback(type) {
   if (now - lastFb < 40 && !UNMISSABLE.has(type)) return; // rattle guard
   lastFb = now;
   if (FB.prefs.haptics !== false && hapticsSupported()) {
-    const pat = HAPTIC_PATTERNS[type] || 10;
+    const pat = scaleHaptic(HAPTIC_PATTERNS[type] || 10, FB.prefs.hapticStrength);
     try { navigator.vibrate(pat); } catch (e) { /* ignore */ }
   }
   playSound(type);
@@ -9707,6 +9764,29 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </div>
     );
   } else if (step === 1) {
+    /* Appearance comes before anything else on purpose. Every screen after
+       this one is already wearing the choice, so the setup itself is the
+       preview — and the one question a first-run screen can ask that costs
+       nothing to answer and nothing to get wrong is "which of these do you
+       like?". Nothing here is load-bearing; all of it is in Settings too. */
+    body = (
+      <>
+        <div className="font-display text-2xl mb-1">Make it yours</div>
+        <p className="text-sm mb-4" style={{ color: C.sub }}>
+          Pick a look. The rest of the setup will use it, so you can see what you're choosing.
+          You can change any of this later in Settings.
+        </p>
+        <Card>
+          <AppearancePanel onChoice={() => feedback("select")} />
+        </Card>
+      </>
+    );
+    actions = (
+      <button onClick={() => setStep(2)} className="fhj-btn fhj-btn-primary fhj-btn-block">
+        Continue
+      </button>
+    );
+  } else if (step === 2) {
     body = (
       <>
         <div className="font-display text-2xl mb-1">What do you want to track?</div>
@@ -9740,12 +9820,12 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(2)} disabled={!mods.length}
+      <button onClick={() => setStep(3)} disabled={!mods.length}
         className="fhj-btn fhj-btn-primary fhj-btn-block">
         {mods.length ? "Continue" : "Pick at least one to continue"}
       </button>
     );
-  } else if (step === 2) {
+  } else if (step === 3) {
     const sections = [];
     for (const mk of mods) {
       const t = TEMPLATES[mk];
@@ -9816,12 +9896,12 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(3)} disabled={!enabled.size}
+      <button onClick={() => setStep(4)} disabled={!enabled.size}
         className="fhj-btn fhj-btn-primary fhj-btn-block">
         {enabled.size ? "Continue" : "Keep at least one question"}
       </button>
     );
-  } else if (step === 3) {
+  } else if (step === 4) {
     body = (
       <>
         <div className="font-display text-2xl mb-1">Problem spots to photograph</div>
@@ -9852,11 +9932,11 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(4)} className="fhj-btn fhj-btn-primary fhj-btn-block">
+      <button onClick={() => setStep(5)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         {spots.length ? "Continue" : "Skip for now"}
       </button>
     );
-  } else if (step === 4) {
+  } else if (step === 5) {
     const progressOn = progressAngles.length > 0;
     body = (
       <>
@@ -9901,7 +9981,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(5)} className="fhj-btn fhj-btn-primary fhj-btn-block">
+      <button onClick={() => setStep(6)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         Continue
       </button>
     );
@@ -9941,7 +10021,10 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
-      <div ref={scrollRef} className="max-w-md mx-auto px-4" style={{ paddingBottom: "9.5rem" }}>
+      {/* The setup screens run over the real backdrop, so the choice made on
+          step 1 is visible for the rest of the flow rather than described. */}
+      <AmbientBackdrop />
+      <div ref={scrollRef} className="max-w-md mx-auto px-4 relative" style={{ paddingBottom: "9.5rem", zIndex: 1 }}>
         <div className="sticky top-0 z-20 pt-4 pb-2 flex items-center gap-3" style={{ background: C.bg }}>
           {step > 0 ? (
             <button onClick={() => setStep((s) => s - 1)} aria-label="back"
@@ -9951,7 +10034,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
             </button>
           ) : <div className="w-9 h-9" />}
           <div className="flex-1 flex justify-center gap-1.5">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="rounded-full" style={{
                 width: i === step ? 18 : 7, height: 7, transition: "width 150ms",
                 background: i <= step ? tint : C.line,
@@ -9992,17 +10075,36 @@ function migrateDb(data) {
      the behaviour it already had. New profiles are born with DEFAULT_PREFS in
      blankProfile()/onboarding, and anything already saved passes through
      untouched apart from filling in keys that did not exist yet. */
-  if (!d.profile.prefs) {
-    d.profile.prefs = { ...LEGACY_PREFS };
-  } else {
-    const p = { ...d.profile.prefs };
+  {
+    const p = d.profile.prefs ? { ...d.profile.prefs } : { ...LEGACY_PREFS };
     const base = p.prefsVersion >= 2 ? DEFAULT_PREFS : LEGACY_PREFS;
     for (const k of ["sound", "haptics", "backdrop"]) {
       if (p[k] === undefined) p[k] = base[k];
     }
     if (p.prefsVersion === undefined) p.prefsVersion = 1;
+
+    /* v3 — sound on by default, motor at its top setting.
+
+       The distinction that matters here is between silence someone *chose* and
+       silence they were merely handed. From v2 onward sound shipped on, so a v2
+       journal with sound off is a switch someone deliberately flicked, and it
+       stays flicked. A v1 journal was silent because the app of the day was
+       silent — nobody ever decided that — so it is the one that gets turned up.
+
+       Without that split this migration is just "override the user", which is
+       the exact rudeness the v2 seam above was written to prevent. */
+    if (p.prefsVersion < 2) p.sound = true;
+    if (p.prefsVersion < 3) {
+      p.hapticStrength = DEFAULT_PREFS.hapticStrength;
+      p.prefsVersion = 3;
+    }
+    if (!HAPTIC_SCALE[p.hapticStrength]) p.hapticStrength = DEFAULT_PREFS.hapticStrength;
     d.profile.prefs = p;
   }
+  /* The backdrop moved out of the journal and into device storage, because the
+     first-run screen has to offer it before there is a journal to put it in.
+     An older install that had switched it off keeps that, once. */
+  migrateBackdropPref(d.profile.prefs);
   d.ai = { ...DEFAULT_AI, ...(d.ai || {}) };
   if (!Array.isArray(d.ai.dismissed)) d.ai.dismissed = [];
   /* Food and bowel logs arrive from three places — a fresh install, an older
@@ -10538,7 +10640,7 @@ export default function App({ viewer = false }) {
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.ink }}>
-      <VantaBackdrop enabled={db.profile?.prefs?.backdrop !== false} />
+      <AmbientBackdrop />
       {/* Keyboard and screen-reader users land on the nav-skip before the
           header controls; it stays out of the way until it's focused. */}
       <a href="#main" className="fhj-skip">Skip to main content</a>
@@ -10623,4 +10725,5 @@ export const __internals = {
   SwipeDeck, FinishCelebration, feedback, FB, hapticsSupported,
   rangeForOffset, offsetOfPeriod, minPeriodOffset, ReportScreen,
   DEFAULT_PREFS, LEGACY_PREFS, categoryOf, CATEGORY_META, CATEGORY_ORDER,
+  scaleHaptic, HAPTIC_PATTERNS, HAPTIC_SCALE, HAPTIC_LEVELS,
 };

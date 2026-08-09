@@ -1,5 +1,80 @@
 # Changelog
 
+## 1.7.0
+
+### The ambient backdrops actually appear now
+
+They were a Vanta/three.js WebGL scene, and for most people they never drew
+anything at all. Three reasons, each sufficient on its own: the scene needed a
+live WebGL context, so a driver blocklist, iOS Lockdown Mode or a context lost
+to a tab sleep left it silently blank; it refused to start on any device
+reporting fewer than 4 CPU cores or less than 4GB of RAM, which is a normal
+phone rather than an exotic one; and it dragged ~613KB of three.js into the
+bundle to draw what is, honestly, a few blurred gradients.
+
+- **Rewritten in CSS.** No WebGL, no canvas, no feature detection, no
+  device test — it runs on the compositor and works anywhere a gradient does.
+- **`three` and `vanta` are gone from the dependency list**, taking a 613KB
+  chunk with them. The font upgrade below spends ~30KB of that back.
+- **Two styles, and a real "off":** **Fog** (slow overlapping fields) and
+  **Aurora** (tall raking curtains). Both are tinted from your colour.
+- **Reduced motion keeps the atmosphere and drops the movement**, rather than
+  removing the backdrop altogether the way the old one did.
+
+### Pick how it looks on the first launch
+
+A new second step in setup, before it asks about anything medical: backdrop,
+colour, theme, Night Light. The rest of the setup then runs wearing the choice,
+so it is a preview of the app rather than a description of one. It is the same
+component as the Settings panel, not a copy of it.
+
+### A horizontal colour slider
+
+- **Drag the hue** to re-tint buttons, charts, focus rings and the backdrop.
+- **Every position stays contrast-checked.** The accent is *solved* rather than
+  picked: the app walks lightness until the pair actually measures at WCAG AA,
+  for every hue, in both themes. The test suite checks all 360° — 1,440
+  generated palettes — because "a designer eyeballed it" stops being a strategy
+  once there are 360 accents and any one of them can be the one you choose.
+- **The semantic colours don't move.** Food, bowel and symptom cards are told
+  apart by hue, and the severity ramp means something; dragging those along
+  with the accent would break both at exactly the setting you liked.
+
+### Night Light
+
+Where the dark theme went, and then some. Dark/Light/System are still there and
+now sit at the top of Appearance instead of below the fold.
+
+- **It takes the blue out of the pixels**, rather than laying a warm sheet over
+  the top. `#FFFFFF` really does stop being `#FFFFFF`.
+- **The accent is pulled into the amber band too**, whatever the slider says —
+  the largest saturated area on screen is the last place to leave blue running.
+- **Readability is repaired, not assumed.** Warming every channel preserves
+  which of two colours is lighter but not the ratio between them, so a pair
+  that measured 3.02:1 in daylight can land at 2.89:1. Every token is pushed
+  back over its own bar afterwards, and tested.
+
+### Feedback ships louder
+
+- **Sounds on by default.** For journals that were silent only because the app
+  of the day was silent — a deliberate mute from v2 onward is still respected.
+- **A vibration strength control, defaulting to Vivid.** The web exposes pulse
+  *duration*, not amplitude, so a stronger setting is a longer pulse; the
+  silences between pulses are stretched far less, or a double-tap stops reading
+  as one gesture.
+
+### The J
+
+The display face is Fraunces, an optical-size family with a real `opsz` axis
+from 9 to 144 — and the app was loading the cut with that axis subsetted away
+and baked at **14**, the *text* optical size. Every heading was being drawn with
+letterforms designed for 14px and then scaled up: heavy slab terminals, tight
+apertures, and a chunky flat-topped J that took the worst of it.
+
+Now it loads the `opsz` cut and turns on `font-optical-sizing`, so a 30px title
+is drawn with the shapes meant for 30px and the 60px streak number with the
+shapes meant for 60px.
+
 ## 1.6.0
 
 ### The question editor is filed by subject, not by pack

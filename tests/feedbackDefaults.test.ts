@@ -3,9 +3,15 @@
    The first is that a new journal arrives with its sound and its moving
    background switched on — an off-by-default delight is one almost nobody
    sees. The second is that turning those on for *new* installs must not reach
-   back and turn them on for someone who has been logging in silence for a
-   year. Those pull in opposite directions, and this is where that seam is
-   pinned down.
+   back and override a switch someone deliberately flicked. Those pull in
+   opposite directions, and this is where that seam is pinned down.
+
+   v3 moved the seam, and it is worth being precise about where to. It used to
+   sit at "never change an existing journal". It now sits at "never change a
+   *decision*": a v2-or-later journal with sound off is someone's choice and is
+   left alone, while a v1 journal was silent only because the app of the day was
+   silent — nobody chose that — so it gets turned up. The tests below are split
+   along exactly that line.
 
    The sound engine gets its own pass: it has no visible output, so the things
    worth asserting are that it never repeats itself and never throws — a save
@@ -29,7 +35,12 @@ describe("what a new journal arrives with", () => {
 
   it("marks them as the new defaults, so a later change can tell them apart", async () => {
     const I = await internals();
-    expect(I.blankProfile().prefs.prefsVersion).toBe(2);
+    expect(I.blankProfile().prefs.prefsVersion).toBe(3);
+  });
+
+  it("drives the motor at its top setting", async () => {
+    const I = await internals();
+    expect(I.blankProfile().prefs.hapticStrength).toBe("vivid");
   });
 
   it("keeps the demo journal consistent with a real new one", async () => {
@@ -57,18 +68,26 @@ describe("what an existing journal keeps", () => {
     expect(prefs.haptics).toBe(false);
   });
 
-  it("does not switch on an install that predates the prefs object", async () => {
-    // This journal ran silent with a still background. That was the app's
-    // behaviour, not an unset field, so it is what it keeps.
+  it("turns sound up on an install that predates the prefs object", async () => {
+    /* This journal ran silent because the app of the day had no sound to
+       switch on — there is no decision here to preserve, only an absence. The
+       backdrop is a separate question and is answered on the device (see
+       migrateBackdropPref), so the stored flag is left where it is. */
     const prefs = await migrate({ id: "p_self" });
-    expect(prefs.sound).toBe(false);
-    expect(prefs.backdrop).toBe(false);
+    expect(prefs.sound).toBe(true);
     expect(prefs.haptics).toBe(true);
   });
 
-  it("does not switch on a journal that predates the backdrop switch", async () => {
+  it("turns sound up on a journal that predates the backdrop switch", async () => {
     const prefs = await migrate({ id: "p_self", prefs: { sound: false, haptics: true } });
-    expect(prefs.backdrop).toBe(false);
+    expect(prefs.sound).toBe(true);
+  });
+
+  /* The other half of the seam, and the one that actually protects someone:
+     from v2 on, sound shipped *on*, so finding it off means a person went and
+     turned it off. That survives every migration. */
+  it("still leaves a deliberate v2 mute muted", async () => {
+    const prefs = await migrate({ id: "p_self", prefs: { sound: false, haptics: true, backdrop: true, prefsVersion: 2 } });
     expect(prefs.sound).toBe(false);
   });
 

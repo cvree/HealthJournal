@@ -87,6 +87,12 @@ export interface DailyEntry {
 export interface UserSettings {
   sound?: boolean;
   haptics?: boolean;
+  /** How hard the vibration motor is driven. See HAPTIC_SCALE in App.tsx. */
+  hapticStrength?: "soft" | "medium" | "strong" | "vivid";
+  /** Legacy on/off switch for the ambient backdrop. The style (and "off") now
+      live in localStorage via lib/theme, because they have to be readable
+      before a profile exists — on the very first launch. Kept so an older
+      journal that switched the backdrop off is still honoured once. */
   backdrop?: boolean;
 }
 

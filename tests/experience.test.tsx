@@ -143,7 +143,32 @@ describe("haptics & sound settings", () => {
     expect(back.profile.prefs).toMatchObject({ sound: true, haptics: false, backdrop: true });
     // Migration stamps which generation of defaults these came from, so a
     // future change to the defaults can tell a choice from an unset field.
-    expect(back.profile.prefs.prefsVersion).toBe(1);
+    expect(back.profile.prefs.prefsVersion).toBe(3);
+    // ...and fills in the strength knob that generation introduced.
+    expect(back.profile.prefs.hapticStrength).toBe("vivid");
+  });
+
+  it("drives the motor harder at a higher strength, and always for at least a tick", () => {
+    // navigator.vibrate takes durations, not amplitudes, so "stronger" can only
+    // mean "longer" — this is the assertion that the setting does anything.
+    const soft = I.scaleHaptic(I.HAPTIC_PATTERNS.save, "soft") as number[];
+    const vivid = I.scaleHaptic(I.HAPTIC_PATTERNS.save, "vivid") as number[];
+    expect(vivid[0]).toBeGreaterThan(soft[0]);
+    expect(I.scaleHaptic(10, "vivid")).toBeGreaterThan(I.scaleHaptic(10, "medium") as number);
+    // A pulse that rounds to zero is a pulse the phone silently drops.
+    expect(I.scaleHaptic(1, "soft")).toBeGreaterThanOrEqual(1);
+  });
+
+  it("stretches the pulses far more than the silences between them", () => {
+    // Scaling the gaps at the same rate turns a crisp double-tap into two
+    // unrelated buzzes, which reads as a glitch rather than as emphasis.
+    const [p0, gap0] = I.scaleHaptic(I.HAPTIC_PATTERNS.delete, "medium") as number[];
+    const [p1, gap1] = I.scaleHaptic(I.HAPTIC_PATTERNS.delete, "vivid") as number[];
+    expect(p1 / p0).toBeGreaterThan(gap1 / gap0);
+  });
+
+  it("falls back to the default strength rather than going silent on a bad value", () => {
+    expect(I.scaleHaptic(10, "thunderous" as any)).toBe(I.scaleHaptic(10, "vivid"));
   });
 });
 

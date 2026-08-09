@@ -76,10 +76,22 @@ with a deliberate hint of neobrutalism: borders a notch above a hairline, hard o
 chunky buttons that press down into them, and section titles you can find at a glance. Calm, not
 loud.
 
-**Dark and light.** Dark by default, with a light theme that's a proper design rather than an
-inversion, and a "match system" option. The choice is remembered on the device and applied
-before the first paint, so a cold start never flashes white. Both themes are contrast-audited:
-`tests/theme.test.ts` fails the build if a token pair drops below WCAG AA.
+**Dark, light and Night Light.** Dark by default, with a light theme that's a proper design
+rather than an inversion, and a "match system" option. The choice is remembered on the device and
+applied before the first paint, so a cold start never flashes white. **Night Light** takes the
+blue out of every colour the app paints — a transform of the pixels, not a warm sheet laid over
+the top — and pulls the accent into the amber band with them.
+
+**A colour of your own.** A horizontal hue slider re-tints buttons, charts, focus rings and the
+backdrop. The accent is *solved* rather than picked: the app walks lightness until the pair
+actually measures at WCAG AA, so every one of the 360 positions clears the same bar the shipped
+blue did. `tests/theme.test.ts` checks the whole wheel in both themes with Night Light on and
+off, and fails the build if any token pair drops below AA. The semantic colours — the severity
+ramp, and the hues that tell a food card from a bowel card — deliberately don't move with it.
+
+**Backdrops that appear.** Fog or Aurora, in CSS: no WebGL, no canvas, no device test, nothing to
+feature-detect. Chosen on the first launch alongside the colour and theme, so the rest of setup
+runs wearing the choice.
 
 **AI (optional, off by default).** One integration, five uses: possible patterns, food from
 text, food from a photo, food from both, and bowel-photo attributes. Every one of them shows you
@@ -302,10 +314,11 @@ health-journal/
 ├── src/
 │   ├── main.tsx                # storage polyfill, mounts App
 │   ├── App.tsx                 # the app (migrated single-file artifact)
-│   ├── components/             # Vanta backdrop, lock, recovery, viewer landing,
-│   │                           #   metric picker
+│   ├── components/             # ambient backdrop, appearance panel, lock,
+│   │                           #   recovery, viewer landing, metric picker
 │   ├── lib/
-│   │   ├── theme.ts            # design tokens, dark/light, contrast helpers
+│   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
+│   │   │                       #   contrast solving
 │   │   ├── ai.ts               # optional AI analysis (credential, payload, parsing)
 │   │   ├── aiProviders.ts      # provider catalogue, model discovery + scoring
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
@@ -325,7 +338,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 407 tests across 18 suites
+└── tests/                      # 467 tests across 20 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
@@ -349,8 +362,8 @@ download before any reset, never a silent wipe.
 - **Lenis** smooths wheel scrolling; touch stays native so mobile logging is never hijacked.
 - **GSAP** drives screen transitions, the Quick Log finish moment, report card reveals, and the
   swipe-deck fling physics.
-- **Vanta** ambient backdrop is off by default; enabling it lazy-loads three.js and it never
-  runs under `prefers-reduced-motion`.
+- **The ambient backdrop is CSS** — three blurred layers on the compositor, tinted live from
+  `--fhj-hue`. Under `prefers-reduced-motion` it holds still rather than disappearing.
 - Every animation, sound, and haptic respects `prefers-reduced-motion` and the in-app toggles.
 - Keyboard users get a skip link, a `main` landmark, visible focus rings, and `aria-current` on
   the active tab. `prefers-contrast: more` darkens text and card borders.
@@ -368,9 +381,15 @@ download before any reset, never a silent wipe.
 and deliberately not adopted: it is a copy-in component gallery whose register — spotlight
 cards, animated gradients, decrypting text — is louder than this product wants, and the handful
 of interactions worth having (tactile press, card expansion, timeline reveal) are a dozen lines
-of CSS each with no dependency and no bundle cost. Vanta stays opt-in and off by default for the
-same reason: it is the one effect here that exists for its own sake, so it is the user's
-decision, and enabling it lazy-loads three.js rather than shipping it to everyone.
+of CSS each with no dependency and no bundle cost.
+
+Vanta was adopted, and then removed in 1.7.0 for the same reason react-bits was never adopted.
+It cost ~613KB of three.js, it needed a live WebGL context — so a driver blocklist, iOS Lockdown
+Mode, or a context lost to a tab sleep left it silently blank — and it declined to start at all
+on any device reporting fewer than 4 cores or under 4GB of RAM, which is a normal phone. The
+feature was therefore absent for most of the people it shipped to, and no test noticed, because
+no test asserted that anything appeared. What replaced it is three blurred `<span>`s and a
+handful of keyframes, which is what the effect was always worth.
 
 ## Native iOS app + Home Screen widget
 

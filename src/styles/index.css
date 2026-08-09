@@ -1,5 +1,20 @@
 @import "tailwindcss";
-@import "@fontsource-variable/fraunces";
+/* The `opsz` cut, not the default `wght`-only one.
+
+   Fraunces is an optical-size family: it ships a real `opsz` axis from 9 to
+   144, and the letterforms are genuinely different along it. The default
+   fontsource entry point subsets that axis away and bakes it at opsz=14 — the
+   *text* optical size — which is why headings looked wrong. At 14 the design
+   is drawn for 14px: heavy slab terminals, tight apertures, a chunky flat-
+   topped J. Rendered at 24-60px that reads as clumsy rather than characterful,
+   and the J takes the worst of it because its whole shape is one stroke and a
+   terminal.
+
+   With this cut the axis is present, so `font-optical-sizing: auto` (below)
+   lets the browser ask for the drawing intended for the size it is actually
+   painting. Costs ~30KB more than the wght-only file, against the ~613KB of
+   three.js this release removed. */
+@import "@fontsource-variable/fraunces/opsz.css";
 
 /* ============================================================
    Health Journal — design system
@@ -79,6 +94,22 @@ body {
 ::selection {
   background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
   color: var(--fhj-ink, #ecebe7);
+}
+
+/* Every display-font surface opts in to optical sizing. `auto` is the CSS
+   default, but only does anything once the loaded face actually carries an
+   opsz axis — it is stated explicitly here so that the connection between the
+   font import above and the shape of a heading is visible from either end.
+
+   This is per-element and automatic: the 6xl streak number, a 2xl step title
+   and a 17px section heading each get the drawing made for their own size,
+   which no single hand-picked value could do. */
+.font-display,
+.fhj-section-title,
+.fhj-page-title,
+.fhj-empty-title,
+.print-title {
+  font-optical-sizing: auto;
 }
 
 .font-display {
@@ -1183,6 +1214,424 @@ textarea.fhj-input {
   }
 }
 
+/* ============================================================
+   Ambient backdrop
+   ============================================================
+   The moving field behind the whole app. Two styles, one skeleton: three
+   absolutely-positioned layers whose paint is swapped by the style class.
+
+   Colour comes from --fhj-hue rather than from a token, so the hue slider
+   re-tints the backdrop on the same frame it re-tints everything else, with no
+   React render in the path. Saturation and lightness are fixed per theme —
+   the backdrop is atmosphere, and atmosphere that competes with a card for
+   attention is a bug.
+
+   Opacity is the whole safety story here. Everything the app puts on top is on
+   an opaque surface (cards, sheets, the nav bar), so the backdrop is only ever
+   seen through page gutters — but the page background is *not* opaque over it,
+   so body copy sitting directly on the page has to stay readable. Dark carries
+   less than light because an additive-looking wash over near-black eats card
+   edges far faster than the same wash over paper. */
+
+.fhj-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+
+  /* The two companion layers sit either side of the chosen hue. Spreading them
+     is what stops the backdrop reading as one flat wash — but the spread has to
+     be a variable, not a literal, because Night Light needs to collapse it.
+     theme.ts clamps --fhj-hue into the amber band; without this the +/- offsets
+     would walk layer 2 into green and layer 3 into pink and put back exactly
+     the wavelengths the mode exists to remove. */
+  --fhj-bd-warm: 42;
+  --fhj-bd-cool: -34;
+}
+:root[data-night="on"] .fhj-backdrop {
+  --fhj-bd-warm: 9;
+  --fhj-bd-cool: -9;
+}
+
+.fhj-backdrop-layer {
+  position: absolute;
+  display: block;
+  will-change: transform;
+}
+
+/* ---- Fog: slow, overlapping blurred fields ---- */
+
+.fhj-backdrop-fog .fhj-backdrop-layer {
+  border-radius: 50%;
+  filter: blur(70px);
+}
+.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(1) {
+  width: 85vw;
+  height: 62vh;
+  top: -14vh;
+  left: -18vw;
+  background: hsl(var(--fhj-hue, 218) 62% 58%);
+  opacity: 0.5;
+  animation: fhjFogA 26s ease-in-out infinite alternate;
+}
+.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(2) {
+  width: 78vw;
+  height: 58vh;
+  bottom: -16vh;
+  right: -20vw;
+  background: hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-warm)) 58% 55%);
+  opacity: 0.42;
+  animation: fhjFogB 32s ease-in-out infinite alternate;
+}
+.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(3) {
+  width: 62vw;
+  height: 52vh;
+  top: 28vh;
+  left: 22vw;
+  background: hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-cool)) 55% 60%);
+  opacity: 0.3;
+  animation: fhjFogC 38s ease-in-out infinite alternate;
+}
+
+@keyframes fhjFogA {
+  from {
+    transform: translate3d(-6%, -4%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(10%, 8%, 0) scale(1.22);
+  }
+}
+@keyframes fhjFogB {
+  from {
+    transform: translate3d(8%, 6%, 0) scale(1.14);
+  }
+  to {
+    transform: translate3d(-8%, -6%, 0) scale(1);
+  }
+}
+@keyframes fhjFogC {
+  from {
+    transform: translate3d(-10%, 6%, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(12%, -8%, 0) scale(1.3);
+  }
+}
+
+/* ---- Aurora: tall raking curtains ----
+   Skewed, heavily-blurred columns that drift sideways and breathe vertically,
+   masked so they fade out before either edge rather than ending on a line. */
+
+.fhj-backdrop-aurora .fhj-backdrop-layer {
+  top: -30vh;
+  height: 160vh;
+  width: 46vw;
+  filter: blur(58px);
+  transform-origin: 50% 50%;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 22%,
+    #000 68%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 22%,
+    #000 68%,
+    transparent 100%
+  );
+}
+.fhj-backdrop-aurora .fhj-backdrop-layer:nth-child(1) {
+  left: -6vw;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    hsl(var(--fhj-hue, 218) 70% 60%),
+    transparent
+  );
+  opacity: 0.55;
+  animation: fhjAuroraA 24s ease-in-out infinite alternate;
+}
+.fhj-backdrop-aurora .fhj-backdrop-layer:nth-child(2) {
+  left: 28vw;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-warm) + 14) 66% 58%),
+    transparent
+  );
+  opacity: 0.45;
+  animation: fhjAuroraB 30s ease-in-out infinite alternate;
+}
+.fhj-backdrop-aurora .fhj-backdrop-layer:nth-child(3) {
+  left: 60vw;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-cool) - 6) 62% 62%),
+    transparent
+  );
+  opacity: 0.4;
+  animation: fhjAuroraC 36s ease-in-out infinite alternate;
+}
+
+@keyframes fhjAuroraA {
+  from {
+    transform: translate3d(-8vw, 0, 0) skewX(-12deg) scaleY(0.9);
+  }
+  to {
+    transform: translate3d(10vw, 0, 0) skewX(8deg) scaleY(1.12);
+  }
+}
+@keyframes fhjAuroraB {
+  from {
+    transform: translate3d(9vw, 0, 0) skewX(10deg) scaleY(1.1);
+  }
+  to {
+    transform: translate3d(-11vw, 0, 0) skewX(-9deg) scaleY(0.92);
+  }
+}
+@keyframes fhjAuroraC {
+  from {
+    transform: translate3d(-6vw, 0, 0) skewX(6deg) scaleY(1.05);
+  }
+  to {
+    transform: translate3d(12vw, 0, 0) skewX(-11deg) scaleY(0.88);
+  }
+}
+
+/* Light needs more of the effect to read at all against paper; dark needs
+   less before it starts washing out card edges. */
+:root[data-theme="light"] .fhj-backdrop {
+  opacity: 0.42;
+}
+:root[data-theme="dark"] .fhj-backdrop {
+  opacity: 0.36;
+}
+
+/* Night Light means what it says: no blue leaves the screen, and the backdrop
+   is the largest coloured area there is. The hue is already clamped to the
+   amber band in theme.ts — this drops the intensity too, because a bright
+   moving field is the other half of what keeps someone awake. */
+:root[data-night="on"] .fhj-backdrop {
+  opacity: 0.26;
+  filter: saturate(0.8);
+}
+
+/* The same backdrop, shrunk into a chooser tile. Only the containing block and
+   the blur radius change — the tile therefore shows the real thing rather than
+   an illustration of it that can quietly stop matching. */
+.fhj-backdrop-preview {
+  position: absolute;
+  border-radius: inherit;
+  opacity: 1 !important;
+}
+.fhj-backdrop-preview.fhj-backdrop-fog .fhj-backdrop-layer {
+  filter: blur(14px);
+}
+.fhj-backdrop-preview.fhj-backdrop-aurora .fhj-backdrop-layer {
+  filter: blur(11px);
+}
+.fhj-backdrop-preview .fhj-backdrop-layer {
+  width: 150% !important;
+  height: 150% !important;
+}
+.fhj-backdrop-preview.fhj-backdrop-aurora .fhj-backdrop-layer {
+  width: 42% !important;
+  height: 190% !important;
+  top: -45%;
+}
+.fhj-backdrop-preview.fhj-backdrop-aurora .fhj-backdrop-layer:nth-child(1) {
+  left: -4%;
+}
+.fhj-backdrop-preview.fhj-backdrop-aurora .fhj-backdrop-layer:nth-child(2) {
+  left: 30%;
+}
+.fhj-backdrop-preview.fhj-backdrop-aurora .fhj-backdrop-layer:nth-child(3) {
+  left: 64%;
+}
+.fhj-backdrop-preview.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(1) {
+  top: -30%;
+  left: -25%;
+}
+.fhj-backdrop-preview.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(2) {
+  bottom: -35%;
+  right: -25%;
+}
+.fhj-backdrop-preview.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(3) {
+  top: 20%;
+  left: 15%;
+}
+
+/* ---- backdrop chooser ---- */
+
+.fhj-backdrop-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.fhj-backdrop-choice {
+  text-align: left;
+  border-radius: 0.875rem;
+  border-width: 2px;
+  border-style: solid;
+  padding: 0.5rem;
+  transition:
+    border-color 140ms,
+    box-shadow 140ms;
+}
+.fhj-backdrop-choice-preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+.fhj-backdrop-choice-flat {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    var(--fhj-line, #31343d) 5px,
+    var(--fhj-line, #31343d) 6px
+  );
+  opacity: 0.7;
+}
+
+/* ---- hue slider ----
+   A plain range input, restyled. It stays a range input on purpose: keyboard
+   arrows, Home/End, screen-reader announcement and the OS's own touch target
+   all come free, and none of them survive a div rebuilt to look like this. */
+
+.fhj-hue-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+.fhj-hue-slider::-webkit-slider-runnable-track {
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--fhj-line, #31343d);
+  background: linear-gradient(
+    to right,
+    hsl(0 60% 58%),
+    hsl(60 60% 58%),
+    hsl(120 60% 58%),
+    hsl(180 60% 58%),
+    hsl(240 60% 58%),
+    hsl(300 60% 58%),
+    hsl(360 60% 58%)
+  );
+}
+.fhj-hue-slider::-moz-range-track {
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--fhj-line, #31343d);
+  background: linear-gradient(
+    to right,
+    hsl(0 60% 58%),
+    hsl(60 60% 58%),
+    hsl(120 60% 58%),
+    hsl(180 60% 58%),
+    hsl(240 60% 58%),
+    hsl(300 60% 58%),
+    hsl(360 60% 58%)
+  );
+}
+.fhj-hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: var(--fhj-thumb, #8fb0e3);
+  border: 2px solid var(--fhj-bg, #141519);
+  box-shadow: 0 0 0 1.5px var(--fhj-line-strong, #464a55);
+}
+.fhj-hue-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--fhj-thumb, #8fb0e3);
+  border: 2px solid var(--fhj-bg, #141519);
+  box-shadow: 0 0 0 1.5px var(--fhj-line-strong, #464a55);
+}
+.fhj-hue-slider:focus-visible {
+  outline: 2px solid var(--fhj-focus, #a6c3ea);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+/* Under Night Light the wheel is misleading — the slider can only reach the
+   amber band, so the track shows that band rather than colours it won't give. */
+:root[data-night="on"] .fhj-hue-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, hsl(20 60% 52%), hsl(36 62% 56%), hsl(52 64% 58%));
+}
+:root[data-night="on"] .fhj-hue-slider::-moz-range-track {
+  background: linear-gradient(to right, hsl(20 60% 52%), hsl(36 62% 56%), hsl(52 64% 58%));
+}
+
+/* ---- segmented + night row ---- */
+
+.fhj-seg {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-seg > button {
+  flex: 1;
+  min-height: 38px;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition:
+    background 140ms,
+    color 140ms;
+}
+
+.fhj-night-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem;
+  width: 100%;
+  text-align: left;
+  margin-top: 1.25rem;
+  padding: 0.875rem;
+  border-radius: 0.875rem;
+  border-width: 1px;
+  border-style: solid;
+  transition:
+    background 140ms,
+    border-color 140ms;
+}
+
+/* Reduced motion keeps the atmosphere and drops the movement. */
+.fhj-backdrop-still .fhj-backdrop-layer {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-backdrop-layer {
+    animation: none !important;
+  }
+}
+
 .fhj-glow {
   position: absolute;
   border-radius: 50%;
@@ -1330,6 +1779,7 @@ textarea.fhj-input {
   header,
   .no-print,
   .fhj-glow,
+  .fhj-backdrop,
   .fhj-picker-arrow {
     display: none !important;
   }
