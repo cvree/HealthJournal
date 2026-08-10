@@ -15,6 +15,8 @@ import {
   newFoodItem, rememberFood, logFromFoodItem, scaleNutrition, foodKey,
   browseFoods, searchScore, toggleFavorite, goalProgress, hasGoals,
   sanitizeFoodItems, sanitizeGoals,
+  matchBowelColor, matchBowelConsistency, bowelSuggestion, applyBowelSuggestion,
+  aiFilledBowelFields, BOWEL_COLORS, BOWEL_CONSISTENCY,
 } from "../src/lib/tracking";
 import { buildFoodTable, buildBowelTable, buildWideTable, logsInRange } from "../src/lib/exports";
 import type { FoodLog } from "../src/types/models";
@@ -674,5 +676,108 @@ describe("restoring a library", () => {
 
   it("accepts a journal that predates the library", () => {
     expect(sanitizeFoodItems(undefined)).toEqual([]);
+  });
+});
+
+/* ---------- a photo reading landing in the log ----------
+
+   Once the model's answer can be written into the log without a person
+   tapping it through, two things start to matter that didn't before: it has
+   to arrive in the form's own vocabulary, and it must never sit on top of an
+   answer the person already gave. */
+
+describe("mapping a model's words onto the form's options", () => {
+  it("returns a value the chips actually offer, or nothing at all", () => {
+    for (const raw of ["dark brown", "Dark Brown", "dark-brown stool", "brown", "pale", "tarry black"]) {
+      const c = matchBowelColor(raw);
+      expect(BOWEL_COLORS, raw).toContain(c);
+    }
+    for (const raw of ["soft", "LOOSE", "watery/liquid", "formed"]) {
+      const c = matchBowelConsistency(raw);
+      expect(BOWEL_CONSISTENCY, raw).toContain(c);
+    }
+  });
+
+  it("tests the qualified browns before the bare one they contain", () => {
+    expect(matchBowelColor("dark brown")).toBe("Dark brown");
+    expect(matchBowelColor("light brown")).toBe("Light brown");
+    expect(matchBowelColor("brown")).toBe("Brown");
+    // "pale" wins over the "brown" sitting next to it — clay is the distinct
+    // observation, and collapsing it into Brown would lose it.
+    expect(matchBowelColor("pale brown, almost clay")).toBe("Pale / clay");
+  });
+
+  it("drops a word it can't place rather than guessing", () => {
+    expect(matchBowelColor("iridescent")).toBeUndefined();
+    expect(matchBowelConsistency("moderate")).toBeUndefined();
+    expect(matchBowelColor("")).toBeUndefined();
+    expect(matchBowelColor(undefined)).toBeUndefined();
+  });
+
+  it("carries amount through only in the three buckets the form has", () => {
+    expect(bowelSuggestion({ at: "", model: "", amount: "large", confidence: "low" }).amount).toBe("large");
+    expect(bowelSuggestion({ at: "", model: "", confidence: "low" }).amount).toBeUndefined();
+  });
+});
+
+describe("applying a suggestion to a log", () => {
+  const ai = {
+    at: "2026-08-10T09:00:00Z", model: "m", bristol: 4, amount: "medium" as const,
+    color: "dark brown", consistency: "formed", confidence: "high" as const,
+  };
+
+  it("fills every blank field it can", () => {
+    const out = applyBowelSuggestion(newBowelLog({ date: "2026-08-10" }), ai);
+    expect(out.bristol).toBe(4);
+    expect(out.amount).toBe("medium");
+    expect(out.color).toBe("Dark brown");
+    expect(out.consistency).toBe("Formed");
+  });
+
+  it("never overwrites an answer the person already gave", () => {
+    const mine = newBowelLog({ date: "2026-08-10", bristol: 6, color: "Green" });
+    const out = applyBowelSuggestion(mine, ai);
+    expect(out.bristol).toBe(6);
+    expect(out.color).toBe("Green");
+    // The blanks still get filled — one disagreement doesn't discard the rest.
+    expect(out.amount).toBe("medium");
+    expect(out.consistency).toBe("Formed");
+  });
+
+  it("leaves the log untouched when there is nothing to add", () => {
+    const log = newBowelLog({ date: "2026-08-10", bristol: 4, amount: "medium", color: "Dark brown", consistency: "Formed" });
+    expect(applyBowelSuggestion(log, ai)).toBe(log);
+  });
+
+  it("reports which fields the model is answering for, and stops once one is overtyped", () => {
+    const filled = applyBowelSuggestion(newBowelLog({ date: "2026-08-10" }), ai);
+    const withAi = { ...filled, ai };
+    expect(aiFilledBowelFields(withAi).sort()).toEqual(["amount", "bristol", "color", "consistency"]);
+
+    const corrected = { ...withAi, color: "Green" };
+    expect(aiFilledBowelFields(corrected)).not.toContain("color");
+    expect(aiFilledBowelFields(corrected)).toContain("bristol");
+  });
+
+  it("survives a round trip through a backup, amount included", () => {
+    const filled = { ...applyBowelSuggestion(newBowelLog({ date: "2026-08-10" }), ai), ai };
+    const back = sanitizeBowelLogs(JSON.parse(JSON.stringify([filled])));
+    expect(back[0].ai?.amount).toBe("medium");
+    expect(aiFilledBowelFields(back[0])).toContain("amount");
+  });
+});
+
+describe("an explicitly-undefined field means 'not given'", () => {
+  /* Passing an optional prop straight through is the normal way to call these,
+     and it used to un-set the default it was meant to fall back to. */
+  it("still stamps a time when one is passed as undefined", () => {
+    expect(newFoodLog({ date: "2026-08-10", time: undefined }).time).toMatch(/^\d{2}:\d{2}$/);
+    expect(newBowelLog({ date: "2026-08-10", time: undefined }).time).toMatch(/^\d{2}:\d{2}$/);
+    expect(newFoodLog({ date: "2026-08-10", meal: undefined }).meal).toBeTruthy();
+  });
+
+  it("keeps honouring a time that was actually given", () => {
+    expect(newFoodLog({ date: "2026-08-10", time: "07:15" }).time).toBe("07:15");
+    expect(newFoodLog({ date: "2026-08-10", time: "07:15" }).meal).toBe("breakfast");
   });
 });

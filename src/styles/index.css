@@ -762,6 +762,46 @@ textarea.fhj-input {
   display: none;
 }
 
+/* A section heading that is itself the way into the thing it names. The row
+   is the tap target, so it needs to say so without turning a heading into a
+   button-looking control — a hair of travel and the accent bar brightening is
+   enough at this size. */
+button.fhj-section {
+  width: 100%;
+  border-radius: 0.625rem;
+  padding: 0.125rem 0.25rem;
+  margin-left: -0.25rem;
+  margin-right: -0.25rem;
+  transition:
+    background var(--fhj-ease, 160ms) var(--fhj-out),
+    transform 90ms var(--fhj-out);
+}
+button.fhj-section:hover:not(:disabled) {
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+}
+button.fhj-section:active:not(:disabled) {
+  transform: translateY(1px);
+}
+button.fhj-section:disabled {
+  cursor: default;
+}
+
+/* The photo, when it is the first thing the form asks for. The frame is what
+   tells someone the camera is the primary answer here rather than an extra
+   they can get to later — a bare button in the same position reads as one
+   more field. */
+.fhj-photo-lead {
+  padding: 0.75rem;
+  border-radius: var(--fhj-radius, 0.875rem);
+  background: var(--fhj-tint-soft, var(--fhj-faint, rgba(255, 255, 255, 0.04)));
+  border: var(--fhj-bw, 1.5px) dashed var(--fhj-line-strong, #464a55);
+}
+/* Once there is an image, the dashed "put something here" frame has done its
+   job and would only compete with the thumbnail. */
+.fhj-photo-lead:has(img) {
+  border-style: solid;
+}
+
 /* Page-level heading, one per screen. */
 .fhj-page-title {
   font-family: var(--fhj-font-display);
@@ -1404,6 +1444,208 @@ textarea.fhj-input {
   }
 }
 
+/* ---- Dawn: a low horizon that breathes ----
+   Three wide, very soft bands stacked toward the bottom of the screen, rising
+   and settling on a slow cycle. Fog and aurora both put their weight in the
+   middle of the viewport, which is exactly where the cards are; dawn keeps the
+   colour below the fold and out from behind the reading column. */
+
+.fhj-backdrop-dawn .fhj-backdrop-layer {
+  left: -20vw;
+  width: 140vw;
+  border-radius: 50% 50% 0 0;
+  filter: blur(64px);
+}
+.fhj-backdrop-dawn .fhj-backdrop-layer:nth-child(1) {
+  bottom: -18vh;
+  height: 78vh;
+  background: hsl(var(--fhj-hue, 218) 58% 56%);
+  opacity: 0.56;
+  animation: fhjDawnA 30s ease-in-out infinite alternate;
+}
+.fhj-backdrop-dawn .fhj-backdrop-layer:nth-child(2) {
+  bottom: -10vh;
+  height: 56vh;
+  background: hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-warm)) 62% 58%);
+  opacity: 0.44;
+  animation: fhjDawnB 38s ease-in-out infinite alternate;
+}
+.fhj-backdrop-dawn .fhj-backdrop-layer:nth-child(3) {
+  top: -32vh;
+  height: 58vh;
+  border-radius: 0 0 50% 50%;
+  background: hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-cool)) 52% 60%);
+  opacity: 0.26;
+  animation: fhjDawnC 34s ease-in-out infinite alternate;
+}
+
+@keyframes fhjDawnA {
+  from {
+    transform: translate3d(0, 6vh, 0) scaleY(0.92);
+  }
+  to {
+    transform: translate3d(0, -4vh, 0) scaleY(1.1);
+  }
+}
+@keyframes fhjDawnB {
+  from {
+    transform: translate3d(-4vw, 3vh, 0) scaleY(1.08);
+  }
+  to {
+    transform: translate3d(5vw, -5vh, 0) scaleY(0.9);
+  }
+}
+@keyframes fhjDawnC {
+  from {
+    transform: translate3d(3vw, -3vh, 0) scaleY(0.95);
+  }
+  to {
+    transform: translate3d(-4vw, 4vh, 0) scaleY(1.14);
+  }
+}
+
+/* ---- Drift: soft motes, far out of focus ----
+   Each layer is a radial-gradient field rather than a single blob, so three
+   elements draw a dozen slow-moving lights. The gradients are sized in vmin so
+   the field doesn't turn into stripes on a tall phone. */
+
+.fhj-backdrop-drift .fhj-backdrop-layer {
+  inset: -24vmin;
+  /* Small enough that the individual motes stay separable — at a wider radius
+     the three layers merge into a single wash and this becomes fog with extra
+     steps, which is what the first pass of it looked like. */
+  filter: blur(18px);
+  background-repeat: no-repeat;
+}
+.fhj-backdrop-drift .fhj-backdrop-layer:nth-child(1) {
+  background-image:
+    radial-gradient(circle at 18% 22%, hsl(var(--fhj-hue, 218) 64% 60%) 0, transparent 16vmin),
+    radial-gradient(circle at 74% 12%, hsl(var(--fhj-hue, 218) 60% 58%) 0, transparent 11vmin),
+    radial-gradient(circle at 58% 76%, hsl(var(--fhj-hue, 218) 66% 62%) 0, transparent 19vmin);
+  opacity: 0.46;
+  animation: fhjDriftA 34s ease-in-out infinite alternate;
+}
+.fhj-backdrop-drift .fhj-backdrop-layer:nth-child(2) {
+  background-image:
+    radial-gradient(
+      circle at 84% 58%,
+      hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-warm)) 62% 58%) 0,
+      transparent 24vmin
+    ),
+    radial-gradient(
+      circle at 30% 68%,
+      hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-warm)) 58% 56%) 0,
+      transparent 20vmin
+    );
+  opacity: 0.36;
+  animation: fhjDriftB 42s ease-in-out infinite alternate;
+}
+.fhj-backdrop-drift .fhj-backdrop-layer:nth-child(3) {
+  background-image:
+    radial-gradient(
+      circle at 44% 34%,
+      hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-cool)) 56% 62%) 0,
+      transparent 22vmin
+    ),
+    radial-gradient(
+      circle at 8% 84%,
+      hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-cool)) 54% 60%) 0,
+      transparent 26vmin
+    );
+  opacity: 0.3;
+  animation: fhjDriftC 48s ease-in-out infinite alternate;
+}
+
+@keyframes fhjDriftA {
+  from {
+    transform: translate3d(-3vw, -2vh, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4vw, 5vh, 0) scale(1.12);
+  }
+}
+@keyframes fhjDriftB {
+  from {
+    transform: translate3d(4vw, 4vh, 0) scale(1.1);
+  }
+  to {
+    transform: translate3d(-5vw, -3vh, 0) scale(1);
+  }
+}
+@keyframes fhjDriftC {
+  from {
+    transform: translate3d(2vw, 5vh, 0) scale(1.06);
+  }
+  to {
+    transform: translate3d(-3vw, -4vh, 0) scale(1.18);
+  }
+}
+
+/* ---- Linen: the paper the journal is modelled on ----
+   Two crossed sets of fine repeating bands plus one broad wash. The bands are
+   drawn at a size that would moiré if it were sharp, so the layer is blurred
+   just enough to read as texture rather than as a pattern. The wash is what
+   stops it looking like a printed grid. */
+
+.fhj-backdrop-linen .fhj-backdrop-layer {
+  inset: -20vmin;
+}
+.fhj-backdrop-linen .fhj-backdrop-layer:nth-child(1) {
+  background-image: repeating-linear-gradient(
+    62deg,
+    hsl(var(--fhj-hue, 218) 46% 58%) 0 2px,
+    transparent 2px 9px
+  );
+  opacity: 0.26;
+  filter: blur(3.5px);
+  animation: fhjLinenA 46s ease-in-out infinite alternate;
+}
+.fhj-backdrop-linen .fhj-backdrop-layer:nth-child(2) {
+  background-image: repeating-linear-gradient(
+    -58deg,
+    hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-warm)) 44% 56%) 0 2px,
+    transparent 2px 11px
+  );
+  opacity: 0.2;
+  filter: blur(3.5px);
+  animation: fhjLinenB 54s ease-in-out infinite alternate;
+}
+.fhj-backdrop-linen .fhj-backdrop-layer:nth-child(3) {
+  background-image: radial-gradient(
+    ellipse at 30% 20%,
+    hsl(calc(var(--fhj-hue, 218) + var(--fhj-bd-cool)) 52% 60%) 0,
+    transparent 70%
+  );
+  opacity: 0.42;
+  filter: blur(50px);
+  animation: fhjLinenC 40s ease-in-out infinite alternate;
+}
+
+@keyframes fhjLinenA {
+  from {
+    transform: translate3d(-1.5vw, -1vh, 0);
+  }
+  to {
+    transform: translate3d(1.5vw, 1.5vh, 0);
+  }
+}
+@keyframes fhjLinenB {
+  from {
+    transform: translate3d(1.5vw, 1vh, 0);
+  }
+  to {
+    transform: translate3d(-1.5vw, -1.5vh, 0);
+  }
+}
+@keyframes fhjLinenC {
+  from {
+    transform: translate3d(-4vw, -3vh, 0) scale(1);
+  }
+  to {
+    transform: translate3d(5vw, 4vh, 0) scale(1.2);
+  }
+}
+
 /* Light needs more of the effect to read at all against paper; dark needs
    less before it starts washing out card edges. */
 :root[data-theme="light"] .fhj-backdrop {
@@ -1465,6 +1707,51 @@ textarea.fhj-input {
 .fhj-backdrop-preview.fhj-backdrop-fog .fhj-backdrop-layer:nth-child(3) {
   top: 20%;
   left: 15%;
+}
+
+/* Dawn / drift / linen shrink the same way: the paint is untouched, only the
+   geometry and the blur radius are re-expressed at tile scale. `inset` and
+   percentage sizes do most of the work; the viewport-unit values in the
+   full-size rules are the ones that have to be restated. */
+.fhj-backdrop-preview.fhj-backdrop-dawn .fhj-backdrop-layer {
+  left: -25% !important;
+  width: 150% !important;
+  filter: blur(12px);
+}
+.fhj-backdrop-preview.fhj-backdrop-dawn .fhj-backdrop-layer:nth-child(1) {
+  bottom: -8% !important;
+  height: 95% !important;
+}
+.fhj-backdrop-preview.fhj-backdrop-dawn .fhj-backdrop-layer:nth-child(2) {
+  bottom: 0 !important;
+  height: 62% !important;
+}
+.fhj-backdrop-preview.fhj-backdrop-dawn .fhj-backdrop-layer:nth-child(3) {
+  top: -25% !important;
+  height: 55% !important;
+}
+.fhj-backdrop-preview.fhj-backdrop-drift .fhj-backdrop-layer {
+  inset: -15% !important;
+  width: auto !important;
+  height: auto !important;
+  filter: blur(5px);
+  /* The full-size gradients are sized in vmin, which at tile scale is larger
+     than the tile — every mote would fill it. Re-scaling the paint keeps the
+     count and spacing recognisable. */
+  background-size: 260% 260%;
+  background-position: center;
+}
+.fhj-backdrop-preview.fhj-backdrop-linen .fhj-backdrop-layer {
+  inset: -20% !important;
+  width: auto !important;
+  height: auto !important;
+}
+.fhj-backdrop-preview.fhj-backdrop-linen .fhj-backdrop-layer:nth-child(1),
+.fhj-backdrop-preview.fhj-backdrop-linen .fhj-backdrop-layer:nth-child(2) {
+  filter: blur(1px);
+}
+.fhj-backdrop-preview.fhj-backdrop-linen .fhj-backdrop-layer:nth-child(3) {
+  filter: blur(14px);
 }
 
 /* ---- backdrop chooser ---- */

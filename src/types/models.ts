@@ -115,6 +115,10 @@ export interface TrackingSetup {
   reminders?: NamedReminder[];
   /** Optional daily nutrition targets. */
   goals?: NutritionGoals;
+  /** Which Quick Add tiles the dashboard shows, in order. `undefined` means
+      "never chosen" and gets the default four; an empty array is a real
+      choice and hides the section. */
+  quickAdd?: string[];
   /** ISO timestamp of the last restorable backup the user downloaded. */
   lastBackupAt?: string;
   createdAt?: string;
@@ -332,6 +336,9 @@ export interface BowelAiResult {
   at: string;
   model: string;
   bristol?: number; // 1–7
+  /** Relative volume, in the same three buckets the form offers. Judged from
+      the photo like everything else here, and just as skippable. */
+  amount?: BowelAmount;
   color?: string;
   consistency?: string;
   form?: string;

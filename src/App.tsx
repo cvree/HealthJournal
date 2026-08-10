@@ -7,7 +7,7 @@ import {
   BarChart, Bar, CartesianGrid, ComposedChart, Area, Cell,
 } from "recharts";
 import * as XLSX from "xlsx";
-import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion } from "./lib/motion";
+import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll } from "./lib/motion";
 import AmbientBackdrop from "./components/AmbientBackdrop";
 import AppearancePanel from "./components/AppearancePanel";
 import RecoveryScreen from "./components/RecoveryScreen";
@@ -47,6 +47,7 @@ import {
   localTime, prettyTime, localDate,
   newFoodItem, rememberFood, logFromFoodItem, scaleNutrition,
   browseFoods, toggleFavorite, goalProgress, hasGoals,
+  bowelSuggestion, applyBowelSuggestion, aiFilledBowelFields,
 } from "./lib/tracking";
 import {
   hasStoredKey, loadConnection, saveConnection, clearKey, maskKey, testConnection,
@@ -65,7 +66,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.8.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -1278,9 +1279,18 @@ function Modal({ title, children, onClose, labelledBy }) {
     panelRef.current?.focus();
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+  /* While this is open the page underneath does not move. Without it, a wheel
+     or a flick anywhere over the sheet scrolls the dashboard behind it —
+     Lenis owns the document scroller and has no idea the dialog is there.
+     Mounted once per dialog, and reference-counted, so a sheet stacked on a
+     sheet unlocks only when the last one closes. */
+  useEffect(() => lockPageScroll(), []);
   return (
     <div className="fhj-scrim" onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
-      <div ref={panelRef} className="fhj-sheet" role="dialog" aria-modal="true"
+      {/* data-lenis-prevent is Lenis's opt-out for a nested scroller: wheel
+          events that land in here scroll *this*, natively, and never reach the
+          smooth-scroll driver. */}
+      <div ref={panelRef} className="fhj-sheet" role="dialog" aria-modal="true" data-lenis-prevent
         aria-labelledby={title ? titleId : undefined} tabIndex={-1} style={{ outline: "none" }}>
         {title && (
           <div className="flex items-start justify-between gap-3 mb-3">
@@ -3812,7 +3822,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
   );
 }
 
-function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], foods = [], onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onUpdateLibrary }) {
+function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, goFood, onUpdateQuickAdd, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], foods = [], onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onUpdateLibrary }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
@@ -3867,7 +3877,9 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
   const [foodSheet, setFoodSheet] = useState(null);
   const [foodPicker, setFoodPicker] = useState(null); // meal id
   const [bowelSheet, setBowelSheet] = useState(null);
+  const [quickAddEditor, setQuickAddEditor] = useState(false);
   const aiEnabled = !!ai?.enabled && !viewer;
+  const aiAuto = aiEnabled && ai?.auto === true;
 
   /* Entries as the charts should see them: every logged day, plus any day that
      has food or bowel data, with derived metrics folded in as answers. Kept
@@ -3900,6 +3912,20 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
   const recent = [...entries].reverse().slice(0, 5);
   const photoFields = useMemo(() => tpl.fields.filter((f) => f.type === "photo"), [tpl]);
   const photoItems = useMemo(() => buildPhotoItems(tpl, entries), [tpl, entries]);
+
+  /* Quick Add: which tiles, and what each one does. The catalogue and the
+     handlers are kept apart on purpose — a tile with no handler here simply
+     doesn't render, so the viewer build and a setup without photo questions
+     both drop the tiles they can't honour without any extra conditionals. */
+  const quickAddIds = resolveQuickAdd(profile, { hasPhotoField: photoFields.length > 0 });
+  const quickAddActions = {
+    checkin: () => openLog(todayStr()),
+    food: () => setFoodPicker(mealForTime(localTime())),
+    drink: () => setFoodPicker("drink"),
+    bowel: () => setBowelSheet({}),
+    photo: photoFields.length > 0 ? () => openLog(todayStr()) : null,
+    diary: goFood || null,
+  };
   // Nobody else is holding a copy of this journal. Once it's big enough to
   // hurt losing, say so — quietly, once, and only while it's actually true.
   const nudge = viewer ? { show: false } : backupNudge({
@@ -3959,24 +3985,44 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         <>
           <div className="fhj-section mt-6 fhj-cat-symptom">
             <h2 className="fhj-section-title">Quick Add</h2>
+            <button onClick={() => { feedback("tap"); setQuickAddEditor(true); }}
+              className="text-[11px] font-semibold" style={{ color: C.accentText }}>
+              Edit
+            </button>
           </div>
-          <QuickAdd
-            checkedIn={!!today}
-            onCheckIn={() => openLog(todayStr())}
-            onFood={() => setFoodPicker(mealForTime(localTime()))}
-            onBowel={() => setBowelSheet({})}
-            onPhoto={photoFields.length > 0 ? () => openLog(todayStr()) : null} />
+          {quickAddIds.length > 0 ? (
+            <QuickAdd
+              ids={quickAddIds}
+              checkedIn={!!today}
+              actions={quickAddActions} />
+          ) : (
+            <button type="button" onClick={() => { feedback("tap"); setQuickAddEditor(true); }}
+              className="w-full text-[12px] leading-relaxed px-3 py-3 rounded-xl text-left"
+              style={{ background: C.faint, border: `1px dashed ${C.lineStrong}`, color: C.subtle }}>
+              No Quick Add buttons — tap to choose some.
+            </button>
+          )}
         </>
       )}
 
-      {/* ---------- Today's Logs ---------- */}
-      <div className="fhj-section mt-6 fhj-cat-symptom">
+      {/* ---------- Today's Logs ----------
+          The heading is the shortcut. "What did I log today" and "let me open
+          today's log" are the same intent thirty seconds apart, and making
+          people find a small text link at the other end of the row to act on
+          it was pure friction. The whole row is the target now; the old link
+          stays as the visible affordance so it still reads as pressable. */}
+      <button type="button" onClick={() => { feedback("nav"); openLog(todayStr()); }}
+        disabled={viewer}
+        aria-label={today ? "Open today's check-in" : "Start today's check-in"}
+        className="fhj-section mt-6 fhj-cat-symptom w-full text-left">
         <h2 className="fhj-section-title">Today's Logs</h2>
-        {!!today && (
-          <button onClick={() => openLog(todayStr())} className="text-[11px] font-semibold"
-            style={{ color: C.accentText }}>Edit check-in</button>
+        {!viewer && (
+          <span className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+            {today ? "Edit check-in" : "Start check-in"}
+            <Icon name="right" size={12} color={C.accentText} />
+          </span>
         )}
-      </div>
+      </button>
       <TodayTimeline
         entry={today} tpl={tpl} food={food} bowel={bowel} date={todayStr()}
         onOpenEntry={openLog}
@@ -4157,16 +4203,16 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         <FoodPicker
           library={foods} meal={foodPicker} date={todayStr()}
           onLog={(log) => { onSaveFood(log); setFoodPicker(null); }}
-          onOpenFull={() => { setFoodSheet({ meal: foodPicker }); setFoodPicker(null); }}
+          onOpenFull={(pre) => { setFoodSheet({ ...pre }); setFoodPicker(null); }}
           onUpdateLibrary={onUpdateLibrary}
           onClose={() => setFoodPicker(null)} />
       )}
       {foodSheet && (
         <FoodLogSheet
           initial={foodSheet.id ? foodSheet : null}
-          defaultMeal={foodSheet.meal}
+          defaultMeal={foodSheet.meal} defaultTime={foodSheet.time}
           date={todayStr()}
-          aiEnabled={aiEnabled}
+          aiEnabled={aiEnabled} aiAuto={aiAuto}
           onSave={(log) => { onSaveFood(log); setFoodSheet(null); }}
           onDelete={foodSheet.id ? (log) => { onDeleteFood(log); setFoodSheet(null); } : null}
           onClose={() => setFoodSheet(null)} />
@@ -4175,10 +4221,17 @@ function TrendsScreen({ profile, entries, openLog, goExport, goGallery, goReport
         <BowelLogSheet
           initial={bowelSheet.id ? bowelSheet : null}
           date={todayStr()}
-          aiEnabled={aiEnabled}
+          aiEnabled={aiEnabled} aiAuto={aiAuto}
           onSave={(log) => { onSaveBowel(log); setBowelSheet(null); }}
           onDelete={bowelSheet.id ? (log) => { onDeleteBowel(log); setBowelSheet(null); } : null}
           onClose={() => setBowelSheet(null)} />
+      )}
+      {quickAddEditor && (
+        <QuickAddEditor
+          profile={profile}
+          hasPhotoField={photoFields.length > 0}
+          onSave={(ids) => { onUpdateQuickAdd?.(ids); setQuickAddEditor(false); }}
+          onClose={() => setQuickAddEditor(false)} />
       )}
     </div>
   );
@@ -5630,6 +5683,27 @@ function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
               label="Enable AI observations"
               desc="The analysis button appears on the dashboard. It still asks before sending anything." />
           </div>
+
+          {/* The one switch in this app that trades a confirmation for speed.
+              It is worth offering — a photo answers four form questions at
+              once and typing them out is the reason people stop logging — but
+              it is not worth sliding past anyone. The description says exactly
+              what changes, in the plainest words available, and the switch is
+              off until someone reads it and decides. */}
+          {enabled && (
+            <div className="mt-1 pt-1" style={{ borderTop: `1px solid ${C.line}` }}>
+              <SwitchRow
+                on={ai?.auto === true}
+                onChange={(on) => { setAi({ auto: on }); feedback("select"); }}
+                label="Let AI fill in the log for you"
+                desc={
+                  "When you attach a photo to a meal or a bowel entry, it is sent for a reading straight away — " +
+                  "without the confirm-before-sending step — and the answers it can work out (type, amount, colour, " +
+                  "consistency, calories and the rest) are filled in for you. Your own answers are never overwritten, " +
+                  "and you can change anything it wrote."
+                } />
+            </div>
+          )}
         </>
       )}
 
@@ -5842,7 +5916,7 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
         </div>
       </Card>
 
-      <PrivacyCard aiEnabled={db.ai?.enabled === true} />
+      <PrivacyCard aiEnabled={db.ai?.enabled === true} aiAuto={db.ai?.enabled === true && db.ai?.auto === true} />
       <p className="text-[11px] mt-4 text-center" style={{ color: C.subtle }}>
         {APP_NAME} {APP_VERSION} · your data stays on this device.
       </p>
@@ -5854,7 +5928,7 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, lockEnabled, onS
    than taken on faith. Every line here is verifiable from the source: there is
    no analytics call, no fetch to a backend, and after first load no network
    request at all — the fonts are bundled, not fetched from a CDN. */
-function PrivacyCard({ aiEnabled = false }) {
+function PrivacyCard({ aiEnabled = false, aiAuto = false }) {
   const [open, setOpen] = useState(false);
   const facts = [
     ["No account", "There's no sign-up, no email, no password. Nothing identifies you to anyone."],
@@ -5863,9 +5937,11 @@ function PrivacyCard({ aiEnabled = false }) {
     // This claim has to track reality, not the ideal. Turning on AI
     // observations adds exactly one outbound call — the card says so, on the
     // card, rather than leaving a promise standing that is no longer true.
-    aiEnabled
-      ? ["One network call, on request", "AI observations are on. Nothing is sent automatically: each analysis you ask for sends a summary of your logged numbers to Google, and shows you exactly what before it goes. Everything else still stays here, and the rest of the app works offline."]
-      : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations in Settings is the one thing that changes this.)"],
+    aiAuto
+      ? ["Photos are sent as you attach them", "AI observations are on, and so is letting AI fill in the log. A photo you attach to a meal or a bowel entry is sent to your AI provider for a reading as soon as you add it, without a confirmation each time — that is what the switch in Settings turned on, and turning it back off restores the confirm step. Everything else still stays on this device."]
+      : aiEnabled
+        ? ["One network call, on request", "AI observations are on. Nothing is sent automatically: each analysis you ask for sends a summary of your logged numbers to your AI provider, and shows you exactly what before it goes. Everything else still stays here, and the rest of the app works offline."]
+        : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations in Settings is the one thing that changes this.)"],
     ["Your files, your move", "Exports and backups are ordinary files saved to your device. Where they go next is entirely up to you."],
   ];
   return (
@@ -8410,8 +8486,8 @@ function FoodEstimatePanel({ result, onUse, onDiscard, onRerun, busy }) {
 
 /* ---------- the food sheet ---------- */
 
-function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete, onClose }) {
-  const [log, setLog] = useState(() => initial || newFoodLog({ date, meal: defaultMeal }));
+function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTime, onSave, onDelete, onClose }) {
+  const [log, setLog] = useState(() => initial || newFoodLog({ date, meal: defaultMeal, time: defaultTime }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [confirm, setConfirm] = useState(null); // pending send, awaiting consent
@@ -8431,6 +8507,10 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
   /* Nothing is sent until this returns. The sheet describes the payload, the
      user presses Send — there is no path from "took a photo" to "photo left
      the device" that skips this step. */
+  /* With auto-judging on, the consent sheet has already been answered — once,
+     in Settings, for every send. Showing it again on the button press would be
+     asking the same question twice and would make the switch mean nothing on
+     the text-only path, where there is no photo to trigger the automatic run. */
   const askToEstimate = async () => {
     setErr("");
     let image = null;
@@ -8438,13 +8518,13 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
       const raw = await loadPhotoData(log.photoId);
       image = dataUrlToImage(raw);
     }
+    if (aiAuto) { await sendEstimate(image); return; }
     setConfirm({ image, summary: summariseFoodRequest({ ...log, image }) });
   };
 
-  const runEstimate = async () => {
-    const pending = confirm;
-    setConfirm(null);
-    if (!pending) return;
+  /* The send itself, once consent exists — either from the sheet below, or
+     standing, from the AI-judging switch in Settings. */
+  const sendEstimate = async (image) => {
     setBusy(true); setErr("");
     abortRef.current = new AbortController();
     try {
@@ -8452,7 +8532,7 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
         conn,
         {
           description: log.description, serving: log.serving,
-          quantity: log.quantity, unit: log.unit, image: pending.image,
+          quantity: log.quantity, unit: log.unit, image,
         },
         { signal: abortRef.current.signal }
       );
@@ -8464,6 +8544,37 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
     }
   };
 
+  const runEstimate = async () => {
+    const pending = confirm;
+    setConfirm(null);
+    if (!pending) return;
+    await sendEstimate(pending.image);
+  };
+
+  /* Auto-judging: the moment a photo is attached, read it. The photo is the
+     one input that carries everything the form is asking for, so a person who
+     has turned this on can take a picture and press Save without typing a
+     single number.
+
+     Standing consent, not silent sending: `aiAuto` is off unless someone went
+     into Settings and switched it on, and the switch says in as many words
+     that photos will go without the per-send sheet. One analysis per photo —
+     `judgedRef` is what stops a re-render, an edit to the notes field, or the
+     estimate itself arriving from firing a second identical request. */
+  const judgedRef = useRef(null);
+  useEffect(() => {
+    if (!aiEnabled || !aiAuto || !conn) return;
+    const id = log.photoId;
+    if (!id || judgedRef.current === id || log.ai || busy) return;
+    judgedRef.current = id;
+    (async () => {
+      const raw = await loadPhotoData(id);
+      const image = dataUrlToImage(raw);
+      if (!image) { setErr("Couldn't read that photo."); return; }
+      await sendEstimate(image);
+    })();
+  }, [aiEnabled, aiAuto, conn, log.photoId, log.ai, busy]);
+
   const resolved = effectiveNutrition(log);
   const title = initial ? "Edit meal" : "Log food";
   const bodyRef = useInert(!!confirm);
@@ -8471,6 +8582,26 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
   return (
     <Modal title={title} onClose={onClose}>
       <div className="fhj-cat-food" ref={bodyRef}>
+        {/* ---------- the photo, first ----------
+            A picture of the plate is the fastest, richest thing anyone can
+            give this form: it takes one tap, it needs no vocabulary, and with
+            AI judging on it fills in the rest of the sheet by itself. It used
+            to sit five fields down, below three text inputs, which had it
+            reading as an optional extra for people who had already done the
+            typing. It is the headline now. */}
+        <div className="fhj-photo-lead mb-3">
+          <LogPhotoField category="food" date={log.date} photoId={log.photoId}
+            onChange={(id) => patch({ photoId: id || undefined })}
+            label="Take a photo of the meal" />
+          <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
+            {aiEnabled && conn && aiAuto
+              ? "A photo is sent for a nutrition estimate as soon as you add it. Everything below stays optional."
+              : log.photoId
+                ? "Kept on this device with the meal."
+                : "Optional — but it's the quickest way to remember what a meal actually was."}
+          </p>
+        </div>
+
         {/* meal + time */}
         <div className="flex flex-wrap gap-1.5 mb-3">
           {MEALS.map((m) => (
@@ -8525,12 +8656,6 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
           </label>
         </div>
 
-        <div className="mb-3">
-          <span className="fhj-eyebrow block mb-1.5">Photo</span>
-          <LogPhotoField category="food" date={log.date} photoId={log.photoId}
-            onChange={(id) => patch({ photoId: id || undefined })} label="Add a photo of the meal" />
-        </div>
-
         {/* AI estimate */}
         {aiEnabled && conn ? (
           log.ai ? (
@@ -8539,10 +8664,15 @@ function FoodLogSheet({ initial, date, aiEnabled, defaultMeal, onSave, onDelete,
               onUse={() => { feedback("select"); setLog((prev) => acceptEstimate(prev)); }}
               onDiscard={() => setLog((prev) => discardEstimate(prev))}
               onRerun={askToEstimate} />
+          ) : busy ? (
+            <div className="mt-1 mb-1 p-3 rounded-xl text-[12.5px] leading-relaxed" role="status"
+              style={{ background: C.lavenderSoft, border: `1.5px solid ${C.lavender}`, color: C.sub }}>
+              Reading the photo…
+            </div>
           ) : (
             <div className="mt-1 mb-1">
               <Button variant="outline" block icon="spark" onClick={askToEstimate} disabled={!canEstimate || busy}>
-                {busy ? "Estimating…" : "Estimate nutrition with AI"}
+                Estimate nutrition with AI
               </Button>
               <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
                 {canEstimate
@@ -8643,7 +8773,7 @@ function Severity03({ label, value, onChange }) {
   );
 }
 
-function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) {
+function BowelLogSheet({ initial, date, aiEnabled, aiAuto, onSave, onDelete, onClose }) {
   const [log, setLog] = useState(() => initial || newBowelLog({ date }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -8654,7 +8784,12 @@ function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) 
 
   const patch = (p) => setLog((prev) => ({ ...prev, ...p, updatedAt: new Date().toISOString() }));
 
-  const runAnalysis = async () => {
+  /* `auto` distinguishes the two ways this runs. A manual analysis leaves the
+     result sitting in a panel for the user to accept; an automatic one is the
+     whole point of having switched auto-judging on, so it lands in the blank
+     fields directly. Either way it only ever fills blanks — see
+     applyBowelSuggestion. */
+  const runAnalysis = async ({ auto = false } = {}) => {
     setConfirm(false);
     if (!log.photoId || !conn) return;
     setBusy(true); setErr("");
@@ -8664,7 +8799,10 @@ function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) 
       const image = dataUrlToImage(raw);
       if (!image) throw new Error("Couldn't read that photo.");
       const result = await analyseBowelPhoto(conn, image, { signal: abortRef.current.signal });
-      setLog((prev) => ({ ...prev, ai: result, updatedAt: new Date().toISOString() }));
+      setLog((prev) => {
+        const next = { ...prev, ai: result, updatedAt: new Date().toISOString() };
+        return auto ? applyBowelSuggestion(next, result) : next;
+      });
     } catch (e) {
       if (e?.name !== "AbortError") setErr(e?.message || "That didn't work. Try again in a moment.");
     } finally {
@@ -8672,27 +8810,126 @@ function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) 
     }
   };
 
-  /* Suggestions are never written straight into the log — the user presses
-     "Use these", and only the fields they haven't already answered change. */
+  /* One reading per photo, started the moment there is a photo to read. See
+     the matching block in FoodLogSheet for why this is standing consent
+     rather than a silent send. */
+  const judgedRef = useRef(null);
+  useEffect(() => {
+    if (!aiEnabled || !aiAuto || !conn) return;
+    const id = log.photoId;
+    if (!id || judgedRef.current === id || log.ai || busy) return;
+    judgedRef.current = id;
+    runAnalysis({ auto: true });
+  }, [aiEnabled, aiAuto, conn, log.photoId, log.ai, busy]);
+
+  /* Suggestions are never written straight into the log on the manual path —
+     the user presses "Use these", and only the fields they haven't already
+     answered change. */
   const applySuggestion = () => {
     feedback("select");
-    setLog((prev) => ({
-      ...prev,
-      bristol: prev.bristol ?? prev.ai?.bristol,
-      color: prev.color ?? prev.ai?.color,
-      consistency: prev.consistency ?? prev.ai?.consistency,
-      updatedAt: new Date().toISOString(),
-    }));
+    setLog((prev) => applyBowelSuggestion(prev));
   };
 
   const suggestion = log.ai;
-  const hasSuggestion = suggestion && (suggestion.bristol != null || suggestion.color || suggestion.consistency || suggestion.form);
+  const hasSuggestion = suggestion && (suggestion.bristol != null || suggestion.amount || suggestion.color || suggestion.consistency || suggestion.form);
+  /* What the model is currently answering *for* the user, as opposed to what
+     it has merely offered. Only the automatic path produces these without a
+     tap, and it is what earns the right to fold the detail fields away. */
+  const aiFilled = aiEnabled && aiAuto ? aiFilledBowelFields(log) : [];
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const foldDetails = aiFilled.length > 0 && !detailsOpen;
 
   const bodyRef = useInert(confirm);
 
   return (
     <Modal title={initial ? "Edit entry" : "Log bowel movement"} onClose={onClose}>
       <div className="fhj-cat-bowel" ref={bodyRef}>
+        {/* ---------- the photo, first ----------
+            Same reasoning as the food sheet, and stronger here: with AI
+            judging on, the photo answers Bristol type, amount, colour and
+            consistency at once. Burying it under four chip grids asked people
+            to do by hand the exact work the camera was about to do for them. */}
+        <div className="fhj-photo-lead mb-3">
+          <LogPhotoField category="bowel" date={log.date} photoId={log.photoId}
+            onChange={(id) => patch({ photoId: id || undefined, ai: id ? log.ai : undefined })}
+            label="Take a photo" />
+          {/* This sentence is a promise about where the photo goes, so it has
+              to be keyed on the setting rather than on whether a photo has
+              been attached yet. Saying "nothing is sent unless you ask" on a
+              screen that has just sent it is the one wording this feature
+              cannot ship with. */}
+          <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
+            {aiEnabled && conn && aiAuto
+              ? "Optional. A photo is sent for a reading as soon as you add it — that fills in the type, amount, colour and consistency — and the image itself stays on this device."
+              : "Optional, and it stays on this device. Nothing is sent anywhere unless you ask for the photo to be analysed."}
+          </p>
+        </div>
+
+        {/* AI reading — directly under the photo it came from */}
+        {aiEnabled && conn && log.photoId && (
+          busy ? (
+            <div className="mb-3 p-3 rounded-xl text-[12.5px] leading-relaxed" role="status"
+              style={{ background: C.lavenderSoft, border: `1.5px solid ${C.lavender}`, color: C.sub }}>
+              Reading the photo…
+            </div>
+          ) : hasSuggestion ? (
+            <div className="fhj-cat-ai rounded-xl p-3.5 mb-3"
+              style={{ background: C.lavenderSoft, border: `1.5px solid ${C.lavender}` }}>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="fhj-ai-badge">{aiFilled.length ? "AI Filled In" : "AI Suggested"}</span>
+                <span className="text-[11px]" style={{ color: C.subtle }}>
+                  {suggestion.confidence === "high" ? "Clear photo" : suggestion.confidence === "medium" ? "Fairly clear" : "Hard to read"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestion.bristol != null && <span className="fhj-badge fhj-badge-neutral">Type {suggestion.bristol}</span>}
+                {suggestion.amount && <span className="fhj-badge fhj-badge-neutral">{BOWEL_AMOUNTS.find((a) => a.id === suggestion.amount)?.label}</span>}
+                {suggestion.color && <span className="fhj-badge fhj-badge-neutral">{suggestion.color}</span>}
+                {suggestion.consistency && <span className="fhj-badge fhj-badge-neutral">{suggestion.consistency}</span>}
+                {suggestion.form && <span className="fhj-badge fhj-badge-neutral">{suggestion.form}</span>}
+              </div>
+              {suggestion.note && (
+                <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.sub }}>{suggestion.note}</p>
+              )}
+              <p className="text-[10px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                A description of what's visible in the photo — nothing more. It can't tell you what anything means,
+                and it won't try.
+              </p>
+              <div className="flex gap-2 mt-3">
+                {aiFilled.length > 0 ? (
+                  <span className="text-[11px] leading-relaxed self-center" style={{ color: C.sub }}>
+                    Already filled in below. Change anything that looks wrong.
+                  </span>
+                ) : (
+                  <Button size="sm" onClick={applySuggestion}>Use these</Button>
+                )}
+                <div className="flex-1" />
+                <Button size="sm" variant="ghost" onClick={() => patch({ ai: undefined })}>Discard</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-3">
+              {/* Auto-judging answers the consent question standingly, so the
+                  button sends rather than asking again. It stays on screen
+                  either way — a reading that came back empty, or one the user
+                  discarded, needs a way to be asked for a second time. */}
+              <Button variant="outline" block icon="spark" disabled={busy}
+                onClick={() => (aiAuto ? runAnalysis({ auto: true }) : setConfirm(true))}>
+                Describe the photo with AI
+              </Button>
+              {log.ai && !hasSuggestion && (
+                <p className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
+                  It couldn't make anything out clearly enough to suggest. Fill the fields in yourself below.
+                </p>
+              )}
+            </div>
+          )
+        )}
+
+        {err && (
+          <div className="text-xs mb-3 p-2.5 rounded-lg" style={{ background: C.dangerBg, color: C.dangerInk }}>{err}</div>
+        )}
+
         <div className="flex gap-2 mb-3">
           <label className="flex-1">
             <span className="fhj-eyebrow block mb-1">Date</span>
@@ -8706,6 +8943,28 @@ function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) 
           </label>
         </div>
 
+        {/* Once the model has answered the descriptive questions, asking them
+            again in full takes more screen than the answers are worth. They
+            fold into one line that says what was filled and opens the lot for
+            editing — never hidden, just not in the way. */}
+        {foldDetails && (
+          <button type="button"
+            onClick={() => { feedback("tap"); setDetailsOpen(true); }}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl mb-3 text-left"
+            style={{ background: C.faint, border: `1.5px solid ${C.line}` }}>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold" style={{ color: C.ink }}>
+                {bowelSummary(log) || "Details"}
+              </span>
+              <span className="block text-[11px]" style={{ color: C.subtle }}>
+                Filled in from the photo · tap to adjust
+              </span>
+            </span>
+            <Icon name="down" size={15} color={C.sub} />
+          </button>
+        )}
+
+        <div hidden={foldDetails}>
         <div className="mb-3">
           <span className="fhj-eyebrow block mb-1.5">Bristol type</span>
           <div className="flex flex-col gap-1.5">
@@ -8780,61 +9039,7 @@ function BowelLogSheet({ initial, date, aiEnabled, onSave, onDelete, onClose }) 
         <Severity03 label="Urgency" value={log.urgency} onChange={(v) => patch({ urgency: v })} />
         <Severity03 label="Straining" value={log.straining} onChange={(v) => patch({ straining: v })} />
         <Severity03 label="Discomfort" value={log.discomfort} onChange={(v) => patch({ discomfort: v })} />
-
-        <div className="mb-3">
-          <span className="fhj-eyebrow block mb-1.5">Photo (optional)</span>
-          <LogPhotoField category="bowel" date={log.date} photoId={log.photoId}
-            onChange={(id) => patch({ photoId: id || undefined, ai: id ? log.ai : undefined })} />
-          <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
-            Stays on this device. Nothing is sent anywhere unless you ask for the photo to be analysed.
-          </p>
         </div>
-
-        {aiEnabled && conn && log.photoId && (
-          hasSuggestion ? (
-            <div className="fhj-cat-ai rounded-xl p-3.5 mb-3"
-              style={{ background: C.lavenderSoft, border: `1.5px solid ${C.lavender}` }}>
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="fhj-ai-badge">AI Suggested</span>
-                <span className="text-[11px]" style={{ color: C.subtle }}>
-                  {suggestion.confidence === "high" ? "Clear photo" : suggestion.confidence === "medium" ? "Fairly clear" : "Hard to read"}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {suggestion.bristol != null && <span className="fhj-badge fhj-badge-neutral">Type {suggestion.bristol}</span>}
-                {suggestion.color && <span className="fhj-badge fhj-badge-neutral">{suggestion.color}</span>}
-                {suggestion.consistency && <span className="fhj-badge fhj-badge-neutral">{suggestion.consistency}</span>}
-                {suggestion.form && <span className="fhj-badge fhj-badge-neutral">{suggestion.form}</span>}
-              </div>
-              {suggestion.note && (
-                <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.sub }}>{suggestion.note}</p>
-              )}
-              <p className="text-[10px] leading-relaxed mt-2" style={{ color: C.subtle }}>
-                A description of what's visible in the photo — nothing more. It can't tell you what anything means,
-                and it won't try.
-              </p>
-              <div className="flex gap-2 mt-3">
-                <Button size="sm" onClick={applySuggestion}>Use these</Button>
-                <Button size="sm" variant="ghost" onClick={() => patch({ ai: undefined })}>Discard</Button>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-3">
-              <Button variant="outline" block icon="spark" onClick={() => setConfirm(true)} disabled={busy}>
-                {busy ? "Looking…" : "Describe the photo with AI"}
-              </Button>
-              {log.ai && !hasSuggestion && (
-                <p className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
-                  It couldn't make anything out clearly enough to suggest. Fill the fields in yourself above.
-                </p>
-              )}
-            </div>
-          )
-        )}
-
-        {err && (
-          <div className="text-xs mb-3 p-2.5 rounded-lg" style={{ background: C.dangerBg, color: C.dangerInk }}>{err}</div>
-        )}
 
         <label className="block">
           <span className="fhj-eyebrow block mb-1">Notes</span>
@@ -8942,13 +9147,34 @@ function FoodRow({ item, onQuickAdd, onOpen, onToggleFavorite }) {
 
     Search deliberately beats the tab: once someone is typing they are after
     one specific thing, and whichever tab they happen to be on is noise. */
-function FoodPicker({ library, meal, date, onLog, onOpenFull, onUpdateLibrary, onClose }) {
+function FoodPicker({ library, meal: initialMeal, date, onLog, onOpenFull, onUpdateLibrary, onClose }) {
   const [tab, setTab] = useState("recent");
   const [query, setQuery] = useState("");
   const [detail, setDetail] = useState(null); // { item, servings }
   const [quickCal, setQuickCal] = useState("");
   const searchRef = useRef(null);
   useEffect(() => { searchRef.current?.focus(); }, []);
+
+  /* When something was eaten or drunk, on the fast path.
+
+     Every route through this picker used to stamp the log with the clock time
+     of the tap, and the only way to correct that was to save the item and then
+     reopen it in the full sheet. That is fine for a meal logged as it happens
+     and useless for the far more common case — remembering at 9pm that you had
+     a coffee at 8am — which is exactly when a one-tap path is worth the most.
+
+     Changing the time re-files the meal to match it, but only while the meal
+     is still whatever the clock implied: someone who has deliberately picked
+     "Snack" keeps Snack no matter what they do to the time. */
+  const [time, setTime] = useState(() => localTime());
+  const [meal, setMeal] = useState(initialMeal);
+  const mealTouched = useRef(false);
+  const setTimeAndMeal = (next) => {
+    setTime(next);
+    if (!mealTouched.current && meal !== "drink" && /^\d{2}:\d{2}$/.test(next)) {
+      setMeal(mealForTime(next));
+    }
+  };
 
   const rows = useMemo(() => browseFoods(library, tab, query), [library, tab, query]);
   const TABS = [["recent", "Recent"], ["frequent", "Frequent"], ["favorite", "Favourites"], ["all", "All"]];
@@ -8967,6 +9193,25 @@ function FoodPicker({ library, meal, date, onLog, onOpenFull, onUpdateLibrary, o
     <>
       <Modal title={`Add to ${mealLabel(meal).toLowerCase()}`} onClose={onClose}>
         <div className="fhj-cat-food" ref={bodyRef}>
+          {/* When and what kind, above the list, because both apply to
+              whatever gets tapped below and neither is worth a second trip
+              through the long form to correct. */}
+          <div className="flex items-end gap-2 mb-2.5">
+            <label style={{ width: "7.5rem" }}>
+              <span className="fhj-eyebrow block mb-1">Time</span>
+              <input type="time" className="fhj-input" value={time}
+                aria-label="Time this was eaten or drunk"
+                onChange={(e) => setTimeAndMeal(e.target.value)} />
+            </label>
+            <label className="flex-1 min-w-0">
+              <span className="fhj-eyebrow block mb-1">Meal</span>
+              <select className="fhj-input" value={meal} aria-label="Which meal this belongs to"
+                onChange={(e) => { mealTouched.current = true; setMeal(e.target.value); }}>
+                {MEALS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </label>
+          </div>
+
           <input ref={searchRef} className="fhj-input" type="search" placeholder="Search your foods"
             value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search your saved foods" />
 
@@ -8991,7 +9236,7 @@ function FoodPicker({ library, meal, date, onLog, onOpenFull, onUpdateLibrary, o
               <div style={{ maxHeight: "17rem", overflowY: "auto" }}>
                 {rows.slice(0, 60).map((item) => (
                   <FoodRow key={item.id} item={item}
-                    onQuickAdd={() => { feedback("save"); onLog(logFromFoodItem(item, { date, meal, servings: 1 })); }}
+                    onQuickAdd={() => { feedback("save"); onLog(logFromFoodItem(item, { date, time, meal, servings: 1 })); }}
                     onOpen={() => setDetail({ item, servings: 1 })}
                     onToggleFavorite={() => onUpdateLibrary(toggleFavorite(library, item.id))} />
                 ))}
@@ -9012,13 +9257,14 @@ function FoodPicker({ library, meal, date, onLog, onOpenFull, onUpdateLibrary, o
                 const n = Number(quickCal);
                 if (!isFinite(n) || n <= 0) return;
                 feedback("save");
-                onLog(newFoodLog({ date, meal, description: "Quick add", nutrition: { calories: n } }));
+                onLog(newFoodLog({ date, time, meal, description: "Quick add", nutrition: { calories: n } }));
               }}>
               Add
             </Button>
           </div>
 
-          <Button variant="outline" block icon="plus" className="mt-3" onClick={onOpenFull}>
+          <Button variant="outline" block icon="plus" className="mt-3"
+            onClick={() => onOpenFull({ meal, time })}>
             Something new — describe or photograph it
           </Button>
         </div>
@@ -9055,7 +9301,7 @@ function FoodPicker({ library, meal, date, onLog, onOpenFull, onUpdateLibrary, o
               <div className="flex-1" />
               <Button onClick={() => {
                 feedback("save");
-                onLog(logFromFoodItem(detail.item, { date, meal, servings: detail.servings }));
+                onLog(logFromFoodItem(detail.item, { date, time, meal, servings: detail.servings }));
               }}>
                 Add to {mealLabel(meal).toLowerCase()}
               </Button>
@@ -9178,7 +9424,7 @@ function MealSection({ meal, logs, onAdd, onOpenLog, viewer }) {
 
 function FoodScreen({
   food, foods, goals, onLog, onSaveLog, onDeleteLog, onUpdateLibrary,
-  onEditGoals, aiEnabled, viewer,
+  onEditGoals, aiEnabled, aiAuto, viewer,
 }) {
   const [date, setDate] = useState(todayStr());
   const [picker, setPicker] = useState(null); // meal id
@@ -9293,7 +9539,7 @@ function FoodScreen({
         <FoodPicker
           library={foods} meal={picker} date={date}
           onLog={(log) => { onLog(log); setPicker(null); }}
-          onOpenFull={() => { setSheet({ meal: picker }); setPicker(null); }}
+          onOpenFull={(pre) => { setSheet({ ...pre }); setPicker(null); }}
           onUpdateLibrary={onUpdateLibrary}
           onClose={() => setPicker(null)} />
       )}
@@ -9301,8 +9547,8 @@ function FoodScreen({
         <FoodLogSheet
           initial={sheet.id ? sheet : null}
           date={date}
-          defaultMeal={sheet.meal}
-          aiEnabled={aiEnabled}
+          defaultMeal={sheet.meal} defaultTime={sheet.time}
+          aiEnabled={aiEnabled} aiAuto={aiAuto}
           onSave={(log) => { onSaveLog(log); setSheet(null); }}
           onDelete={sheet.id ? (log) => { onDeleteLog(log); setSheet(null); } : null}
           onClose={() => setSheet(null)} />
@@ -9312,37 +9558,211 @@ function FoodScreen({
 }
 
 /* ---------- Quick Add ----------
-   Four tactile tiles, one per thing worth logging. This is the most-pressed
-   control in the app and the reason the chunky-button treatment exists. */
+   Tactile tiles, one per thing worth logging. This is the most-pressed control
+   in the app and the reason the chunky-button treatment exists.
 
-function QuickAdd({ checkedIn, onCheckIn, onFood, onBowel, onPhoto }) {
-  const tiles = [
-    {
-      id: "checkin", cat: "fhj-cat-symptom", icon: "log",
-      label: "Check-in", sub: checkedIn ? "Done today" : "A couple of taps",
-      done: checkedIn, onClick: onCheckIn,
-    },
-    { id: "food", cat: "fhj-cat-food", icon: "food", label: "Food", sub: "Meal or drink", onClick: onFood },
-    { id: "bowel", cat: "fhj-cat-bowel", icon: "bowel", label: "Bowel", sub: "Quick log", onClick: onBowel },
-    onPhoto && { id: "photo", cat: "fhj-cat-photo", icon: "camera", label: "Photo", sub: "Progress shot", onClick: onPhoto },
-  ].filter(Boolean);
+   Which tiles appear is the user's call. The four it ships with are the right
+   default for most people, but "most people" is not who uses this — somebody
+   tracking a diet has no use for a bowel tile, somebody tracking a gut
+   condition wants it first, and somebody who logs drinks separately from meals
+   was previously routing every glass of water through a form that opens on
+   "Breakfast". The catalogue below is the whole set; `profile.quickAdd` is the
+   ordered subset, and everything else here derives from those two. */
+
+const QUICK_ADD_TILES = [
+  {
+    id: "checkin", cat: "fhj-cat-symptom", icon: "log", label: "Check-in",
+    sub: "A couple of taps", desc: "Today's survey questions",
+  },
+  {
+    id: "food", cat: "fhj-cat-food", icon: "food", label: "Food",
+    sub: "Meal or snack", desc: "Opens your saved foods for the meal you're in",
+  },
+  {
+    id: "drink", cat: "fhj-cat-food", icon: "drink", label: "Drink",
+    sub: "Water, coffee, anything", desc: "The same picker, filed as a drink instead of a meal",
+  },
+  {
+    id: "bowel", cat: "fhj-cat-bowel", icon: "bowel", label: "Bowel",
+    sub: "Quick log", desc: "Bristol type, amount, colour — or just a photo",
+  },
+  {
+    id: "photo", cat: "fhj-cat-photo", icon: "camera", label: "Photo",
+    sub: "Progress shot", desc: "Needs at least one photo question in your setup",
+  },
+  {
+    id: "diary", cat: "fhj-cat-food", icon: "target", label: "Food diary",
+    sub: "The whole day", desc: "Jumps to the day's meals and totals",
+  },
+];
+
+const DEFAULT_QUICK_ADD = ["checkin", "food", "bowel", "photo"];
+
+const quickAddTile = (id) => QUICK_ADD_TILES.find((t) => t.id === id);
+
+/** Known ids only, no duplicates, order preserved. Runs on load and on save,
+    because this list reaches the app from a hand-editable backup as readily as
+    from the editor. An empty list is a real choice and survives — it means
+    "don't show me Quick Add" — so `undefined` is the only thing that falls
+    back to the default. */
+function sanitizeQuickAdd(list) {
+  if (!Array.isArray(list)) return undefined;
+  const seen = new Set();
+  const out = [];
+  for (const id of list) {
+    if (typeof id !== "string" || seen.has(id) || !quickAddTile(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/** The ids to draw, after the user's choice and what their setup can actually
+    support are both accounted for. */
+function resolveQuickAdd(profile, { hasPhotoField }) {
+  const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD;
+  return chosen.filter((id) => (id === "photo" ? hasPhotoField : true));
+}
+
+function QuickAdd({ ids, checkedIn, actions }) {
+  const tiles = ids.map(quickAddTile).filter((t) => t && actions[t.id]);
+  if (!tiles.length) return null;
 
   return (
     <div className="fhj-tiles">
-      {tiles.map((t) => (
-        <button key={t.id} type="button"
-          onClick={() => { feedback("quickadd"); t.onClick(); }}
-          className={`fhj-tile fhj-pop ${t.cat}${t.done ? " is-done" : ""}`}>
-          <span className="fhj-tile-icon">
-            <Icon name={t.done ? "check" : t.icon} size={17} color="currentColor" />
-          </span>
-          <span>
-            <span className="fhj-tile-label block">{t.label}</span>
-            <span className="fhj-tile-sub block">{t.sub}</span>
-          </span>
-        </button>
-      ))}
+      {tiles.map((t) => {
+        const done = t.id === "checkin" && checkedIn;
+        return (
+          <button key={t.id} type="button"
+            onClick={() => { feedback("quickadd"); actions[t.id](); }}
+            className={`fhj-tile fhj-pop ${t.cat}${done ? " is-done" : ""}`}>
+            <span className="fhj-tile-icon">
+              <Icon name={done ? "check" : t.icon} size={17} color="currentColor" />
+            </span>
+            <span>
+              <span className="fhj-tile-label block">{t.label}</span>
+              <span className="fhj-tile-sub block">
+                {t.id === "checkin" && checkedIn ? "Done today" : t.sub}
+              </span>
+            </span>
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+/** Choose the tiles and their order.
+
+    Reorder is up/down arrows rather than drag-and-drop, matching how the
+    question list in Edit Setup already works — this app has one reordering
+    idiom and it is this one. Nothing is applied until Save, so a fiddle that
+    goes wrong costs a Cancel rather than a repair. */
+function QuickAddEditor({ profile, hasPhotoField, onSave, onClose }) {
+  const [order, setOrder] = useState(
+    () => sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD
+  );
+  const available = QUICK_ADD_TILES.filter((t) => (t.id === "photo" ? hasPhotoField : true));
+  const off = available.filter((t) => !order.includes(t.id));
+
+  const move = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    feedback("tap");
+    setOrder((prev) => {
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+  const remove = (id) => { feedback("tap"); setOrder((prev) => prev.filter((x) => x !== id)); };
+  const add = (id) => { feedback("tap"); setOrder((prev) => [...prev, id]); };
+
+  return (
+    <Modal title="Edit Quick Add" onClose={onClose}>
+      <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: C.sub }}>
+        Pick the buttons you want on the dashboard, in the order you want them.
+      </p>
+
+      <div className="fhj-eyebrow mb-1.5">On the dashboard</div>
+      {order.length === 0 ? (
+        <p className="text-[12px] leading-relaxed px-3 py-4 rounded-xl mb-3"
+          style={{ background: C.faint, color: C.subtle }}>
+          Nothing selected — the Quick Add section will be hidden entirely.
+        </p>
+      ) : (
+        <div className="rounded-xl overflow-hidden mb-3" style={{ border: `1px solid ${C.line}` }}>
+          {order.map((id, i) => {
+            const t = quickAddTile(id);
+            if (!t) return null;
+            return (
+              <div key={id} className={`flex items-center gap-1.5 px-2.5 py-2 ${t.cat}`}
+                style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
+                <span className="fhj-tl-dot shrink-0" style={{ width: "1.75rem", height: "1.75rem" }}>
+                  <Icon name={t.icon} size={13} color="currentColor" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13px] font-semibold truncate" style={{ color: C.ink }}>{t.label}</span>
+                  <span className="block text-[10.5px] truncate" style={{ color: C.subtle }}>{t.desc}</span>
+                </span>
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
+                  aria-label={`Move ${t.label} up`} className="fhj-icon-btn shrink-0"
+                  style={{ width: "2rem", height: "2rem" }}>
+                  <Icon name="up" size={14} color={C.sub} />
+                </button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === order.length - 1}
+                  aria-label={`Move ${t.label} down`} className="fhj-icon-btn shrink-0"
+                  style={{ width: "2rem", height: "2rem" }}>
+                  <Icon name="down" size={14} color={C.sub} />
+                </button>
+                <button type="button" onClick={() => remove(id)}
+                  aria-label={`Remove ${t.label} from Quick Add`} className="fhj-icon-btn shrink-0"
+                  style={{ width: "2rem", height: "2rem" }}>
+                  <Icon name="x" size={14} color={C.sub} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {off.length > 0 && (
+        <>
+          <div className="fhj-eyebrow mb-1.5">Not shown</div>
+          <div className="rounded-xl overflow-hidden mb-3" style={{ border: `1px solid ${C.line}` }}>
+            {off.map((t, i) => (
+              <button key={t.id} type="button" onClick={() => add(t.id)}
+                className="w-full flex items-center gap-1.5 px-2.5 py-2 text-left fhj-row"
+                style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13px] font-semibold truncate" style={{ color: C.ink }}>{t.label}</span>
+                  <span className="block text-[10.5px] truncate" style={{ color: C.subtle }}>{t.desc}</span>
+                </span>
+                <span className="fhj-icon-btn shrink-0" style={{ width: "2rem", height: "2rem" }} aria-hidden="true">
+                  <Icon name="plus" size={14} color={C.accentText} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!hasPhotoField && (
+        <p className="text-[11px] leading-relaxed mb-3" style={{ color: C.subtle }}>
+          The Photo tile isn't offered because your setup has no photo question in it. Add one in
+          Edit Setup and it will appear here.
+        </p>
+      )}
+
+      <div className="flex gap-2 mt-4">
+        <Button variant="ghost" size="sm" onClick={() => { feedback("tap"); setOrder(DEFAULT_QUICK_ADD); }}>
+          Reset
+        </Button>
+        <div className="flex-1" />
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button onClick={() => { feedback("save"); onSave(order); }}>Save</Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -9420,6 +9840,11 @@ function TodayTimeline({ entry, tpl, food, bowel, date, onOpenEntry, onOpenFood,
       key: b.id, time: b.time, cat: "fhj-cat-bowel", icon: "bowel",
       title: "Bowel movement",
       meta: bowelSummary(b) || "Logged",
+      /* Same rule as food: a value the model supplied says so wherever it is
+         shown, not only in the sheet it was written in. */
+      badge: aiFilledBowelFields(b).length > 0
+        ? <span className="fhj-ai-badge">AI Filled In</span>
+        : null,
       thumbId: b.photoId,
       onClick: () => onOpenBowel(b),
     });
@@ -9484,7 +9909,7 @@ function TodayNutritionStrip({ food, date }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goReport, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun, food, bowel, foods, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
+function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSetup, goGallery, goFood, goReport, onUpdateQuickAdd, reports, openSavedReport, deleteSavedReport, viewer, ai, setAi, aiAutoRun, food, bowel, foods, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
   return (
     <div className="px-4 pb-10">
       <div className="flex items-start justify-between pt-6 pb-2">
@@ -9516,7 +9941,8 @@ function DashboardScreen({ profile, entries, openLog, goExport, goSettings, goSe
       </div>
       <TrendsScreen profile={profile} entries={entries} openLog={openLog} goExport={goExport} goGallery={goGallery}
         goReport={goReport} reports={reports} openSavedReport={openSavedReport} deleteSavedReport={deleteSavedReport}
-        goSetup={goSetup} goSettings={goSettings} viewer={viewer} ai={ai} setAi={setAi} aiAutoRun={aiAutoRun}
+        goSetup={goSetup} goSettings={goSettings} goFood={goFood} onUpdateQuickAdd={onUpdateQuickAdd}
+        viewer={viewer} ai={ai} setAi={setAi} aiAutoRun={aiAutoRun}
         food={food} bowel={bowel} foods={foods} onUpdateLibrary={onUpdateLibrary}
         onSaveFood={onSaveFood} onDeleteFood={onDeleteFood}
         onSaveBowel={onSaveBowel} onDeleteBowel={onDeleteBowel} />
@@ -10064,7 +10490,11 @@ const NAV = [
 const SCHEMA_VERSION = 2;
 /* Off, empty, nothing hidden. A journal that has never touched the AI feature
    and one that has had it switched back off look identical from here. */
-const DEFAULT_AI = { enabled: false, analysis: null, dismissed: [] };
+/* `auto` is deliberately alongside `enabled` rather than inside the profile:
+   both are per-device standing decisions about sending data off this machine,
+   and neither travels in a backup. Restoring a journal onto a new phone must
+   not switch on automatic uploads there because they were on somewhere else. */
+const DEFAULT_AI = { enabled: false, auto: false, analysis: null, dismissed: [] };
 function migrateDb(data) {
   const d = { ...data };
   if (!Array.isArray(d.reports)) d.reports = [];
@@ -10114,6 +10544,9 @@ function migrateDb(data) {
   d.bowel = sanitizeBowelLogs(d.bowel);
   d.foods = sanitizeFoodItems(d.foods);
   if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
+  /* Same reasoning as the food logs: this arrives from a backup file as often
+     as from the editor, and an unknown tile id would render as a gap. */
+  if (d.profile.quickAdd !== undefined) d.profile.quickAdd = sanitizeQuickAdd(d.profile.quickAdd);
   /* Reminders moved from one time to a list. readReminders migrates a
      pre-list install on the way through, so nobody loses the time they set. */
   d.profile.reminders = readReminders(d.profile);
@@ -10582,6 +11015,15 @@ export default function App({ viewer = false }) {
 
   const setLibrary = (foods) => setDb((prev) => ({ ...prev, foods }));
 
+  const setQuickAdd = (ids) => setDb((prev) => ({
+    ...prev,
+    profile: {
+      ...prev.profile,
+      quickAdd: sanitizeQuickAdd(ids) ?? DEFAULT_QUICK_ADD,
+      updatedAt: new Date().toISOString(),
+    },
+  }));
+
   const dashProps = {
     profile, entries, openLog: goToLog,
     viewer,
@@ -10591,6 +11033,7 @@ export default function App({ viewer = false }) {
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     goExport: () => setScreen("export"), goSettings: () => setScreen("settings"),
     goSetup: () => setScreen("setup"), goGallery: () => setScreen("gallery"),
+    goFood: () => setScreen("food"), onUpdateQuickAdd: setQuickAdd,
     goReport, reports: db.reports, openSavedReport, deleteSavedReport,
     ai: db.ai, setAi, aiAutoRun,
   };
@@ -10618,7 +11061,9 @@ export default function App({ viewer = false }) {
     content = (
       <FoodScreen
         food={db.food || []} foods={db.foods || []} goals={db.profile.goals}
-        aiEnabled={!!db.ai?.enabled && !viewer} viewer={viewer}
+        aiEnabled={!!db.ai?.enabled && !viewer}
+        aiAuto={!!db.ai?.enabled && db.ai?.auto === true && !viewer}
+        viewer={viewer}
         onLog={upsertLog("food")} onSaveLog={upsertLog("food")} onDeleteLog={removeLog("food")}
         onUpdateLibrary={setLibrary}
         onEditGoals={() => setScreen("settings")} />
@@ -10718,7 +11163,7 @@ export const __internals = {
   packHistoryDays, TEMPLATES, reportSummaryRows,
   parseGoogleFitDailyCSV, parseGoogleFitHourlyCSV, parseGoogleFitSessionJSON,
   parseFitbitFiles, mergeFitbitData, kgToLb,
-  validateBackup, storageUsage, photosOlderThan, scrubPhotoRefs, photoLegendRows,
+  validateBackup, buildFullBackup, storageUsage, photosOlderThan, scrubPhotoRefs, photoLegendRows,
   lastValueFor, depsFor,
   wideTable, toCSV, metaCols, serialize, buildPhotoItems, blankProfile,
   entriesFor, calcStreak, avgWindow, SCHEMA_VERSION,

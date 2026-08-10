@@ -356,7 +356,11 @@ describe("night light", () => {
 });
 
 describe("the backdrop choice", () => {
-  it("defaults to fog, and remembers any of the three", () => {
+  it("offers five moving styles plus a real 'off'", () => {
+    expect(BACKDROP_STYLES).toEqual(["fog", "aurora", "dawn", "drift", "linen", "off"]);
+  });
+
+  it("defaults to fog, and remembers any of them", () => {
     expect(getBackdrop()).toBe("fog");
     for (const style of BACKDROP_STYLES) {
       setBackdrop(style);

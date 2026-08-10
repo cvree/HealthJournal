@@ -17,9 +17,25 @@ export type ThemeName = "dark" | "light";
 export type ThemePreference = ThemeName | "system";
 
 /** Which ambient backdrop is drawn behind the app. `off` is a real choice, not
-    an absence of one — it is what someone picks who wants a plain surface. */
-export type BackdropStyle = "fog" | "aurora" | "off";
-export const BACKDROP_STYLES: BackdropStyle[] = ["fog", "aurora", "off"];
+    an absence of one — it is what someone picks who wants a plain surface.
+
+    Five moving styles, all built from the same three-layer skeleton and all
+    tinted from --fhj-hue. The three added after `fog`/`aurora` are the ones
+    that actually match a health journal's register: `dawn` is a low horizon
+    that breathes like a slow breath, `drift` is soft out-of-focus motes, and
+    `linen` is the weave of the paper notebook the whole product is modelled
+    on. Nothing here should ever read as decoration competing with a card. */
+export type BackdropStyle = "fog" | "aurora" | "dawn" | "drift" | "linen" | "off";
+export const BACKDROP_STYLES: BackdropStyle[] = [
+  "fog", "aurora", "dawn", "drift", "linen", "off",
+];
+
+/** The one place a stored/incoming backdrop name is checked. Anything else is
+    not a backdrop — an old build's name, a hand-edited localStorage value, a
+    typo — and falls back to the default rather than putting an unstyled
+    element behind the app. */
+export const isBackdropStyle = (v: unknown): v is BackdropStyle =>
+  typeof v === "string" && (BACKDROP_STYLES as string[]).includes(v);
 
 export const THEME_STORAGE_KEY = "fhj_theme_v1";
 export const HUE_STORAGE_KEY = "fhj_hue_v1";
@@ -637,7 +653,7 @@ export function readNightLight(): boolean {
 export function readBackdrop(): BackdropStyle {
   try {
     const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(BACKDROP_STORAGE_KEY);
-    if (raw === "fog" || raw === "aurora" || raw === "off") return raw;
+    if (isBackdropStyle(raw)) return raw;
   } catch {
     /* fall through */
   }
@@ -706,8 +722,8 @@ export function setNightLight(on: boolean) {
 }
 
 export function setBackdrop(style: BackdropStyle) {
-  backdrop = style;
-  persist(BACKDROP_STORAGE_KEY, style);
+  backdrop = isBackdropStyle(style) ? style : "fog";
+  persist(BACKDROP_STORAGE_KEY, backdrop);
   paint(resolved);
   announce(resolved);
 }

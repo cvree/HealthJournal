@@ -73,6 +73,20 @@ describe("the backdrop renders", () => {
     await waitFor(() => expect(backdropEl()!.className).toContain("fhj-backdrop-fog"));
   });
 
+  it("draws each of the added styles from the same three-layer skeleton", async () => {
+    /* The styles differ only in paint. If one of them ever needs a different
+       number of layers, the chooser preview and AmbientBackdrop both have to
+       learn about it — so this is the test that says they don't. */
+    const { default: AmbientBackdrop } = await import("../src/components/AmbientBackdrop");
+    render(React.createElement(AmbientBackdrop));
+    for (const style of ["dawn", "drift", "linen"] as const) {
+      setBackdrop(style);
+      await waitFor(() => expect(backdropEl()!.className).toContain(`fhj-backdrop-${style}`));
+      expect(backdropEl()!.children.length, style).toBe(3);
+    }
+    setBackdrop("fog");
+  });
+
   it("is invisible to assistive tech and to the pointer", async () => {
     const { default: AmbientBackdrop } = await import("../src/components/AmbientBackdrop");
     render(React.createElement(AmbientBackdrop));
@@ -105,10 +119,13 @@ describe("the appearance controls", () => {
     return render(React.createElement(AppearancePanel));
   };
 
-  it("offers all three backdrops, the hue, the theme and night light", async () => {
+  it("offers every backdrop, the hue, the theme and night light", async () => {
     await renderPanel();
     const text = document.body.textContent || "";
-    for (const name of ["Fog", "Aurora", "None", "Dark", "Light", "System", "Night Light"]) {
+    for (const name of [
+      "Fog", "Aurora", "Dawn", "Drift", "Linen", "None",
+      "Dark", "Light", "System", "Night Light",
+    ]) {
       expect(text, name).toContain(name);
     }
     expect(screen.getByLabelText(/hue/i)).toBeTruthy();
@@ -181,7 +198,7 @@ describe("first launch", () => {
     // Everything from the Settings panel is here too — same component, so
     // there is no second copy to drift.
     const text = document.body.textContent || "";
-    for (const name of ["Fog", "Aurora", "None", "Night Light"]) {
+    for (const name of ["Fog", "Aurora", "Dawn", "Drift", "Linen", "None", "Night Light"]) {
       expect(text, name).toContain(name);
     }
     expect(screen.getByLabelText(/hue/i)).toBeTruthy();

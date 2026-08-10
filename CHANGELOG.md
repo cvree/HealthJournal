@@ -1,5 +1,87 @@
 # Changelog
 
+## 1.8.0
+
+### The photo is the first thing the log asks for
+
+In both the food sheet and the bowel sheet, the camera has moved to the top.
+It used to sit five fields down — below three text inputs in the food sheet,
+below four chip grids in the bowel one — which had the single fastest, richest
+answer either form can take reading as an optional extra for people who had
+already done the typing. It is the headline now, in its own frame, and
+everything under it is explicitly optional.
+
+### AI can fill the log in for you
+
+A new switch in Settings (**"Let AI fill in the log for you"**, off until you
+turn it on, and only offered once AI observations are on):
+
+- **Attach a photo and it is read straight away.** No per-send confirmation —
+  the switch is the consent, and it says so in as many words on the switch
+  itself and again on the Privacy card.
+- **Bowel entries: Bristol type, amount, colour and consistency** are filled
+  in from the photo. Amount is new — the model was never asked for it before.
+  You can skip all four and just take a picture.
+- **Meals: the nutrition estimate runs by itself**, photo or description.
+- **It fills blanks, never overwrites you.** Any field you have already
+  answered wins; the model only completes what you left empty, and anything it
+  wrote stays labelled as its work until you type over it.
+- **Its words are mapped onto the form's own options.** "dark brown" becomes
+  the **Dark brown** chip rather than a string matching no option — without
+  that, an auto-filled colour was a category of one in every later grouping.
+  Anything that can't be mapped is left blank rather than guessed at.
+- **Once it has answered, the detail fields fold into one line** you can tap to
+  open. Nothing is hidden, it is just no longer in the way of pressing Save.
+
+Off, none of this changes: the analysis buttons still ask before every send,
+and the app still makes no network requests at all until you opt in.
+
+### Quick Add is yours to arrange
+
+The four tiles on the dashboard were fixed. They are now editable from an
+**Edit** link on the section heading: choose which appear, in which order, from
+a catalogue of six.
+
+- **New tiles:** **Drink** (the food picker filed as a drink instead of as
+  whatever meal the clock implies) and **Food diary** (jumps to the day's
+  meals and totals).
+- Reorder with arrows, remove with ×, Reset to the original four. Nothing
+  applies until Save.
+- Choosing none is a real choice and hides the section.
+
+### Say when you ate it, without opening the long form
+
+The one-tap path through the food picker always stamped whatever the clock said
+at the moment you tapped, and the only fix was to save the item and reopen it.
+There is now a **time and meal control at the top of the picker**, applying to
+whatever you tap below it. Changing the time re-files the meal to match —
+unless you have picked a meal yourself, in which case yours stands. The time
+carries through into the long form if the meal turns out to be something new.
+
+### Three more backdrops
+
+- **Dawn** — a low horizon that rises and settles, keeping the colour below the
+  reading column rather than behind it.
+- **Drift** — slow, far-out-of-focus motes.
+- **Linen** — the weave of the paper notebook the whole product is modelled on.
+
+Same three-layer skeleton as Fog and Aurora, same tinting from your colour
+slider, same reduced-motion behaviour.
+
+### Fixes
+
+- **A sheet scrolls itself, not the page behind it.** Lenis owns the document
+  scroller and had no idea a dialog was open, so a wheel or a flick anywhere
+  over the bowel sheet — the longest form in the app — scrolled the dashboard
+  underneath and left the sheet exactly where it was. Sheets now opt out of
+  smooth scrolling, and the page is pinned (and put back, at the right scroll
+  position) while any dialog is up, including stacked ones.
+- **Today's Logs is a way in.** The whole heading row opens today's check-in
+  rather than a small text link at the far end of it.
+- **A `time` or `meal` passed through as `undefined`** no longer un-sets the
+  default it was meant to fall back to, which could produce a log with no time
+  on it at all.
+
 ## 1.7.0
 
 ### The ambient backdrops actually appear now

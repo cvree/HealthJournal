@@ -37,6 +37,9 @@ const label: React.CSSProperties = {
 const BACKDROPS: { value: BackdropStyle; name: string; desc: string }[] = [
   { value: "fog", name: "Fog", desc: "Soft drifting clouds" },
   { value: "aurora", name: "Aurora", desc: "Tall raking curtains" },
+  { value: "dawn", name: "Dawn", desc: "A low horizon, breathing" },
+  { value: "drift", name: "Drift", desc: "Slow, out-of-focus motes" },
+  { value: "linen", name: "Linen", desc: "The weave of good paper" },
   { value: "off", name: "None", desc: "A plain, flat surface" },
 ];
 
