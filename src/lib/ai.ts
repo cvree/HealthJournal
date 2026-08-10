@@ -709,6 +709,7 @@ const BOWEL_SCHEMA = {
   type: "object",
   properties: {
     bristol: { type: "integer" },
+    amount: { type: "string", enum: ["small", "medium", "large"] },
     color: { type: "string" },
     consistency: { type: "string" },
     form: { type: "string" },
@@ -720,7 +721,8 @@ const BOWEL_SCHEMA = {
 
 const BOWEL_JSON_HINT =
   "\n\nReply with JSON only — no prose, no markdown fence — matching: " +
-  '{"bristol":number,"color":string,"consistency":string,"form":string,' +
+  '{"bristol":number,"amount":"small"|"medium"|"large","color":string,' +
+  '"consistency":string,"form":string,' +
   '"confidence":"low"|"medium"|"high","note":string}';
 
 /* The narrowest prompt in the app, deliberately. It is a description task with
@@ -733,6 +735,7 @@ Your entire job is to describe what is visibly present in the image, in the same
 
 Fill in:
 - "bristol": the Bristol Stool Scale type, 1 to 7, that best matches the visible form. 1 separate hard lumps; 2 lumpy sausage; 3 sausage with cracks; 4 smooth soft sausage; 5 soft blobs with clear edges; 6 mushy pieces with ragged edges; 7 entirely liquid. Omit it if the image does not show the form clearly enough to place it.
+- "amount": how much is visible, relative to a typical single movement — exactly one of "small", "medium", "large". Judge it from the visible extent only. Omit it if the framing makes the quantity impossible to judge.
 - "color": the visible colour in plain words, e.g. "brown", "dark brown", "light brown", "yellow", "green", "pale", "red-tinged", "black".
 - "consistency": one of hard, formed, soft, loose, watery.
 - "form": a short neutral phrase describing the shape, e.g. "single smooth log", "several soft pieces", "fragmented".
@@ -964,10 +967,21 @@ export function normaliseBowelResult(parsed: any, model = ""): BowelAiResult {
   const noteFull = String(parsed?.note ?? "").trim();
   const note = isDiagnosticText(noteFull) ? "" : noteFull.slice(0, 300);
 
+  /* Amount is a closed set on the form, so it is a closed set here. A model
+     that answers "moderate" or "a fair bit" gets dropped rather than
+     normalised by guesswork — an unfilled field the person notices beats a
+     filled one they don't. */
+  const amountRaw = String(parsed?.amount ?? "").trim().toLowerCase();
+  const amount =
+    amountRaw === "small" || amountRaw === "medium" || amountRaw === "large"
+      ? (amountRaw as BowelAiResult["amount"])
+      : undefined;
+
   return {
     at: new Date().toISOString(),
     model,
     bristol,
+    amount,
     color: clean(parsed?.color, 40),
     consistency: clean(parsed?.consistency, 40),
     form: clean(parsed?.form, 60),

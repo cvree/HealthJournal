@@ -109,6 +109,94 @@ export const BOWEL_AMOUNTS: { id: "small" | "medium" | "large"; label: string }[
   { id: "large", label: "Large" },
 ];
 
+/* ---------- turning a model's words into the form's own options ----------
+
+   The bowel form is chips, not free text: a suggestion of "dark brown" has to
+   come back as the exact string `"Dark brown"` or the chip it means never
+   lights up, the value stored doesn't match any option, and every later
+   grouping treats it as a category of one. That was survivable while a person
+   read the suggestion and tapped the chip themselves. It is not survivable
+   once the model's answer can land in the log directly, so the mapping lives
+   here, next to the lists it maps onto.
+
+   Anything that doesn't map is dropped rather than guessed at. A blank field
+   the person can see and fill is always better than a wrong one they can't. */
+
+const norm = (s: unknown): string =>
+  String(s ?? "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
+/** The model's colour word → one of BOWEL_COLORS, or undefined. */
+export function matchBowelColor(raw: unknown): string | undefined {
+  const s = norm(raw);
+  if (!s) return undefined;
+  const exact = BOWEL_COLORS.find((c) => norm(c) === s);
+  if (exact) return exact;
+  // Order matters: "pale" and the qualified browns have to be tested before
+  // the bare "brown" they all contain.
+  if (/\b(pale|clay|grey|gray|white|chalk)\b/.test(s)) return "Pale / clay";
+  if (/\bblack|tarry\b/.test(s)) return "Black";
+  if (/\bred|maroon|crimson\b/.test(s)) return "Red";
+  if (/\bgreen|olive\b/.test(s)) return "Green";
+  if (/\byellow|amber|mustard\b/.test(s)) return "Yellow";
+  if (/\bdark\b/.test(s) && /\bbrown\b/.test(s)) return "Dark brown";
+  if (/\b(light|pale|tan|golden)\b/.test(s) && /\bbrown\b/.test(s)) return "Light brown";
+  if (/\bbrown\b/.test(s)) return "Brown";
+  return undefined;
+}
+
+/** The model's consistency word → one of BOWEL_CONSISTENCY, or undefined. */
+export function matchBowelConsistency(raw: unknown): string | undefined {
+  const s = norm(raw);
+  if (!s) return undefined;
+  const exact = BOWEL_CONSISTENCY.find((c) => norm(c) === s);
+  if (exact) return exact;
+  if (/\bwatery|liquid|fluid\b/.test(s)) return "Watery";
+  if (/\bloose|mushy|ragged\b/.test(s)) return "Loose";
+  if (/\bsoft\b/.test(s)) return "Soft";
+  if (/\bformed|solid|smooth|sausage\b/.test(s)) return "Formed";
+  if (/\bhard|firm|lumpy\b/.test(s)) return "Hard";
+  return undefined;
+}
+
+/** Everything a photo reading can contribute to a bowel log, already expressed
+    in the form's own vocabulary. Values the model didn't give — or gave in
+    terms this app doesn't recognise — are simply absent. */
+export function bowelSuggestion(ai: BowelAiResult | undefined): Partial<BowelLog> {
+  if (!ai) return {};
+  const out: Partial<BowelLog> = {};
+  if (ai.bristol != null) out.bristol = ai.bristol;
+  if (ai.amount) out.amount = ai.amount;
+  const color = matchBowelColor(ai.color);
+  if (color) out.color = color;
+  const consistency = matchBowelConsistency(ai.consistency);
+  if (consistency) out.consistency = consistency;
+  return out;
+}
+
+/** Fold a suggestion into a log **without ever overwriting a person**. Every
+    field the user has already answered wins; the model only fills blanks.
+    Returns the same object when there is nothing to add, so callers can skip a
+    pointless re-render. */
+export function applyBowelSuggestion(log: BowelLog, ai?: BowelAiResult): BowelLog {
+  const suggested = bowelSuggestion(ai ?? log.ai);
+  const patch: Partial<BowelLog> = {};
+  for (const [k, v] of Object.entries(suggested)) {
+    if ((log as any)[k] == null) (patch as any)[k] = v;
+  }
+  if (!Object.keys(patch).length) return log;
+  return { ...log, ...patch, updatedAt: stamp() };
+}
+
+/** Which of a log's fields the model is currently responsible for. Drives the
+    "AI filled these in" summary — a value is only claimed when it matches what
+    the suggestion would have written, so typing over one drops it off the
+    list without any extra bookkeeping. */
+export function aiFilledBowelFields(log: BowelLog): (keyof BowelLog)[] {
+  const suggested = bowelSuggestion(log.ai);
+  return (Object.keys(suggested) as (keyof BowelLog)[])
+    .filter((k) => log[k] != null && log[k] === (suggested as any)[k]);
+}
+
 /** 0–3 scales share one vocabulary so three questions read as one control. */
 export const SEVERITY_0_3 = ["None", "Mild", "Moderate", "Severe"];
 
@@ -154,30 +242,40 @@ export function formatNutrient(k: NutrientKey, v: number | null | undefined): st
 
 /* ---------- constructors ---------- */
 
+/* `{ time: undefined }` is what a caller passing an optional prop through
+   looks like, and spreading it over a computed default silently un-sets that
+   default — a log with no time at all, which every sort and every "when was
+   this" then has to cope with. Explicitly-absent and absent mean the same
+   thing here, so they are made to behave the same way. */
+const defined = <T extends object>(o: T): Partial<T> =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+
 export function newFoodLog(partial: Partial<FoodLog> = {}): FoodLog {
   const now = new Date();
-  const time = partial.time || localTime(now);
+  const given = defined(partial);
+  const time = given.time || localTime(now);
   return {
     id: `f_${Date.now().toString(36)}${rand()}`,
-    date: partial.date || localDate(now),
+    date: given.date || localDate(now),
     time,
-    meal: partial.meal || mealForTime(time),
-    description: partial.description ?? "",
+    meal: given.meal || mealForTime(time),
+    description: given.description ?? "",
     createdAt: stamp(),
     updatedAt: stamp(),
-    ...partial,
+    ...given,
   } as FoodLog;
 }
 
 export function newBowelLog(partial: Partial<BowelLog> = {}): BowelLog {
   const now = new Date();
+  const given = defined(partial);
   return {
     id: `b_${Date.now().toString(36)}${rand()}`,
-    date: partial.date || localDate(now),
-    time: partial.time || localTime(now),
+    date: given.date || localDate(now),
+    time: given.time || localTime(now),
     createdAt: stamp(),
     updatedAt: stamp(),
-    ...partial,
+    ...given,
   } as BowelLog;
 }
 
@@ -700,6 +798,7 @@ function cleanBowelAi(v: any): BowelAiResult | undefined {
     at: str(v.at, 40) || stamp(),
     model: str(v.model, 80),
     bristol: clamp(num(v.bristol), 1, 7),
+    amount: BOWEL_AMOUNTS.some((a) => a.id === v.amount) ? v.amount : undefined,
     color: str(v.color, 40) || undefined,
     consistency: str(v.consistency, 40) || undefined,
     form: str(v.form, 60) || undefined,

@@ -39,6 +39,70 @@ export function initSmoothScroll() {
   gsap.ticker.lagSmoothing(0);
 }
 
+/* ---------- scroll locking, for anything modal ----------
+
+   Lenis takes ownership of the wheel on the document scroller. That is fine
+   until a dialog opens: the wheel event starts inside the sheet, Lenis doesn't
+   know the sheet exists, and it scrolls the *page* behind it instead. The sheet
+   stays exactly where it was and the content underneath slides away, which is
+   the single most disorienting thing a modal can do.
+
+   Two halves fix it, and both are needed:
+
+   1. `data-lenis-prevent` on the scrolling element (set by the Modal), which is
+      Lenis's own opt-out for a nested scroller.
+   2. Stopping Lenis and pinning the body while any dialog is open, so a wheel
+      that lands *outside* the sheet — on the scrim — doesn't move the page
+      either.
+
+   The counter is what makes stacked sheets work: the food sheet opening a
+   consent sheet on top of it must not un-pin the page when the inner one
+   closes. Only the outermost release restores anything. */
+let scrollLocks = 0;
+let restoreScroll: (() => void) | null = null;
+
+export function lockPageScroll(): () => void {
+  scrollLocks++;
+  if (scrollLocks === 1 && typeof document !== "undefined") {
+    lenis?.stop();
+    const body = document.body;
+    const y = window.scrollY || window.pageYOffset || 0;
+    const prev = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+    };
+    /* position:fixed rather than overflow:hidden — iOS Safari ignores the
+       latter on the body and rubber-bands the page anyway. The scroll offset
+       has to be carried on `top` and put back by hand, or closing the dialog
+       teleports the user to the top of their journal. */
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${y}px`;
+    body.style.width = "100%";
+    restoreScroll = () => {
+      body.style.overflow = prev.overflow;
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      window.scrollTo(0, y);
+      lenis?.start();
+    };
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    scrollLocks = Math.max(0, scrollLocks - 1);
+    if (scrollLocks === 0 && restoreScroll) {
+      const fn = restoreScroll;
+      restoreScroll = null;
+      fn();
+    }
+  };
+}
+
 export function scrollToTop(immediate = false) {
   if (lenis && !prefersReducedMotion()) lenis.scrollTo(0, { immediate });
   else window.scrollTo({ top: 0, behavior: immediate || prefersReducedMotion() ? "auto" : "smooth" });

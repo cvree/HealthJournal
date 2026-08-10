@@ -319,3 +319,27 @@ describe("failures a person can act on", () => {
     expect(chatCalls).toBe(2); // tried once, re-resolved, succeeded — and stopped
   });
 });
+
+describe("the bowel path judges amount too", () => {
+  it("keeps one of the three buckets the form offers", () => {
+    for (const amount of ["small", "medium", "large"]) {
+      expect(normaliseBowelResult({ amount, confidence: "medium" }).amount).toBe(amount);
+    }
+    expect(normaliseBowelResult({ amount: "LARGE", confidence: "medium" }).amount).toBe("large");
+  });
+
+  it("drops anything outside them rather than mapping it by guesswork", () => {
+    for (const amount of ["moderate", "a fair bit", "3", "", null, undefined]) {
+      expect(normaliseBowelResult({ amount, confidence: "low" }).amount).toBeUndefined();
+    }
+  });
+
+  it("asks for it in the prompt, so the model has a chance of returning it", async () => {
+    const bodies = mockGemini({ bristol: 4, amount: "medium", confidence: "high" });
+    const r = await analyseBowelPhoto(CONN, IMAGE);
+    expect(r.amount).toBe("medium");
+    const sent = JSON.stringify(bodies[bodies.length - 1]);
+    expect(sent).toContain("amount");
+    expect(sent).toContain("small");
+  });
+});

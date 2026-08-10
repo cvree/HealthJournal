@@ -40,10 +40,10 @@ const CONN = JSON.stringify({
   provider: "gemini", key: "AQ.AbTESTkeyTESTkeyTESTkey1234", model: "gemini-9-flash",
 });
 
-async function mountApp(opts: { ai?: boolean } = {}) {
+async function mountApp(opts: { ai?: boolean; auto?: boolean } = {}) {
   const { __internals: I, default: App } = await import("../src/App");
   const db = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
-  if (opts.ai) db.ai = { ...db.ai, enabled: true };
+  if (opts.ai) db.ai = { ...db.ai, enabled: true, auto: !!opts.auto };
   const kv = mockStorage(
     opts.ai
       ? { fhj_v1: JSON.stringify(db), fhj_ai_conn_v1: CONN }
@@ -526,5 +526,311 @@ describe("the food diary", () => {
     expect(screen.getByText("Set daily targets")).toBeTruthy();
     // No goal means no progress bar and no ring — just what was eaten.
     expect(document.querySelector('[role="progressbar"]')).toBeNull();
+  });
+});
+
+/* ============================================================
+   Quick Add is the user's, not ours
+   ============================================================ */
+
+describe("editing Quick Add", () => {
+  const tileLabels = () =>
+    [...document.querySelectorAll(".fhj-tile")].map((t) => t.querySelector(".fhj-tile-label")?.textContent);
+
+  const openEditor = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    return (await screen.findByText("Edit Quick Add")).closest('[role="dialog"]') as HTMLElement;
+  };
+
+  it("opens an editor from the section heading", async () => {
+    await mountApp();
+    const dialog = await openEditor();
+    // Everything on offer is listed, including the ones not currently shown.
+    expect(within(dialog).getByText("Drink")).toBeTruthy();
+    expect(within(dialog).getByText("Food diary")).toBeTruthy();
+  });
+
+  it("adds a tile, and it appears on the dashboard", async () => {
+    await mountApp();
+    const dialog = await openEditor();
+    fireEvent.click(within(dialog).getByText("Drink"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
+    expect(tileLabels()).toContain("Drink");
+  });
+
+  it("reorders with the arrows", async () => {
+    await mountApp();
+    const dialog = await openEditor();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move Food up" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
+    expect(tileLabels()).toEqual(["Food", "Check-in", "Bowel", "Photo"]);
+  });
+
+  it("removes a tile, and Cancel throws the change away", async () => {
+    await mountApp();
+    let dialog = await openEditor();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Bowel/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
+    expect(tileLabels()).toContain("Bowel");
+
+    dialog = await openEditor();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Bowel/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
+    expect(tileLabels()).not.toContain("Bowel");
+  });
+
+  it("keeps the choice across a reload", async () => {
+    const { kv, unmount } = await mountApp();
+    const dialog = await openEditor();
+    fireEvent.click(within(dialog).getByText("Drink"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(kv.get("fhj_v1")).toContain("quickAdd"));
+
+    unmount();
+    cleanup();
+    const { default: App } = await import("../src/App");
+    render(<App />);
+    await screen.findByText(/Quick Add/);
+    expect(tileLabels()).toContain("Drink");
+  });
+
+  it("files a drink as a drink, not as whatever meal the clock says", async () => {
+    await mountApp();
+    let dialog = await openEditor();
+    fireEvent.click(within(dialog).getByText("Drink"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
+
+    await openTile(/^Drink/);
+    const picker = await pickerDialog();
+    expect((within(picker).getByLabelText(/Which meal/) as HTMLSelectElement).value).toBe("drink");
+  });
+});
+
+describe("Today's Logs is a way in, not just a heading", () => {
+  it("opens today's check-in when the heading row is pressed", async () => {
+    await mountApp();
+    fireEvent.click(await screen.findByRole("button", { name: /today's check-in/i }));
+    // The Log screen is up: the header names it and the nav marks it current.
+    await waitFor(() => expect(document.body.textContent).toContain("Daily Log"));
+  });
+});
+
+/* ============================================================
+   Time on the fast path
+   ============================================================ */
+
+describe("saying when something was eaten", () => {
+  it("stamps a one-tap log with the time in the picker, not the clock", async () => {
+    await mountApp();
+    await openTile(/^Food/);
+    const picker = await pickerDialog();
+    fireEvent.change(within(picker).getByLabelText(/Time this was eaten/), { target: { value: "07:05" } });
+    // The meal follows the time until the user says otherwise.
+    expect((within(picker).getByLabelText(/Which meal/) as HTMLSelectElement).value).toBe("breakfast");
+
+    fireEvent.change(within(picker).getByPlaceholderText(/e.g. 250/), { target: { value: "180" } });
+    fireEvent.click(within(picker).getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
+
+    const row = [...document.querySelectorAll(".fhj-tl-item")].find((r) => /Quick add/.test(r.textContent || ""))!;
+    expect(row.textContent).toContain("7:05 am");
+  });
+
+  it("keeps a meal the user picked even if the time changes afterwards", async () => {
+    await mountApp();
+    await openTile(/^Food/);
+    const picker = await pickerDialog();
+    fireEvent.change(within(picker).getByLabelText(/Which meal/), { target: { value: "snack" } });
+    fireEvent.change(within(picker).getByLabelText(/Time this was eaten/), { target: { value: "07:05" } });
+    expect((within(picker).getByLabelText(/Which meal/) as HTMLSelectElement).value).toBe("snack");
+  });
+
+  it("carries the time into the long form when the meal turns out to be new", async () => {
+    await mountApp();
+    await openTile(/^Food/);
+    const picker = await pickerDialog();
+    fireEvent.change(within(picker).getByLabelText(/Time this was eaten/), { target: { value: "21:40" } });
+    fireEvent.click(within(picker).getByRole("button", { name: /Something new/ }));
+    await screen.findByText("Log food");
+    expect((document.querySelector('input[type="time"]') as HTMLInputElement).value).toBe("21:40");
+  });
+});
+
+/* ============================================================
+   The photo leads, and can answer the form
+   ============================================================ */
+
+/** Index of a node in document order, for "does X come before Y" claims. */
+const orderOf = (root: HTMLElement, el: Element) => [...root.querySelectorAll("*")].indexOf(el);
+
+describe("the photo is the first thing asked for", () => {
+  it("puts the camera above the description in the food sheet", async () => {
+    await mountApp();
+    await openFoodForm();
+    const dialog = screen.getByText("Log food").closest('[role="dialog"]') as HTMLElement;
+    const camera = within(dialog).getByRole("button", { name: /photo of the meal/i });
+    const description = within(dialog).getByPlaceholderText(/Chicken salad/);
+    expect(orderOf(dialog, camera)).toBeLessThan(orderOf(dialog, description));
+  });
+
+  it("puts the camera above the Bristol scale in the bowel sheet", async () => {
+    await mountApp();
+    await openTile(/^Bowel/);
+    const dialog = (await screen.findByText("Log bowel movement")).closest('[role="dialog"]') as HTMLElement;
+    const camera = within(dialog).getByRole("button", { name: /take a photo/i });
+    const bristol = within(dialog).getByRole("button", { name: /Smooth sausage/ });
+    expect(orderOf(dialog, camera)).toBeLessThan(orderOf(dialog, bristol));
+  });
+
+  it("still asks every question it used to", async () => {
+    // Moving the photo up must not have dropped a field on the way past.
+    await mountApp();
+    await openTile(/^Bowel/);
+    await screen.findByText("Log bowel movement");
+    for (const label of ["Bristol type", "Amount", "Colour", "Consistency", "Urgency", "Straining", "Discomfort", "Notes"]) {
+      expect(screen.getByText(label), label).toBeTruthy();
+    }
+  });
+});
+
+describe("letting AI answer the form is opt-in, per device", () => {
+  const openAiSettings = async () => {
+    fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+    return await screen.findByText("AI observations");
+  };
+
+  it("is off even when AI itself is on, and asks before sending", async () => {
+    await mountApp({ ai: true });
+    await openAiSettings();
+    expect(
+      screen.getByRole("switch", { name: /Let AI fill in the log for you/ }).getAttribute("aria-checked")
+    ).toBe("false");
+    // With it off, the bowel sheet still routes through the consent button.
+    fireEvent.click(screen.getByRole("button", { name: /back to dashboard/i }));
+    await screen.findByText(/Quick Add/);
+    await openTile(/^Bowel/);
+    await screen.findByText("Log bowel movement");
+    expect(screen.queryByText(/Describe the photo with AI/)).toBeNull(); // no photo yet
+  });
+
+  it("is not offered at all while AI is switched off", async () => {
+    await mountApp({ ai: false });
+    await openAiSettings();
+    expect(screen.queryByText(/Let AI fill in the log for you/)).toBeNull();
+  });
+
+  it("says in the switch itself that the confirm step is what's being traded away", async () => {
+    await mountApp({ ai: true });
+    await openAiSettings();
+    const desc = screen.getByRole("switch", { name: /Let AI fill in the log for you/ }).textContent || "";
+    expect(desc).toMatch(/without the confirm-before-sending step/i);
+    expect(desc).toMatch(/never overwritten/i);
+  });
+
+  it("does not travel in a backup — a restore never switches sending on", async () => {
+    const { __internals: I } = await import("../src/App");
+    const db = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
+    db.ai = { ...db.ai, enabled: true, auto: true };
+    const backup = await I.buildFullBackup(db);
+    expect(JSON.stringify(backup.ai)).not.toContain("auto");
+    expect(I.migrateDb({ ...db, ai: { analysis: null, dismissed: [] } }).ai.auto).toBe(false);
+  });
+});
+
+/* ============================================================
+   A sheet scrolls itself, never the page behind it
+   ============================================================ */
+
+describe("scrolling inside a sheet", () => {
+  it("marks the sheet as a scroller the smooth-scroll driver must not touch", async () => {
+    /* Lenis owns the document scroller. Without this opt-out, a wheel event
+       that starts inside the dialog moves the dashboard behind it and leaves
+       the dialog exactly where it was. */
+    await mountApp();
+    await openTile(/^Bowel/);
+    const dialog = (await screen.findByText("Log bowel movement")).closest('[role="dialog"]')!;
+    expect(dialog.hasAttribute("data-lenis-prevent")).toBe(true);
+    expect(dialog.classList.contains("fhj-sheet")).toBe(true);
+  });
+
+  it("pins the page while a sheet is open and puts it back afterwards", async () => {
+    await mountApp();
+    expect(document.body.style.position).not.toBe("fixed");
+
+    await openTile(/^Bowel/);
+    await screen.findByText("Log bowel movement");
+    expect(document.body.style.position).toBe("fixed");
+    expect(document.body.style.overflow).toBe("hidden");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Log bowel movement")).toBeNull());
+    expect(document.body.style.position).not.toBe("fixed");
+    expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
+  it("stays pinned when a second sheet closes on top of the first", async () => {
+    // The consent sheet opening and closing over the food form must not
+    // release the page while the form underneath is still up.
+    const sent = stubProvider({ nutrition: { calories: 300 }, confidence: "low" });
+    await mountApp({ ai: true });
+    await openFoodForm();
+    fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Toast" } });
+    fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
+
+    const consent = (await screen.findByText(/Send this for an estimate/)).closest('[role="dialog"]') as HTMLElement;
+    expect(document.body.style.position).toBe("fixed");
+    fireEvent.click(within(consent).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText(/Send this for an estimate/)).toBeNull());
+
+    expect(sent).toHaveLength(0);
+    expect(document.body.style.position).toBe("fixed"); // the food sheet is still open
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
+    expect(document.body.style.position).not.toBe("fixed");
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("what the sheet promises about the photo", () => {
+  /* This is a claim about where someone's data goes, and it is keyed on the
+     setting rather than on whether a photo happens to be attached yet — an
+     earlier version said "nothing is sent unless you ask" on a screen that
+     had already sent it. */
+  it("says nothing is sent while auto-judging is off", async () => {
+    await mountApp({ ai: true });
+    await openTile(/^Bowel/);
+    const dialog = (await screen.findByText("Log bowel movement")).closest('[role="dialog"]') as HTMLElement;
+    expect(dialog.textContent).toMatch(/Nothing is sent anywhere unless you ask/);
+  });
+
+  it("says the photo goes as soon as it is added once auto-judging is on", async () => {
+    await mountApp({ ai: true, auto: true });
+    await openTile(/^Bowel/);
+    const bowel = (await screen.findByText("Log bowel movement")).closest('[role="dialog"]') as HTMLElement;
+    expect(bowel.textContent).toMatch(/sent for a reading as soon as you add it/);
+    expect(bowel.textContent).not.toMatch(/Nothing is sent anywhere unless you ask/);
+
+    fireEvent.click(within(bowel).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Log bowel movement")).toBeNull());
+
+    await openFoodForm();
+    const food = screen.getByText("Log food").closest('[role="dialog"]') as HTMLElement;
+    expect(food.textContent).toMatch(/sent for a nutrition estimate as soon as you add it/);
+  });
+
+  it("skips the consent sheet on the text path too, since the switch already answered it", async () => {
+    const sent = stubProvider({ nutrition: { calories: 410 }, confidence: "medium" });
+    await mountApp({ ai: true, auto: true });
+    await openFoodForm();
+    fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Porridge" } });
+    fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(screen.queryByText(/Send this for an estimate/)).toBeNull();
+    vi.unstubAllGlobals();
   });
 });

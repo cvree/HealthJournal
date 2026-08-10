@@ -225,6 +225,62 @@
 > screen-reader pass not done. Food logs are not yet reachable from the Calendar screen.
 
 
+> **2026-08-10 addendum 13 — 1.8: photo-first logging, AI as a judge, editable Quick Add.**
+> **The photo leads both sheets.** `FoodLogSheet` and `BowelLogSheet` open with `LogPhotoField`
+> in a `.fhj-photo-lead` frame, above every other field. Everything below it is optional copy,
+> not decoration — the ordering is the feature.
+>
+> **`db.ai.auto` — standing consent, and the rules around it.** New per-device flag alongside
+> `enabled`, in `DEFAULT_AI`, and deliberately **not** carried in `buildFullBackup` (restoring a
+> journal onto a new phone must not switch on automatic uploads there). When on: attaching a photo
+> to either sheet fires the analysis immediately, and the manual buttons skip the `AiSendPreview`
+> sheet — the switch already answered that question, and re-asking would make it meaningless on
+> the text-only food path. **The photo caption is keyed on the setting, not on `log.photoId`**;
+> an earlier cut said "nothing is sent unless you ask" on a screen that had just sent it, which
+> is the one wording this feature cannot ship with. `PrivacyCard` gained a third variant for the
+> same reason. `judgedRef` (one per sheet) is what stops a re-render, a notes keystroke, or the
+> result itself firing a second identical request.
+>
+> **The bowel model now judges `amount` too**, and its words are mapped onto the form's own
+> options. `matchBowelColor`/`matchBowelConsistency`/`bowelSuggestion`/`applyBowelSuggestion`/
+> `aiFilledBowelFields` are new in `tracking.ts`. **The mapping is load-bearing, not cosmetic:**
+> "dark brown" stored raw matches no chip, lights nothing up, and becomes a category of one in
+> every later grouping — survivable while a human read the suggestion and tapped the chip, not
+> survivable once the answer lands in the log directly. Anything unmappable is dropped, never
+> guessed. `applyBowelSuggestion` only ever fills `null` fields, and `aiFilledBowelFields`
+> derives "the model owns this" by comparing to what the suggestion *would* write, so overtyping
+> a value drops it off the list with no extra bookkeeping. Once fields are auto-filled they fold
+> behind one summary row (`foldDetails`) — this is the "skip Bristol/amount/colour" ask.
+>
+> **`profile.quickAdd`** — ordered tile ids, `undefined` → `DEFAULT_QUICK_ADD`, `[]` a real choice
+> that hides the section. `QUICK_ADD_TILES` is the catalogue (checkin/food/drink/bowel/photo/diary);
+> `QuickAdd` takes `{ids, actions}` and drops any tile with no handler, which is how the viewer
+> build and a photo-less setup filter themselves without extra conditionals. `sanitizeQuickAdd`
+> runs in `migrateDb` (backups are hand-editable). Editor is up/down arrows, matching Edit Setup —
+> this app has one reordering idiom.
+>
+> **`FoodPicker` owns a time and a meal now.** Changing the time re-files the meal via
+> `mealForTime` **unless** the user has touched the meal select (`mealTouched` ref) or the picker
+> opened as a drink. `onOpenFull` carries `{meal, time}` into `FoodLogSheet` as `defaultTime`.
+> **Gotcha this exposed:** `newFoodLog`/`newBowelLog` spread `...partial` last, so an
+> explicitly-`undefined` `time` un-set the computed default. Both now filter undefined first.
+>
+> **Scroll lock.** `lockPageScroll()` in `motion.ts` (ref-counted, `position:fixed` + restore,
+> `lenis.stop()/start()`), mounted once per `Modal`, plus `data-lenis-prevent` on `.fhj-sheet`.
+> Both halves are needed: the attribute handles wheels inside the sheet, the lock handles wheels
+> on the scrim. Stacked sheets only release on the outermost close.
+>
+> **Backdrops: `dawn`, `drift`, `linen`** added to `BackdropStyle`/`BACKDROP_STYLES`, with a new
+> `isBackdropStyle` guard as the single validation point. Same three-layer skeleton; the chooser
+> previews restate only the viewport-unit geometry, since `inset`/% values shrink on their own.
+> **Verified in a real browser** — the first cut of dawn's preview was nearly black and drift's
+> merged into one wash at tile scale.
+>
+> Tests: **506 across 20 suites** (was 467/20).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User
