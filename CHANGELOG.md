@@ -1,5 +1,123 @@
 # Changelog
 
+## 1.9.0
+
+### The first screen is for logging
+
+The dashboard was 4.7 screens tall and led with a statistic that is blank
+until you have logged — so the thing the app is *for*, Quick Add, sat about
+600px down, underneath a large empty box. It is two screens now:
+
+- **Today** is the logging surface: the date, Quick Add, one-tap repeats,
+  today's timeline, and a one-line glance at how the day is going. It fits on
+  one phone screen.
+- **Insights** is everything the app has worked out: the headline number, the
+  30-day chart, weekly bars, week-over-week cards, Possible Patterns, reports,
+  photo progress and recent entries.
+
+Insights takes the tab **Export** was holding, which had it backwards —
+exporting happens a few times a year, before an appointment, and trends are
+what you open the app to look at. Export now lives at the foot of Insights and
+in Settings.
+
+### Again: one tap to re-log
+
+Your food library already knew what you eat over and over; it only paid out
+*inside* the picker, three taps deep. The same rows are on the first screen
+now. Tap one and the meal is logged at the current time, under whichever
+category the clock implies, with an Undo in the toast. A food shows up after
+being logged **once** — waiting for a second log before offering the one-tap
+repeat had it exactly backwards.
+
+### Sheets are sheets
+
+Flush to the bottom edge, with a grabber that drags to dismiss and an action
+row pinned to the bottom so **Save is always under the thumb** instead of
+waiting at the end of a scroll. Sized in `dvh` rather than `vh`, because on
+iOS Safari `vh` is the viewport *without* the URL bar — which is how a web
+form ends up hiding its own Save button.
+
+They get out of the keyboard's way on both engines:
+`interactive-widget=resizes-content` for Chromium, a `visualViewport`
+listener for iOS Safari, both feeding one CSS variable that lifts the sheet
+and the toast above the keys.
+
+One action, not two: the header's × already dismisses, as do Escape, a tap
+outside and a drag on the heading. The action bar is a single full-width
+button that names the outcome — "Log it", or "Save changes" when editing.
+
+### Logging is optimistic, and reversible
+
+Sheets close on the tap and the row is on the timeline before the next frame.
+The receipt arrives as a toast carrying an **Undo**, which beats a
+confirmation step because it charges only the people who actually made a
+mistake rather than everyone. Deleting a log keeps its photo until the Undo
+has expired — an Undo that brought a meal back without its photo would be a
+worse lie than no Undo at all.
+
+Undo covers what is reversible without loss. Clearing photos and restoring a
+backup over a journal keep their confirmations, because there is nothing to
+undo them with.
+
+### Progressive disclosure, with the answers on the outside
+
+Long forms fold everything the everyday path doesn't need into rows that
+**state what is inside them** — "Medium · Brown", not "More options" — so
+folding a section away hides the controls and never the information.
+
+The bowel sheet went from roughly 1,500px of scrolling to one screen. Bristol
+type is an ordered scale (1 is hard, 7 is liquid), so it is drawn as one row
+of seven targets with the selected type named underneath, rather than seven
+stacked paragraphs taking 390px to answer one question. Every type is still
+individually reachable and still carries its name.
+
+The camera keeps the top of the bowel sheet **only when AI is connected**,
+where one photo answers four questions. With AI off — the shipped default —
+it answers nothing, and leading with it pushed the one control most people
+opened the sheet for below the fold to make room for a feature they had
+switched off.
+
+The food picker leads with search and the list. Time and meal are still
+there, one tap down, and still re-file whatever gets tapped. Search no longer
+autofocuses on a phone: raising the keyboard over the list the sheet exists
+to show is the opposite of fast.
+
+### Less furniture above the first question
+
+Quick Log opened with about 280px of chrome: a header saying "Daily Log", a
+date pager saying "Today" directly underneath, a full-height mode switch and a
+dashed photo shortcut. The pager moved into the header — the nav already names
+the screen — and the photo shortcut moved to the long form, the only mode with
+no camera step of its own. Quick Add's Photo tile now opens the camera
+session directly, which is what "Progress shot" always implied.
+
+### Motion, and targets
+
+- **Overlays no longer inherit the entrance stagger.** Sheets render as
+  children of the screen that opened them, so a dialog opened by a tap was
+  getting a 240ms delay and a 12px rise — the scrim arrived a quarter of a
+  second after the sheet on it had already slid up.
+- **Every interactive element on every screen was audited.** Nothing was
+  missing an accessible name; plenty were too small. Chips and segmented
+  controls 38→42px, calendar days and the month pager to 44, the sheet's
+  Close button 32→40, header back and day-pager buttons 36→40, and a section
+  heading that is itself a control now gets a control's target.
+- Deletes moved out of the sheet action bar. A 36px red square wedged against
+  Save was under the tap minimum, unlabelled, and one slip from the button
+  most likely to be aimed at.
+
+### Fixes
+
+- The shared header rendered an **empty `<h1>`** on the Food and Fitbit-import
+  screens — neither had an entry in the title map.
+- The food diary's "Set daily targets" sat beside a 4xl digit it never shared
+  a baseline with; it is its own row now.
+- Empty meal rows in the diary were a card each — 425px to say nothing five
+  times. One tappable row each.
+- The glance card printed an em dash for a metric it had no number for, right
+  beside the calorie count: "Overall skin severity — 420 kcal". Stats with no
+  number are simply not shown.
+
 ## 1.8.0
 
 ### The photo is the first thing the log asks for

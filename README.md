@@ -61,20 +61,45 @@ observable attributes from a photo — Bristol type, colour, consistency, form, 
 It will not tell you what anything means, and the photo stays on your device unless you
 explicitly choose that analysis.
 
-**See what's happening.** The dashboard is five sections — **Today**, **Quick Add**, **Today's
-Logs**, **Trends**, **Possible Patterns**. Quick Add is four tiles; Today's Logs is one timeline
-carrying check-ins, meals, bowel movements and photos in the order they happened. Trends is a
-30-day chart comparing up to four metrics at once, plus weekly bars and week-over-week cards —
-and food and bowel logs join it as derived daily metrics (calories, macros, movement count,
-average Bristol type, urgency, straining, discomfort). Possible-pattern cards need at least six
-paired days before they'll say anything. Every chartable metric is reachable in the trend picker
-— it scrolls, it says so, and it works from a keyboard.
+**Open it, log it, close it.** The first screen answers one question — what do I do now — and
+it fits on one phone screen. **Quick Add** is the first thing under the date: four tiles that
+open a check-in, a meal, a bowel movement or the camera. **Again** is the row under it, and it
+is the shortest path in the app: your most-logged foods, one tap each, straight onto today.
+**Today's Logs** is one timeline carrying check-ins, meals, bowel movements and photos in the
+order they happened.
+
+Logging is optimistic and reversible. Sheets close on the tap, the row is on the timeline
+before the next frame, and the receipt arrives as a toast with an **Undo** in it — which beats a
+confirmation step, because it charges only the people who actually made a mistake. Deleting a
+log keeps its photo until the Undo has expired, so an Undo never brings a meal back without it.
+
+**See what's happening.** **Insights** is the second tab and the other half of the old
+dashboard: the day's headline number, a 30-day chart comparing up to four metrics at once,
+weekly bars, week-over-week cards, **Possible Patterns**, reports, photo progress and recent
+entries. Food and bowel logs join the chart as derived daily metrics (calories, macros, movement
+count, average Bristol type, urgency, straining, discomfort). Possible-pattern cards need at
+least six paired days before they'll say anything. Every chartable metric is reachable in the
+trend picker — it scrolls, it says so, and it works from a keyboard.
 
 **Designed, not just built.** *Soft Clinical* — soft graphite in the dark, warm off-white in
 the light, muted blue with sage, lavender and clay accents, generous spacing and quiet depth —
 with a deliberate hint of neobrutalism: borders a notch above a hairline, hard offset shadows,
 chunky buttons that press down into them, and section titles you can find at a glance. Calm, not
 loud.
+
+**Built for one thumb.** Sheets rise from the bottom edge and stay welded to it, so their action
+row is the closest thing on screen to the thumb rather than the furthest. They are sized in
+`dvh` — `vh` on iOS Safari means the viewport *without* the URL bar, which is how a web form
+ends up hiding its own Save button — and they get out of the keyboard's way on both engines:
+Chromium via `interactive-widget=resizes-content`, iOS Safari via a `visualViewport` listener,
+both feeding one CSS variable. A sheet dismisses on Escape, on a tap outside, and on a downward
+drag of its heading.
+
+Long forms use progressive disclosure, and the closed rows state their own answers — "Medium ·
+Brown", not "More options" — so folding a section away hides the controls and never the
+information. Everything the everyday path doesn't need is one tap down: the bowel sheet went
+from about 1,500px of scrolling to a single screen, and Bristol type is drawn as the ordered
+scale it actually is rather than seven stacked paragraphs.
 
 **Dark, light and Night Light.** Dark by default, with a light theme that's a proper design
 rather than an inversion, and a "match system" option. The choice is remembered on the device and
@@ -205,7 +230,7 @@ The flip side is that **nobody can recover it for you**. Three things protect yo
 how much they help:
 
 1. **Save a backup file.** Settings → Backup & storage → *Full backup*. It's an ordinary `.json`
-   on your device that restores everything, photos included. The dashboard nudges you when your
+   on your device that restores everything, photos included. Insights nudges you when your
    journal has drifted too long since the last one.
 2. **Install to the Home Screen.** Installed apps are exempt from the idle-eviction rules that
    clear ordinary sites.
@@ -218,7 +243,7 @@ Clearing site data by hand still erases everything. Export a backup first.
 
 Off by default, and everything else works identically whether it's on or off.
 
-Setup is a **five-step guided walkthrough** launched by one button on the dashboard — you never
+Setup is a **five-step guided walkthrough** launched by one button on Insights — you never
 have to work out what to do next, and you never leave the screen you started on:
 
 1. **What it does**, and exactly what would and wouldn't leave the device.
@@ -338,7 +363,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 467 tests across 20 suites
+└── tests/                      # 508 tests across 20 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
@@ -376,6 +401,21 @@ download before any reset, never a silent wipe.
   renders the final frame directly.
 - A confirmation sheet opening over a form makes that form `inert`, so its own buttons leave the
   tab order and the accessibility tree while the dialog asking about them is up.
+- Overlays are exempt from the dashboard's entrance stagger. Sheets render as children of the
+  screen that opened them, so they used to inherit its 240ms delay — the scrim arrived a quarter
+  of a second after the sheet sitting on it had already slid up. Motion has to make the app feel
+  faster, and that was the one place it did the opposite, on the most pressed path in the app.
+- Undo is offered for anything reversible without loss — saving a log, deleting one, re-logging a
+  favourite. It is deliberately *not* offered for the irreversible ones (clearing photos,
+  restoring a backup over a journal), which keep their confirmation, because there is nothing to
+  undo them with.
+- Every interactive element on every screen was audited for target size and accessible name.
+  Chips and segmented controls are 42px, calendar days and the sheet's Close button 44, and a
+  section heading that is itself a control gets a control's target rather than a heading's line
+  box.
+- The toast lives above the nav bar rather than at the top of the screen, for the same reason the
+  sheet actions moved: the Undo inside it has to be reachable by the thumb that caused it. It
+  never takes focus — it reports something that already happened.
 
 **On react-bits and Vanta.** [react-bits](https://github.com/DavidHDev/react-bits) was evaluated
 and deliberately not adopted: it is a copy-in component gallery whose register — spotlight
