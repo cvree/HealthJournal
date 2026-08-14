@@ -560,7 +560,25 @@ button:active:not(:disabled) {
 .fhj-disclose[aria-expanded="true"] .fhj-disclose-chev {
   transform: rotate(180deg);
 }
+/* Open, the row and its contents read as one object. Without this the panel's
+   fields flowed underneath an unattached header and the section stopped
+   looking like a container at all — it looked like a divider with some chips
+   after it. */
+/* Closed, the row is filled, which is what reads as pressable. Open, the fill
+   drops away and the border alone carries the grouping — the panel holds
+   chips, and chips are filled with the very same token, so a filled panel
+   made every option inside it disappear into its own background. */
+.fhj-disclose[aria-expanded="true"] {
+  background: transparent;
+  border-bottom-color: transparent;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .fhj-disclose-panel {
+  padding: 0 0.875rem 0.875rem;
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  border-top: none;
+  border-radius: 0 0 var(--fhj-radius) var(--fhj-radius);
   animation: fhjPanel 240ms var(--fhj-out);
   overflow: hidden;
 }

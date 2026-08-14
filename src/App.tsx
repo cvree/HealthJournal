@@ -1331,7 +1331,7 @@ function Disclosure({ label, summary, children, defaultOpen = false, className =
           <Icon name="down" size={15} color="currentColor" />
         </span>
       </button>
-      {open && <div id={id} className="fhj-disclose-panel pt-3">{children}</div>}
+      {open && <div id={id} className="fhj-disclose-panel">{children}</div>}
     </div>
   );
 }
