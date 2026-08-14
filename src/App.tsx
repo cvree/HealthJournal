@@ -2558,14 +2558,17 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
    Log screen (Quick / Detailed, any past date, autosaves)
    ============================================================ */
 
-function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, onFinishQuick, onSetBaseline }) {
+function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, onFinishQuick, onSetBaseline, startPhotos = false }) {
   const tpl = getProfileTemplate(profile);
   const entry = entryOn(entries, date);
   const answers = entry?.answers || {};
   const fields = tpl.fields.filter((f) => f.detailed !== false && !f.dependsOn);
   const isToday = date === todayStr();
   const done = mode === "quick" ? entry?.quickLogCompleted : entry?.detailedLogCompleted;
-  const [photoPhase, setPhotoPhase] = useState(false);
+  /* Quick Add's Photo tile says "Progress shot" and now means it: it opens the
+     camera session directly rather than dropping the user at the top of the
+     survey to find it. */
+  const [photoPhase, setPhotoPhase] = useState(startPhotos);
 
   const sessionFields = tpl.fields.filter((f) => f.type === "photo" && f.requiredInSession !== false);
   const quickHasPhotos = sessionFields.some((f) => f.quick !== false);
@@ -2576,29 +2579,14 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
   let lastSec = null;
   return (
     <div className="px-4 pb-8">
-      {/* date navigator */}
-      <div className="flex items-center justify-between mt-3 mb-1">
-        <button onClick={() => setDate(addDays(date, -1))} aria-label="previous day"
-          className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: C.card, border: `1px solid ${C.line}` }}>
-          <Icon name="left" size={18} />
-        </button>
-        <div className="text-center">
-          <div className="font-display text-lg">{isToday ? "Today" : fmtNice(date)}</div>
-          {!isToday && (
-            <button onClick={() => setDate(todayStr())} className="text-xs underline" style={{ color: tpl.color }}>
-              jump to today
-            </button>
-          )}
-        </div>
-        <button onClick={() => setDate(addDays(date, 1))} disabled={isToday} aria-label="next day"
-          className="w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-30"
-          style={{ background: C.card, border: `1px solid ${C.line}` }}>
-          <Icon name="right" size={18} />
-        </button>
-      </div>
+      {/* The date pager lives in the app header now — it was a second title row
+          under one that already said "Daily Log", and between the two of them
+          plus the mode switch and the photo shortcut, the first question of a
+          Quick Log started a third of the way down the screen.
 
-      {/* quick / detailed tabs — sliding pill indicator */}
-      <div className="relative flex p-1 rounded-full mt-3 mb-2" style={{ background: C.faint }}>
+          What is left here is the mode switch, at chip height rather than
+          button height: it is a preference that most people set once. */}
+      <div className="relative flex p-1 rounded-full mt-3 mb-2.5" style={{ background: C.faint }}>
         <span aria-hidden="true" className="absolute rounded-full"
           style={{
             top: 4, bottom: 4, width: "calc(50% - 6px)",
@@ -2608,21 +2596,13 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
             boxShadow: C.shadow,
           }} />
         {["quick", "detailed"].map((m) => (
-          <button key={m} onClick={() => setMode(m)}
-            className="relative flex-1 py-2 rounded-full text-sm font-medium capitalize"
+          <button key={m} onClick={() => { feedback("tap"); setMode(m); }}
+            className="relative flex-1 py-1.5 rounded-full text-[13px] font-semibold capitalize"
             style={{ color: mode === m ? C.ink : C.sub, background: "transparent" }}>
             {m} log
           </button>
         ))}
       </div>
-
-      {sessionFields.length > 0 && !photoPhase && (
-        <button onClick={() => setPhotoPhase(true)}
-          className="w-full mb-2 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
-          style={{ border: `1.5px dashed ${C.lineStrong}`, color: C.sub }}>
-          Photo session ({sessionFields.length})
-        </button>
-      )}
 
       {photoPhase ? (
         <PhotoSession tpl={tpl} entries={entries} date={date} photos={entry?.photos} answers={answers}
@@ -2637,6 +2617,16 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
           onDone={() => (quickHasPhotos ? setPhotoPhase(true) : onFinishQuick())} />
       ) : (
         <>
+          {/* Quick Log reaches the camera at the end of its own run; the long
+              form has no such moment, so it keeps a way in. */}
+          {sessionFields.length > 0 && (
+            <button onClick={() => { feedback("tap"); setPhotoPhase(true); }}
+              className="w-full mb-2.5 py-2.5 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-1.5"
+              style={{ border: `1.5px dashed ${C.lineStrong}`, color: C.sub }}>
+              <Icon name="camera" size={15} color={C.sub} />
+              Photo session ({sessionFields.length})
+            </button>
+          )}
           <div className="flex items-center justify-between text-xs mb-1" style={{ color: C.sub }}>
             <span>{done ? "Logged for this day" : "Answer what applies — everything is optional"}</span>
             <span className="flex items-center gap-1" style={{ color: C.good }}>
@@ -8746,13 +8736,8 @@ function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTi
     <Modal title={title} onClose={onClose}
       footer={
         <>
-          {onDelete && (
-            <Button variant="danger" size="sm" icon="trash"
-              aria-label="Delete this meal"
-              onClick={() => onDelete(log)} />
-          )}
-          <div className="flex-1" />
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <div className="flex-1" />
           <Button onClick={() => { feedback("save"); onSave(log); }}>
             {initial ? "Save" : "Log it"}
           </Button>
@@ -8903,12 +8888,25 @@ function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTi
           )}
         </div>
 
-        <Disclosure className="mt-3 mb-1" label="Notes"
+        <Disclosure className="mt-3" label="Notes"
           summary={log.notes?.trim() || "Optional"}>
           <textarea className="fhj-input" rows={2} placeholder="Anything worth remembering"
             aria-label="Notes"
             value={log.notes || ""} onChange={(e) => patch({ notes: e.target.value })} />
         </Disclosure>
+
+        {/* Delete sits at the foot of the form, not in the action bar. In the
+            bar it was a 36px red square wedged against Cancel and Save — under
+            the tap minimum, ambiguous without a label, and one slip away from
+            the button most likely to be aimed at. Down here it is full width,
+            unmistakably labelled, and reached only by someone who scrolled to
+            it on purpose. Undo covers the slip that gets through. */}
+        {onDelete && (
+          <Button variant="danger" block icon="trash" className="mt-4"
+            onClick={() => onDelete(log)}>
+            Delete this meal
+          </Button>
+        )}
       </div>
 
       {confirm && (
@@ -9058,13 +9056,8 @@ function BowelLogSheet({ initial, date, aiEnabled, aiAuto, onSave, onDelete, onC
     <Modal title={initial ? "Edit entry" : "Log bowel movement"} onClose={onClose}
       footer={
         <>
-          {onDelete && (
-            <Button variant="danger" size="sm" icon="trash"
-              aria-label="Delete this entry"
-              onClick={() => onDelete(log)} />
-          )}
-          <div className="flex-1" />
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <div className="flex-1" />
           <Button onClick={() => { feedback("save"); onSave(log); }}>
             {initial ? "Save" : "Log it"}
           </Button>
@@ -9268,6 +9261,15 @@ function BowelLogSheet({ initial, date, aiEnabled, aiAuto, onSave, onDelete, onC
               value={log.notes || ""} onChange={(e) => patch({ notes: e.target.value })} />
           </label>
         </Disclosure>
+
+        {/* Same reasoning as the food sheet: out of the action bar, full width,
+            labelled, and behind a deliberate scroll. */}
+        {onDelete && (
+          <Button variant="danger" block icon="trash" className="mt-4"
+            onClick={() => onDelete(log)}>
+            Delete this entry
+          </Button>
+        )}
       </div>
 
       {confirm && (
@@ -9599,6 +9601,31 @@ function MealSection({ meal, logs, onAdd, onOpenLog, viewer }) {
     const c = resolveNutrient(l, "calories");
     if (c.value != null) kcal = (kcal ?? 0) + c.value;
   }
+  /* An empty meal is one row, not a card with a header, a dash and an add
+     button under it. Five of those took 425px to say nothing five times —
+     more than half a phone screen, on the screen you open when you have not
+     eaten yet. The whole row is the add target when there is nothing in it. */
+  if (!logs.length) {
+    const Row = viewer ? "div" : "button";
+    return (
+      <Card className="!p-0 mb-2" style={{ padding: 0 }}>
+        <Row
+          {...(viewer ? {} : { type: "button", onClick: onAdd, "aria-label": `Add food to ${def?.label || "meal"}` })}
+          className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left">
+          <span className="fhj-tl-dot shrink-0" style={{ width: "1.5rem", height: "1.5rem" }}>
+            <Icon name={def?.icon || "food"} size={12} color="currentColor" />
+          </span>
+          <span className="flex-1 text-sm font-bold" style={{ color: C.ink }}>{def?.label || "Meal"}</span>
+          {!viewer && (
+            <span className="flex items-center gap-1 text-[12.5px] font-semibold shrink-0" style={{ color: C.accentText }}>
+              <Icon name="plus" size={13} color={C.accentText} /> Add food
+            </span>
+          )}
+        </Row>
+      </Card>
+    );
+  }
+
   return (
     <Card className="!p-0 mb-2.5" style={{ padding: 0 }}>
       <div className="flex items-center justify-between gap-2 px-3.5 pt-3 pb-2">
@@ -9695,15 +9722,20 @@ function FoodScreen({
 
       {/* the day's totals */}
       <Card className="mb-4">
-        <div className="flex items-center gap-4">
+        <div className={`flex gap-4 ${calGoal ? "items-center" : "items-start"}`}>
           {calGoal ? (
             <CalorieRing eaten={totals.calories} goal={calGoal} />
           ) : (
             <div className="shrink-0">
-              <div className="font-display text-4xl leading-none tabular-nums" style={{ color: C.ink }}>
-                {formatNutrient("calories", totals.calories)}
+              {/* A 4xl em-dash beside a "Set daily targets" link read as a
+                  broken layout rather than as an empty day. */}
+              <div className="font-display text-4xl leading-none tabular-nums"
+                style={{ color: totals.calories != null ? C.ink : C.muted }}>
+                {totals.calories != null ? formatNutrient("calories", totals.calories) : "0"}
               </div>
-              <div className="text-[11px] mt-1" style={{ color: C.subtle }}>kcal today</div>
+              <div className="text-[11px] mt-1" style={{ color: C.subtle }}>
+                kcal {isToday ? "today" : "this day"}
+              </div>
             </div>
           )}
           <div className="flex-1 min-w-0 flex flex-col gap-2">
@@ -10165,7 +10197,11 @@ function greetingFor(d = new Date()) {
     morning there, which is the thing a repeat button is for. */
 function RepeatRow({ library, onLog, onOpenPicker }) {
   const items = useMemo(() => {
-    const frequent = browseFoods(library, "frequent").filter((f) => (f.useCount || 0) > 1);
+    /* Everything the library knows, most-logged first — including a food
+       logged exactly once. Waiting for a second log before offering the
+       one-tap repeat had it backwards: the second time is precisely the tap
+       this row exists to save. */
+    const frequent = browseFoods(library, "frequent");
     const favourites = browseFoods(library, "favorite");
     /* Favourites first — they are an explicit "I will want this again" — then
        whatever the counts say, de-duped. */
@@ -10217,33 +10253,43 @@ function RepeatRow({ library, onLog, onOpenPicker }) {
 function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
   const v = entry?.answers?.[tpl.keyMetric];
   const totals = dayTotals(food, todayStr());
+
+  /* Only facts that exist. An em dash standing in for "not logged" read as a
+     value in its own right, and sat immediately beside the calorie count —
+     "Overall skin severity — 420 kcal" is a sentence nobody meant to write.
+     A stat with no number simply isn't a stat yet. */
+  const stats = [
+    v != null && keyField
+      ? { label: keyField.label, value: String(v), tone: colorFor(v, keyField.dir) }
+      : null,
+    totals.calories != null
+      ? { label: "eaten", value: `${formatNutrient("calories", totals.calories)} kcal` }
+      : null,
+    streak > 0 ? { label: "streak", value: `${streak} days` } : null,
+  ].filter(Boolean);
+
   return (
     <button type="button" onClick={() => { feedback("nav"); onOpen(); }}
-      className="w-full text-left mt-6">
+      className="w-full text-left mt-6" aria-label="Open Insights">
       <Card tappable className="!p-4" style={{ padding: "1rem" }}>
         <div className="flex items-center gap-3">
           <div className="flex-1 min-w-0">
-            <div className="fhj-eyebrow mb-1.5">How you're doing</div>
-            <div className="flex items-baseline gap-3 flex-wrap">
-              {keyField && (
-                <span className="text-[13px]" style={{ color: C.sub }}>
-                  {keyField.label}{" "}
-                  <b className="tabular-nums" style={{ color: v != null ? colorFor(v, keyField.dir) : C.muted }}>
-                    {v != null ? v : "—"}
-                  </b>
-                </span>
-              )}
-              {totals.calories != null && (
-                <span className="text-[13px]" style={{ color: C.sub }}>
-                  <b className="tabular-nums" style={{ color: C.ink }}>{formatNutrient("calories", totals.calories)}</b> kcal
-                </span>
-              )}
-              {streak > 0 && (
-                <span className="text-[13px]" style={{ color: C.sub }}>
-                  <b className="tabular-nums" style={{ color: C.ink }}>{streak}</b>-day streak
-                </span>
-              )}
-            </div>
+            <div className="fhj-eyebrow mb-2">How you're doing</div>
+            {stats.length ? (
+              <div className="flex items-baseline gap-x-4 gap-y-1 flex-wrap">
+                {stats.map((s) => (
+                  <span key={s.label} className="flex items-baseline gap-1.5">
+                    <b className="text-[15px] font-bold tabular-nums leading-none"
+                      style={{ color: s.tone || C.ink }}>{s.value}</b>
+                    <span className="text-[11.5px]" style={{ color: C.subtle }}>{s.label}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[13px]" style={{ color: C.subtle }}>
+                Trends, patterns and reports from what you've logged
+              </div>
+            )}
           </div>
           <Icon name="right" size={16} color={C.subtle} />
         </div>
@@ -10278,7 +10324,7 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
     food: () => setFoodPicker(mealForTime(localTime())),
     drink: () => setFoodPicker("drink"),
     bowel: () => setBowelSheet({}),
-    photo: photoFields.length > 0 ? () => openLog(todayStr()) : null,
+    photo: photoFields.length > 0 ? () => openLog(todayStr(), { photos: true }) : null,
     diary: goFood || null,
   };
 
@@ -11073,6 +11119,7 @@ export default function App({ viewer = false }) {
   const [screen, setScreen] = useState("dashboard");
   const [logDate, setLogDate] = useState(todayStr());
   const [logMode, setLogMode] = useState("quick");
+  const [logPhotos, setLogPhotos] = useState(false);
   const [reportParams, setReportParams] = useState({ type: "week" });
   /* Bumped when the AI setup wizard finishes with "analyse". The dashboard
      watches it and runs immediately, so finishing setup and seeing a result
@@ -11099,6 +11146,36 @@ export default function App({ viewer = false }) {
 
   // real motion layer: Lenis smooth scrolling (no-op under reduced motion)
   useEffect(() => { initSmoothScroll(); }, []);
+
+  /* How much of the screen the soft keyboard is covering, as a CSS variable.
+
+     Chromium gets this for free from `interactive-widget=resizes-content` in
+     the viewport meta — the layout viewport shrinks and everything sized in
+     dvh follows. iOS Safari does not: it slides the *visual* viewport up and
+     leaves fixed elements anchored where they were, so a bottom sheet's
+     action row ends up behind the keys, which is the single most common way a
+     web form on a phone gives itself away.
+
+     Reading visualViewport and lifting the scrim by that much fixes it
+     everywhere, and costs nothing where the meta tag already worked, because
+     there the inset measures zero. */
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const apply = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      // Under ~80px is a URL bar collapsing, not a keyboard; moving for that
+      // would make ordinary scrolling shift the sheet around.
+      document.documentElement.style.setProperty("--fhj-kb", inset > 80 ? `${Math.round(inset)}px` : "0px");
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+    };
+  }, []);
   // GSAP screen transition + scroll reset on navigation (pre-paint, no flash)
   useLayoutEffect(() => { scrollToTop(true); animateScreenIn(screenRef.current); }, [screen]);
   // belt-and-braces: editing screens are unreachable in the read-only viewer
@@ -11202,7 +11279,7 @@ export default function App({ viewer = false }) {
   // Tapping the iOS widget opens straight to today's Quick Log (no-op on web).
   useEffect(() => {
     if (viewer) return;
-    return onWidgetDeepLink(() => { setLogDate(todayStr()); setLogMode("quick"); setScreen("log"); });
+    return onWidgetDeepLink(() => { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); });
   }, [viewer]);
 
   // Home Screen shortcuts ("Log today") arrive as ?screen=log. Consumed once,
@@ -11214,7 +11291,7 @@ export default function App({ viewer = false }) {
     deepLinked.current = true;
     const target = screenFromSearch(typeof window === "undefined" ? "" : window.location.search);
     if (!target) return;
-    if (target === "log") { setLogDate(todayStr()); setLogMode("quick"); }
+    if (target === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); }
     if (target === "report") setReportParams({ type: "week" });
     setScreen(target);
     clearDeepLink();
@@ -11413,7 +11490,7 @@ export default function App({ viewer = false }) {
         onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
         onComplete={(profile, dest) => {
           setDb((prev) => ({ ...prev, profile, ack: true, onboarded: true }));
-          if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setScreen("log"); }
+          if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); }
           else setScreen("dashboard");
         }}
       />
@@ -11451,7 +11528,12 @@ export default function App({ viewer = false }) {
   }
 
   const goHome = () => setScreen("dashboard");
-  const goToLog = (d) => { if (viewer) return; setLogDate(d); setLogMode("quick"); setScreen("log"); };
+  /* `opts.photos` opens straight into the camera session — what Quick Add's
+     "Progress shot" tile has always claimed to do. */
+  const goToLog = (d, opts) => {
+    if (viewer) return;
+    setLogDate(d); setLogMode("quick"); setLogPhotos(!!opts?.photos); setScreen("log");
+  };
   const goReport = (type) => { setReportParams({ type }); setScreen("report"); };
   const openSavedReport = (savedId) => { setReportParams({ savedId }); setScreen("report"); };
   const deleteSavedReport = (id) => setDb((prev) => ({ ...prev, reports: (prev.reports || []).filter((r) => r.id !== id) }));
@@ -11567,7 +11649,7 @@ export default function App({ viewer = false }) {
   } else if (screen === "log") {
     content = (
       <LogScreen profile={profile} entries={entries} date={logDate} setDate={setLogDate}
-        mode={logMode} setMode={setLogMode} onPatch={upsertEntry}
+        mode={logMode} setMode={setLogMode} onPatch={upsertEntry} startPhotos={logPhotos}
         onFinishQuick={goHome} onSetBaseline={setPhotoBaseline} />
     );
   } else if (screen === "food") {
@@ -11628,9 +11710,34 @@ export default function App({ viewer = false }) {
               <Icon name="home" size={17} color={C.sub} />
             </button>
             <div className="flex-1 min-w-0">
-              <h1 className="font-display text-lg leading-tight truncate">{screenTitle}</h1>
-              <div className="text-[11px] truncate" style={{ color: C.subtle }}>{tpl.label}</div>
+              <h1 className="font-display text-lg leading-tight truncate">
+                {screen === "log" ? (logDate === todayStr() ? "Today" : fmtNice(logDate)) : screenTitle}
+              </h1>
+              {screen === "log" && logDate !== todayStr() ? (
+                <button type="button" onClick={() => { feedback("nav"); setLogDate(todayStr()); }}
+                  className="text-[11px] font-semibold" style={{ color: C.accentText }}>
+                  Jump to today
+                </button>
+              ) : (
+                <div className="text-[11px] truncate" style={{ color: C.subtle }}>{tpl.label}</div>
+              )}
             </div>
+            {/* The day pager rides in the header rather than owning a row of
+                its own underneath one that already named the screen. */}
+            {screen === "log" && !viewer && (
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => { feedback("nav"); setLogDate(addDays(logDate, -1)); }}
+                  aria-label="previous day" className="fhj-icon-btn"
+                  style={{ width: "2.25rem", height: "2.25rem" }}>
+                  <Icon name="left" size={16} color={C.sub} />
+                </button>
+                <button onClick={() => { feedback("nav"); setLogDate(addDays(logDate, 1)); }}
+                  aria-label="next day" disabled={logDate === todayStr()} className="fhj-icon-btn"
+                  style={{ width: "2.25rem", height: "2.25rem" }}>
+                  <Icon name="right" size={16} color={C.sub} />
+                </button>
+              </div>
+            )}
             {viewer && <span className="fhj-badge fhj-badge-neutral">Read-only</span>}
           </header>
         )}

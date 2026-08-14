@@ -67,6 +67,10 @@
 
   /* Minimum comfortable tap target. */
   --fhj-tap: 44px;
+
+  /* How much of the screen the soft keyboard is covering. Written by the
+     visualViewport listener in App.tsx; 0 whenever no keyboard is up. */
+  --fhj-kb: 0px;
 }
 
 /* ---------- base ---------- */
@@ -1235,6 +1239,9 @@ button.fhj-section:disabled {
 .fhj-scrim {
   position: fixed;
   inset: 0;
+  /* Ends where the keyboard begins, so the sheet's action row lands on top of
+     the keys rather than behind them. */
+  bottom: var(--fhj-kb, 0px);
   z-index: 50;
   display: flex;
   align-items: flex-end;
@@ -1258,7 +1265,9 @@ button.fhj-section:disabled {
   max-width: 28rem;
   /* dvh, not vh: on iOS Safari `vh` is the *largest* viewport, so a sheet
      sized in vh runs underneath the URL bar and hides its own action row. */
-  max-height: min(92dvh, 46rem);
+  /* The 100% term is what keeps a tall sheet inside a scrim that the keyboard
+     has just shortened — without it the panel overflows off the top. */
+  max-height: min(92dvh, 46rem, 100%);
   border-radius: var(--fhj-radius-lg) var(--fhj-radius-lg) 0 0;
   background: var(--fhj-card, #1e2026);
   border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
@@ -1270,7 +1279,7 @@ button.fhj-section:disabled {
 }
 @media (min-width: 640px) {
   .fhj-sheet {
-    max-height: min(86dvh, 44rem);
+    max-height: min(86dvh, 44rem, 100%);
     border-radius: var(--fhj-radius-lg);
     border-bottom: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
     animation-name: fhjSheetCentre;
@@ -1374,7 +1383,7 @@ button.fhj-section:disabled {
   left: 0;
   right: 0;
   /* clears the nav bar (56px + its own safe-area padding) */
-  bottom: calc(4.5rem + max(0.75rem, env(safe-area-inset-bottom)));
+  bottom: calc(4.5rem + max(0.75rem, env(safe-area-inset-bottom)) + var(--fhj-kb, 0px));
   z-index: 60;
   display: flex;
   flex-direction: column;

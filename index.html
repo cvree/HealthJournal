@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-content: when the soft keyboard opens, the
+         layout viewport shrinks with it, so a dvh-sized bottom sheet gets
+         shorter and keeps its pinned Save above the keys instead of behind
+         them. Chromium honours this; the visualViewport listener in App.tsx
+         covers iOS Safari, which does not. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#141519" />
     <meta name="color-scheme" content="dark" />
 

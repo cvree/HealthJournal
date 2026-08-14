@@ -260,7 +260,10 @@ describe("AI stays out of the way when it is off", () => {
     fireEvent.change(screen.getByLabelText(/Protein in g/), { target: { value: "14" } });
     saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
-    expect(screen.getByText("Eggs")).toBeTruthy();
+    // On the timeline, and on the one-tap Again row — hence the scoping.
+    const timeline = document.querySelector(".fhj-tl") as HTMLElement;
+    expect(within(timeline).getByText("Eggs")).toBeTruthy();
+    expect(within(document.querySelector(".fhj-scroller") as HTMLElement).getByText("Eggs")).toBeTruthy();
   });
 
   it("makes no network request at any point", async () => {
@@ -656,8 +659,12 @@ describe("Today's Logs is a way in, not just a heading", () => {
   it("opens today's check-in when the heading row is pressed", async () => {
     await mountApp();
     fireEvent.click(await screen.findByRole("button", { name: /today's check-in/i }));
-    // The Log screen is up: the header names it and the nav marks it current.
-    await waitFor(() => expect(document.body.textContent).toContain("Daily Log"));
+    /* The Log screen is up. Its header says which *day* rather than which
+       screen — the nav already says that, and a second title row was what
+       pushed the first question a third of the way down the phone — so this
+       looks for the mode switch and the day pager instead. */
+    await waitFor(() => expect(screen.getByRole("button", { name: /quick log/i })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "previous day" })).toBeTruthy();
   });
 });
 
