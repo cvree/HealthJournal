@@ -1441,8 +1441,8 @@ function Modal({ title, children, onClose, labelledBy, footer, eyebrow }) {
             </div>
             {onClose && (
               <button type="button" onClick={onClose} aria-label="Close"
-                className="fhj-icon-btn shrink-0" style={{ width: "2rem", height: "2rem" }}>
-                <Icon name="x" size={15} color={C.sub} />
+                className="fhj-icon-btn shrink-0" style={{ width: "2.5rem", height: "2.5rem" }}>
+                <Icon name="x" size={16} color={C.sub} />
               </button>
             )}
           </div>
@@ -2362,7 +2362,7 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
       {onSkip && (
         v == null && !skipped ? (
           <button onClick={() => { feedback("tap"); onSkip(f.k); }}
-            className="w-full mt-3 py-1.5 text-xs font-medium" style={{ color: C.sub }}>
+            className="w-full mt-2 py-3 text-[12.5px] font-medium" style={{ color: C.sub }}>
             Skip this question
           </button>
         ) : skipped && v == null ? (
@@ -2597,8 +2597,8 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
           }} />
         {["quick", "detailed"].map((m) => (
           <button key={m} onClick={() => { feedback("tap"); setMode(m); }}
-            className="relative flex-1 py-1.5 rounded-full text-[13px] font-semibold capitalize"
-            style={{ color: mode === m ? C.ink : C.sub, background: "transparent" }}>
+            className="relative flex-1 rounded-full text-[13.5px] font-semibold capitalize"
+            style={{ minHeight: 40, color: mode === m ? C.ink : C.sub, background: "transparent" }}>
             {m} log
           </button>
         ))}
@@ -4336,13 +4336,13 @@ function CalendarScreen({ profile, entries, openLog }) {
     <div className="px-4 pb-8 pt-3">
       <Card>
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setOffset(offset - 1)} aria-label="previous month"
-            className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: C.faint }}>
-            <Icon name="left" size={16} />
+          <button onClick={() => { feedback("nav"); setOffset(offset - 1); }} aria-label="previous month"
+            className="fhj-icon-btn" style={{ background: C.faint }}>
+            <Icon name="left" size={17} />
           </button>
           <div className="font-display text-lg">{monthLabel}</div>
-          <button onClick={() => setOffset(offset + 1)} disabled={offset >= 0} aria-label="next month"
-            className="w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-30" style={{ background: C.faint }}>
+          <button onClick={() => { feedback("nav"); setOffset(offset + 1); }} disabled={offset >= 0} aria-label="next month"
+            className="fhj-icon-btn" style={{ background: C.faint }}>
             <Icon name="right" size={16} />
           </button>
         </div>
@@ -4358,8 +4358,11 @@ function CalendarScreen({ profile, entries, openLog }) {
             const v = e?.answers[tpl.keyMetric];
             return (
               <button key={ds} disabled={future} onClick={() => openLog(ds)}
-                className="flex flex-col items-center gap-1 py-1 rounded-xl disabled:opacity-30"
-                style={{ outline: ds === t0 ? `1.5px solid ${tpl.color}` : "none", outlineOffset: -1 }}>
+                className="flex flex-col items-center justify-center gap-1 py-1 rounded-xl disabled:opacity-30"
+                style={{
+                  minHeight: "var(--fhj-tap)",
+                  outline: ds === t0 ? `1.5px solid ${tpl.color}` : "none", outlineOffset: -1,
+                }}>
                 <span className="text-xs">{d}</span>
                 {e ? (
                   v != null ? (
@@ -9755,12 +9758,21 @@ function FoodScreen({
                 ))}
               </div>
             )}
-            {progress.length === 0 && !viewer && (
-              <button onClick={onEditGoals} className="text-[11px] font-semibold self-start"
-                style={{ color: C.accentText }}>Set daily targets</button>
-            )}
           </div>
         </div>
+        {/* Its own row under the numbers, not a small link floating beside a
+            4xl digit — beside it, the two never shared a baseline and the card
+            read as three things that had come loose. */}
+        {progress.length === 0 && !viewer && (
+          <button onClick={() => { feedback("nav"); onEditGoals(); }}
+            className="w-full mt-3 pt-3 flex items-center justify-between gap-2 text-left"
+            style={{ borderTop: `1px solid ${C.line}`, minHeight: "var(--fhj-tap)" }}>
+            <span className="text-[12.5px] font-semibold" style={{ color: C.accentText }}>
+              Set daily targets
+            </span>
+            <Icon name="right" size={13} color={C.accentText} />
+          </button>
+        )}
         {totals.partlyEstimated && (
           <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap" style={{ borderTop: `1px solid ${C.line}` }}>
             <span className="fhj-ai-badge">Partly estimated</span>
@@ -10366,7 +10378,8 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
           <div className="fhj-section mt-5 fhj-cat-symptom">
             <h2 className="fhj-section-title">Quick Add</h2>
             <button onClick={() => { feedback("tap"); setQuickAddEditor(true); }}
-              className="text-[11px] font-semibold" style={{ color: C.accentText }}>
+              aria-label="Edit which Quick Add buttons are shown"
+              className="text-[11.5px] font-semibold" style={{ color: C.accentText }}>
               Edit
             </button>
           </div>
@@ -11706,8 +11719,8 @@ export default function App({ viewer = false }) {
               backdropFilter: "saturate(140%) blur(8px)",
             }}>
             <button onClick={goHome} aria-label="Back to dashboard" className="fhj-icon-btn"
-              style={{ width: "2.25rem", height: "2.25rem" }}>
-              <Icon name="home" size={17} color={C.sub} />
+              style={{ width: "2.5rem", height: "2.5rem" }}>
+              <Icon name="home" size={18} color={C.sub} />
             </button>
             <div className="flex-1 min-w-0">
               <h1 className="font-display text-lg leading-tight truncate">
@@ -11728,12 +11741,12 @@ export default function App({ viewer = false }) {
               <div className="flex items-center gap-1 shrink-0">
                 <button onClick={() => { feedback("nav"); setLogDate(addDays(logDate, -1)); }}
                   aria-label="previous day" className="fhj-icon-btn"
-                  style={{ width: "2.25rem", height: "2.25rem" }}>
+                  style={{ width: "2.5rem", height: "2.5rem" }}>
                   <Icon name="left" size={16} color={C.sub} />
                 </button>
                 <button onClick={() => { feedback("nav"); setLogDate(addDays(logDate, 1)); }}
                   aria-label="next day" disabled={logDate === todayStr()} className="fhj-icon-btn"
-                  style={{ width: "2.25rem", height: "2.25rem" }}>
+                  style={{ width: "2.5rem", height: "2.5rem" }}>
                   <Icon name="right" size={16} color={C.sub} />
                 </button>
               </div>

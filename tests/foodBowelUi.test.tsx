@@ -581,7 +581,9 @@ describe("editing Quick Add", () => {
     [...document.querySelectorAll(".fhj-tile")].map((t) => t.querySelector(".fhj-tile-label")?.textContent);
 
   const openEditor = async () => {
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    // "Edit" alone said nothing out of context, so the control carries a label
+    // that names what it edits.
+    fireEvent.click(await screen.findByRole("button", { name: /Edit which Quick Add/ }));
     return (await screen.findByText("Edit Quick Add")).closest('[role="dialog"]') as HTMLElement;
   };
 

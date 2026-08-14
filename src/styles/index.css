@@ -434,7 +434,7 @@ button:active:not(:disabled) {
   gap: 0.4375rem;
   flex: none;
   padding: 0.5rem 0.9375rem;
-  min-height: 38px;
+  min-height: 42px;
   border-radius: var(--fhj-radius-pill);
   background: var(--fhj-faint, #2a2d35);
   border: var(--fhj-bw) solid transparent;
@@ -683,7 +683,7 @@ button:active:not(:disabled) {
 }
 .fhj-segment {
   flex: 1;
-  min-height: 38px;
+  min-height: 42px;
   padding: 0.4375rem 0.5rem;
   border-radius: calc(var(--fhj-radius) - 0.1875rem);
   background: transparent;
@@ -838,6 +838,17 @@ textarea.fhj-input {
   justify-content: space-between;
   gap: var(--fhj-gap);
   margin-bottom: 0.875rem;
+}
+/* Some section headings are the way in to what they head — "Today's Logs"
+   opens today's check-in, "Quick Add" carries an Edit. Where the heading is a
+   control, it gets a control's target rather than a heading's line box. */
+button.fhj-section,
+.fhj-section > button {
+  min-height: var(--fhj-tap);
+}
+.fhj-section > button {
+  padding-inline: 0.375rem;
+  margin-inline-end: -0.375rem;
 }
 .fhj-section-title {
   display: flex;
@@ -1570,6 +1581,19 @@ button.fhj-section:disabled {
 .fhj-stagger > *:nth-child(n + 8) {
   animation-delay: 280ms;
 }
+
+/* An overlay is not part of the page's entrance.
+
+   Sheets render as children of the screen that opened them, so they were
+   picking up the stagger — a dialog opened by a tap inherited a 240ms delay
+   and a 12px rise, which meant the scrim arrived a quarter of a second
+   *after* the sheet sitting on it had already slid up. Motion has to make the
+   app feel faster; this was the one place it did the opposite, on the most
+   pressed path in the app. */
+.fhj-stagger > .fhj-scrim {
+  animation: fhjFade 180ms ease;
+}
+
 @keyframes fhjRise {
   from {
     opacity: 0;
