@@ -131,7 +131,7 @@ describe("MetricPicker", () => {
   });
 });
 
-describe("the dashboard offers every chartable metric", () => {
+describe("the Insights screen offers every chartable metric", () => {
   it("puts one chip in the picker for each of the template's chart metrics", async () => {
     const kv = new Map<string, string>([
       ["fhj_v1", JSON.stringify(I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true }))],
@@ -144,6 +144,9 @@ describe("the dashboard offers every chartable metric", () => {
     };
 
     render(<App />);
+    // Trends — and so the picker — live on the Insights tab now; the first
+    // screen is for logging.
+    fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
     const group = await screen.findByRole("group", { name: "Metrics to chart" }, { timeout: 10000 });
 
     const db = JSON.parse(kv.get("fhj_v1")!);

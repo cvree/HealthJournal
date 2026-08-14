@@ -476,6 +476,102 @@ button:active:not(:disabled) {
   box-shadow: 0 0 0 1.5px var(--fhj-on-accent, #121419);
 }
 
+/* ---------- ordinal step scale ----------
+   For a short scale that is genuinely ordered — Bristol type runs hard to
+   loose — a row of equal numbered targets says "this is a scale" in a way a
+   stacked list of seven descriptions never does, and takes a seventh of the
+   height. The name of whatever is selected is printed underneath, so nothing
+   is hidden behind a number; it is just no longer all shouted at once. */
+
+.fhj-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.3125rem;
+}
+.fhj-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--fhj-tap);
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid transparent;
+  color: var(--fhj-sub, #adafb8);
+  font-size: 0.9375rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--fhj-quick) ease, color var(--fhj-quick) ease,
+    border-color var(--fhj-quick) ease, box-shadow var(--fhj-quick) var(--fhj-out),
+    transform var(--fhj-quick) var(--fhj-out);
+}
+.fhj-step.is-active {
+  background: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  color: var(--fhj-on-mark, var(--fhj-on-accent, #121419));
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  font-weight: 750;
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.55));
+}
+.fhj-step.is-active:active {
+  transform: translate(var(--fhj-press), var(--fhj-press));
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+@media (hover: hover) {
+  .fhj-step:hover:not(.is-active) {
+    background: var(--fhj-faint-hover, #32353e);
+    color: var(--fhj-ink, #ecebe7);
+  }
+}
+
+/* ---------- disclosure ----------
+   Progressive disclosure, one shape, used wherever the everyday path doesn't
+   need a field but the thorough path does. Closed it is a single row that
+   *states what is inside it* — "Medium · Brown · urgency 1", not "More
+   options" — so folding a section away never costs the user the answer. */
+
+.fhj-disclose {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: var(--fhj-tap);
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-disclose:hover {
+    border-color: var(--fhj-line-strong, #464a55);
+  }
+}
+.fhj-disclose-chev {
+  flex: none;
+  color: var(--fhj-subtle, #9a9ca6);
+  transition: transform var(--fhj-ease) var(--fhj-out);
+}
+.fhj-disclose[aria-expanded="true"] .fhj-disclose-chev {
+  transform: rotate(180deg);
+}
+.fhj-disclose-panel {
+  animation: fhjPanel 240ms var(--fhj-out);
+  overflow: hidden;
+}
+@keyframes fhjPanel {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-disclose-panel {
+    animation: none;
+  }
+}
+
 /* ---------- metric picker ----------
    See src/components/MetricPicker.tsx for why this exists. The rail is allowed
    to bleed past the card's padding so a chip is never sliced by a corner. */
@@ -1118,7 +1214,23 @@ button.fhj-section:disabled {
   }
 }
 
-/* ---------- modal ---------- */
+/* ---------- bottom sheet ----------
+
+   On a phone this is a sheet that rises from the bottom edge and stays welded
+   to it: no floating inset, no rounded bottom corners, nothing between the
+   panel and the thumb. That matters more than it sounds. A sheet with a 1rem
+   gap underneath puts its own action row ~16px further from the thumb *and*
+   leaves a strip of scrim along the bottom edge that swallows taps meant for
+   the buttons just above it.
+
+   The panel is a three-part grid — grabber+title, scrolling body, action bar —
+   so the actions are pinned to the bottom edge no matter how long the body is.
+   That is the single biggest change to how logging feels: Save is always under
+   the thumb, never at the end of a scroll.
+
+   From `sm` up it becomes a centred dialog again, because a laptop has no
+   thumb to reach with and a full-width strip along the bottom of a 1440px
+   screen is nobody's idea of a dialog. */
 
 .fhj-scrim {
   position: fixed;
@@ -1127,7 +1239,6 @@ button.fhj-section:disabled {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 1rem;
   background: var(--fhj-overlay, rgba(10, 11, 14, 0.72));
   backdrop-filter: blur(3px);
   animation: fhjFade 180ms ease;
@@ -1135,21 +1246,100 @@ button.fhj-section:disabled {
 @media (min-width: 640px) {
   .fhj-scrim {
     align-items: center;
+    padding: 1rem;
   }
 }
+
 .fhj-sheet {
+  display: grid;
+  /* grabber · heading · scrolling body · action bar */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100%;
   max-width: 28rem;
-  max-height: min(86vh, 44rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 1.5rem;
-  border-radius: var(--fhj-radius-lg);
+  /* dvh, not vh: on iOS Safari `vh` is the *largest* viewport, so a sheet
+     sized in vh runs underneath the URL bar and hides its own action row. */
+  max-height: min(92dvh, 46rem);
+  border-radius: var(--fhj-radius-lg) var(--fhj-radius-lg) 0 0;
   background: var(--fhj-card, #1e2026);
   border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
+  border-bottom: none;
   box-shadow: var(--fhj-shadow-lg, 0 12px 36px rgba(0, 0, 0, 0.46));
-  animation: fhjSheet 260ms var(--fhj-out);
+  animation: fhjSheet 300ms var(--fhj-out);
+  /* Set by the drag handler while a dismiss gesture is in flight. */
+  transform: translateY(var(--fhj-sheet-drag, 0px));
 }
+@media (min-width: 640px) {
+  .fhj-sheet {
+    max-height: min(86dvh, 44rem);
+    border-radius: var(--fhj-radius-lg);
+    border-bottom: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
+    animation-name: fhjSheetCentre;
+  }
+}
+
+/* The grabber. Also the drag target — it is deliberately a wide, tall band
+   rather than the 36px pill it draws, because a 4px-high hit area is a
+   gesture nobody lands. */
+.fhj-sheet-grab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.5rem;
+  flex: none;
+  cursor: grab;
+  touch-action: none;
+}
+.fhj-sheet-grab::before {
+  content: "";
+  width: 2.25rem;
+  height: 4px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line-strong, #464a55);
+}
+@media (min-width: 640px) {
+  .fhj-sheet-grab {
+    display: none;
+  }
+}
+
+.fhj-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 1.25rem 0.75rem;
+}
+@media (min-width: 640px) {
+  .fhj-sheet-head {
+    padding-top: 1.25rem;
+  }
+}
+
+/* The scrolling middle. `overscroll-behavior: contain` keeps a flick at the
+   end of the list from scrolling the dashboard behind the sheet. */
+.fhj-sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 1.25rem;
+}
+/* No action bar: the body owns the bottom edge, so it carries the inset. */
+.fhj-sheet-body:last-child {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* Pinned actions. The top rule and the card background keep it legible over
+   whatever the body scrolls underneath it. */
+.fhj-sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--fhj-line, #31343d);
+  background: var(--fhj-card, #1e2026);
+}
+
 @keyframes fhjFade {
   from {
     opacity: 0;
@@ -1157,9 +1347,180 @@ button.fhj-section:disabled {
 }
 @keyframes fhjSheet {
   from {
+    transform: translateY(100%);
+  }
+}
+@keyframes fhjSheetCentre {
+  from {
     opacity: 0;
     transform: translateY(16px) scale(0.985);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-sheet {
+    animation-name: fhjFade;
+  }
+}
+
+/* ---------- toast ----------
+   The receipt for an optimistic save. It sits directly above the nav bar
+   rather than at the top of the screen, for the same reason the sheet actions
+   moved: the Undo inside it has to be reachable by the thumb that just caused
+   it. Nothing here ever blocks the app — the toast is not a dialog, it takes
+   no focus, and the work it is reporting has already happened. */
+
+.fhj-toast-host {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* clears the nav bar (56px + its own safe-area padding) */
+  bottom: calc(4.5rem + max(0.75rem, env(safe-area-inset-bottom)));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  pointer-events: none;
+}
+
+.fhj-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 26rem;
+  padding: 0.6875rem 0.75rem 0.6875rem 1rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line-strong, #464a55);
+  box-shadow: var(--fhj-shadow-lg, 0 12px 36px rgba(0, 0, 0, 0.46));
+  pointer-events: auto;
+  animation: fhjToastIn 260ms var(--fhj-spring);
+}
+.fhj-toast.is-leaving {
+  animation: fhjToastOut 160ms ease forwards;
+}
+.fhj-toast-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+.fhj-toast-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 550;
+  line-height: 1.3;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-toast-undo {
+  flex: none;
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--fhj-accent-text, #a6c3ea);
+  cursor: pointer;
+}
+@keyframes fhjToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+@keyframes fhjToastOut {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-toast,
+  .fhj-toast.is-leaving {
+    animation-duration: 1ms;
+  }
+}
+
+/* ---------- horizontal scrollers ----------
+   A row of chips wider than the screen. The mask is the affordance: the last
+   chip fades out at the edge instead of being guillotined by the card border,
+   which is what "there is more over here" looks like without a scrollbar. */
+
+.fhj-scroller {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  /* the row's own padding, so a snapped chip isn't flush against the mask */
+  padding: 0.125rem 1rem 0.5rem;
+  margin: 0 -1rem;
+  mask-image: linear-gradient(to right, transparent 0, #000 1rem, #000 calc(100% - 1.75rem), transparent 100%);
+}
+.fhj-scroller::-webkit-scrollbar {
+  display: none;
+}
+.fhj-scroller > * {
+  scroll-snap-align: start;
+  flex: none;
+}
+
+/* ---------- repeat chip ----------
+   One tap re-logs a food. Sized like a card rather than a chip because it
+   carries two lines and because this is a *destructive-adjacent* control —
+   it writes a row on a single tap — so it wants a target nobody hits by
+   accident while scrolling past it. */
+
+.fhj-repeat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: 3.5rem;
+  max-width: 11rem;
+  padding: 0.5625rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line, #31343d);
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-repeat:hover {
+    border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  }
+}
+.fhj-repeat-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-repeat-meta {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
 }
 
 /* ---------- motion ----------

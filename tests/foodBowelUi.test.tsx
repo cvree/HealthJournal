@@ -83,6 +83,18 @@ const pickerDialog = async () => {
   return search.closest('[role="dialog"]') as HTMLElement;
 };
 
+/** A log sheet's primary action, which is pinned to the bottom of the sheet.
+    A new row reads "Log it"; an existing one being edited reads "Save". */
+const saveSheet = (root: any = screen) =>
+  fireEvent.click(root.getByRole("button", { name: /^(Log it|Save)$/ }));
+
+/** Open one of a sheet's folded sections by its heading. The everyday path
+    through these sheets doesn't touch them — that is the point of folding
+    them — so a test that wants a detail field has to ask for it, exactly as a
+    user filling one in would. */
+const openSection = async (name: RegExp, root: any = screen) =>
+  fireEvent.click(await root.findByRole("button", { name }));
+
 /** Quick Add → Food opens the *picker*, which is the one-tap path for a food
     already saved. The long form is one step further in, behind "Something
     new" — this walks that route. */
@@ -102,7 +114,7 @@ describe("Quick Add", () => {
 
   it("shows an empty timeline before anything is logged today", async () => {
     await mountApp();
-    expect(screen.getByText(/Nothing logged yet today/)).toBeTruthy();
+    expect(screen.getByText(/Nothing logged yet/)).toBeTruthy();
   });
 });
 
@@ -115,8 +127,9 @@ describe("logging a meal", () => {
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), {
       target: { value: "Grilled salmon and greens" },
     });
+    await openSection(/^Serving size/);
     fireEvent.change(screen.getByPlaceholderText("1 bowl"), { target: { value: "1 plate" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
 
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     expect(screen.getByText("Grilled salmon and greens")).toBeTruthy();
@@ -128,7 +141,7 @@ describe("logging a meal", () => {
     await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Oats" } });
     fireEvent.change(screen.getByLabelText(/Calories in kcal/), { target: { value: "420" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
 
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     expect(document.body.textContent).toContain("420 kcal");
@@ -141,7 +154,7 @@ describe("logging a meal", () => {
     const { kv, unmount } = await mountApp();
     await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Rye toast" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     await waitFor(() => expect(kv.get("fhj_v1")).toContain("Rye toast"));
 
@@ -156,13 +169,13 @@ describe("logging a meal", () => {
     await mountApp();
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Soup" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
 
     fireEvent.click(screen.getByText("Soup"));
     await screen.findByText("Edit meal");
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: "Soup and bread" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
 
     await waitFor(() => expect(screen.queryByText("Edit meal")).toBeNull());
     expect(screen.getByText("Soup and bread")).toBeTruthy();
@@ -177,16 +190,22 @@ describe("logging a bowel movement", () => {
     await screen.findByText("Log bowel movement");
 
     fireEvent.click(screen.getByRole("button", { name: /Smooth sausage/ }));
+    await openSection(/^Amount, colour and consistency/);
     fireEvent.click(screen.getByRole("button", { name: "Medium" }));
     fireEvent.click(screen.getByRole("button", { name: "Brown" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
 
     await waitFor(() => expect(screen.queryByText("Log bowel movement")).toBeNull());
     expect(screen.getByText("Bowel movement")).toBeTruthy();
     expect(document.body.textContent).toContain("Type 4 · Medium · Brown");
   });
 
-  it("offers all seven Bristol types with their descriptions", async () => {
+  /* Bristol is drawn as the ordered scale it is — seven numbered targets with
+     the selected type named underneath — rather than seven stacked paragraphs.
+     Every type is still individually reachable and still carries its name;
+     asserting on the accessible name rather than on visible text is the
+     stronger claim, because it is the one a screen reader depends on too. */
+  it("offers all seven Bristol types, each reachable and named", async () => {
     await mountApp();
     await openTile(/^Bowel/);
     await screen.findByText("Log bowel movement");
@@ -194,8 +213,17 @@ describe("logging a bowel movement", () => {
       "Separate hard lumps", "Lumpy sausage", "Cracked sausage", "Smooth sausage",
       "Soft blobs", "Mushy ragged", "Entirely liquid",
     ]) {
-      expect(screen.getByText(label), label).toBeTruthy();
+      expect(screen.getByRole("button", { name: `Bristol type: ${label}` }), label).toBeTruthy();
     }
+  });
+
+  it("names the type it has selected, with its description", async () => {
+    await mountApp();
+    await openTile(/^Bowel/);
+    await screen.findByText("Log bowel movement");
+    fireEvent.click(screen.getByRole("button", { name: "Bristol type: Soft blobs" }));
+    expect(screen.getByText("Soft blobs")).toBeTruthy();
+    expect(document.body.textContent).toContain("Soft blobs with clear edges");
   });
 
   it("lets a selected option be unselected, so a mis-tap isn't permanent", async () => {
@@ -230,7 +258,7 @@ describe("AI stays out of the way when it is off", () => {
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Eggs" } });
     fireEvent.change(screen.getByLabelText(/Protein in g/), { target: { value: "14" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     expect(screen.getByText("Eggs")).toBeTruthy();
   });
@@ -241,7 +269,7 @@ describe("AI stays out of the way when it is off", () => {
     await mountApp({ ai: false });
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Toast" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
@@ -256,14 +284,16 @@ describe("the timeline", () => {
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Late dinner" } });
     const timeInputs = () => document.querySelectorAll('input[type="time"]');
+    await openSection(/^When/);
     fireEvent.change(timeInputs()[0], { target: { value: "20:00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
 
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Early breakfast" } });
+    await openSection(/^When/);
     fireEvent.change(timeInputs()[0], { target: { value: "07:00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
 
     const titles = [...document.querySelectorAll(".fhj-tl-title")].map((n) => n.textContent);
@@ -274,11 +304,11 @@ describe("the timeline", () => {
     await mountApp();
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Lunch" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
 
     await openTile(/^Bowel/);
-    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    saveSheet(screen);
     await waitFor(() => expect(screen.queryByText("Log bowel movement")).toBeNull());
 
     expect(document.querySelector(".fhj-tl-item.fhj-cat-food")).toBeTruthy();
@@ -290,9 +320,17 @@ describe("the timeline", () => {
     await openFoodForm();
     fireEvent.change(await screen.findByPlaceholderText(/Chicken salad/), { target: { value: "Pasta" } });
     fireEvent.change(screen.getByLabelText(/Calories in kcal/), { target: { value: "600" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
-    expect(document.body.textContent).toContain("Food today");
+
+    // On Today it is one line in the glance card; the full macro strip is on
+    // Insights, where the rest of the day's numbers are.
+    const glance = screen.getByText("How you're doing").closest(".fhj-card") as HTMLElement;
+    expect(glance.textContent).toContain("600");
+    expect(glance.textContent).toContain("kcal");
+
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Insights" }));
+    await waitFor(() => expect(document.body.textContent).toContain("Food today"));
   });
 });
 
@@ -349,7 +387,7 @@ describe("nothing is sent without consent", () => {
     await screen.findByText(/Grilled salmon and salad/);
     expect(document.querySelector(".fhj-ai-badge")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     // On the timeline it is still hedged and still badged.
     expect(document.body.textContent).toContain("about 520 kcal");
@@ -365,7 +403,7 @@ describe("nothing is sent without consent", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Use these" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     expect(document.body.textContent).toContain("520 kcal");
     expect(document.body.textContent).not.toContain("about 520 kcal");
@@ -388,9 +426,10 @@ describe("the one-tap loop", () => {
   async function teachLibrary(name: string, kcal: string) {
     await openFoodForm();
     fireEvent.change(screen.getByPlaceholderText(/Chicken salad/), { target: { value: name } });
+    await openSection(/^Serving size/);
     fireEvent.change(screen.getByPlaceholderText("1 bowl"), { target: { value: "1 plate" } });
     fireEvent.change(screen.getByLabelText(/Calories in kcal/), { target: { value: kcal } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
   }
 
@@ -467,7 +506,7 @@ describe("the one-tap loop", () => {
     fireEvent.click(await screen.findByText(/Estimate nutrition with AI/));
     fireEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
     await screen.findByText(/AI Estimated/);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    saveSheet();
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
 
     // Logged again from the library, it is still an estimate — saving a food
@@ -509,9 +548,10 @@ describe("the food diary", () => {
   it("pages back to a previous day", async () => {
     await mountApp();
     await goToDiary();
-    expect(screen.getByText("Today")).toBeTruthy();
+    const diary = () => within(document.getElementById("main")!);
+    expect(diary().getByText("Today")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "previous day" }));
-    await waitFor(() => expect(screen.queryByText("Today")).toBeNull());
+    await waitFor(() => expect(diary().queryByText("Today")).toBeNull());
   });
 
   it("won't page into the future", async () => {
@@ -607,6 +647,7 @@ describe("editing Quick Add", () => {
 
     await openTile(/^Drink/);
     const picker = await pickerDialog();
+    await openSection(/^When and which meal/, within(picker));
     expect((within(picker).getByLabelText(/Which meal/) as HTMLSelectElement).value).toBe("drink");
   });
 });
@@ -629,6 +670,7 @@ describe("saying when something was eaten", () => {
     await mountApp();
     await openTile(/^Food/);
     const picker = await pickerDialog();
+    await openSection(/^When and which meal/, within(picker));
     fireEvent.change(within(picker).getByLabelText(/Time this was eaten/), { target: { value: "07:05" } });
     // The meal follows the time until the user says otherwise.
     expect((within(picker).getByLabelText(/Which meal/) as HTMLSelectElement).value).toBe("breakfast");
@@ -645,6 +687,7 @@ describe("saying when something was eaten", () => {
     await mountApp();
     await openTile(/^Food/);
     const picker = await pickerDialog();
+    await openSection(/^When and which meal/, within(picker));
     fireEvent.change(within(picker).getByLabelText(/Which meal/), { target: { value: "snack" } });
     fireEvent.change(within(picker).getByLabelText(/Time this was eaten/), { target: { value: "07:05" } });
     expect((within(picker).getByLabelText(/Which meal/) as HTMLSelectElement).value).toBe("snack");
@@ -654,9 +697,13 @@ describe("saying when something was eaten", () => {
     await mountApp();
     await openTile(/^Food/);
     const picker = await pickerDialog();
+    await openSection(/^When and which meal/, within(picker));
     fireEvent.change(within(picker).getByLabelText(/Time this was eaten/), { target: { value: "21:40" } });
     fireEvent.click(within(picker).getByRole("button", { name: /Something new/ }));
     await screen.findByText("Log food");
+    // The long form folds When away too — the carried time is what it holds.
+    expect(screen.getByRole("button", { name: /^When/ }).textContent).toContain("9:40 pm");
+    await openSection(/^When/);
     expect((document.querySelector('input[type="time"]') as HTMLInputElement).value).toBe("21:40");
   });
 });
@@ -678,8 +725,13 @@ describe("the photo is the first thing asked for", () => {
     expect(orderOf(dialog, camera)).toBeLessThan(orderOf(dialog, description));
   });
 
-  it("puts the camera above the Bristol scale in the bowel sheet", async () => {
-    await mountApp();
+  /* In the bowel sheet the camera leads only when it is about to do the work.
+     With auto-judging on, one photo answers type, amount, colour and
+     consistency, so asking for it first saves four taps. With AI off — the
+     shipped default — it answers nothing, and leading with it pushed the one
+     control most people opened the sheet for below the fold. */
+  it("puts the camera above the Bristol scale when auto-judging is on", async () => {
+    await mountApp({ ai: true, auto: true });
     await openTile(/^Bowel/);
     const dialog = (await screen.findByText("Log bowel movement")).closest('[role="dialog"]') as HTMLElement;
     const camera = within(dialog).getByRole("button", { name: /take a photo/i });
@@ -687,11 +739,26 @@ describe("the photo is the first thing asked for", () => {
     expect(orderOf(dialog, camera)).toBeLessThan(orderOf(dialog, bristol));
   });
 
+  it("leads with the Bristol scale instead when AI is off", async () => {
+    await mountApp();
+    await openTile(/^Bowel/);
+    const dialog = (await screen.findByText("Log bowel movement")).closest('[role="dialog"]') as HTMLElement;
+    const bristol = within(dialog).getByRole("button", { name: /Smooth sausage/ });
+    // The camera is still there, one section down, and still says so.
+    await openSection(/^Photo and notes/, within(dialog));
+    const camera = within(dialog).getByRole("button", { name: /take a photo/i });
+    expect(orderOf(dialog, bristol)).toBeLessThan(orderOf(dialog, camera));
+  });
+
   it("still asks every question it used to", async () => {
-    // Moving the photo up must not have dropped a field on the way past.
+    // Folding fields away must not have dropped one on the way past. Each is
+    // one tap from the top of the sheet, and none of them has gone.
     await mountApp();
     await openTile(/^Bowel/);
     await screen.findByText("Log bowel movement");
+    await openSection(/^Amount, colour and consistency/);
+    await openSection(/^How it felt/);
+    await openSection(/^Photo and notes/);
     for (const label of ["Bristol type", "Amount", "Colour", "Consistency", "Urgency", "Straining", "Discomfort", "Notes"]) {
       expect(screen.getByText(label), label).toBeTruthy();
     }

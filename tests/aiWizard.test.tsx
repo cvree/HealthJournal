@@ -28,7 +28,13 @@ beforeAll(() => {
 
 let kv: Map<string, string>;
 
-function mountApp(entryCount?: number, aiEnabled = false) {
+/** Mount, then land on Insights.
+
+    Possible Patterns — and with it the AI setup entry point — moved off the
+    first screen when the dashboard was split in two: Today is for logging,
+    Insights is for what the app has worked out. Everything these tests are
+    about is on the second one. */
+async function mountApp(entryCount?: number, aiEnabled = false) {
   const db: any = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
   if (entryCount !== undefined) db.entries = db.entries.slice(-entryCount);
   if (aiEnabled) db.ai = { ...db.ai, enabled: true };
@@ -39,7 +45,9 @@ function mountApp(entryCount?: number, aiEnabled = false) {
     async delete(k: string) { kv.delete(k); return { key: k, deleted: true }; },
     async list() { return { keys: [...kv.keys()] }; },
   };
-  return render(<App />);
+  const r = render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
+  return r;
 }
 
 /** The provider says yes to everything unless a test says otherwise. Model
@@ -88,9 +96,9 @@ beforeEach(async () => { cleanup(); await clearKey(); });
 afterEach(() => vi.unstubAllGlobals());
 
 describe("getting in", () => {
-  it("offers one guided button on the dashboard, not a trip to Settings", async () => {
+  it("offers one guided button on the Insights screen, not a trip to Settings", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     const start = await screen.findByRole(
       "button", { name: /Set it up — about a minute/i }, { timeout: 10000 }
     );
@@ -99,9 +107,9 @@ describe("getting in", () => {
     expect(document.body.textContent).not.toContain("Set this up in Settings");
   });
 
-  it("opens in place, without navigating away from the dashboard", async () => {
+  it("opens in place, without navigating away from Insights", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await openWizard();
     await step(1);
     expect(document.body.textContent).toContain("A second opinion on your own logs");
@@ -109,7 +117,7 @@ describe("getting in", () => {
 
   it("states what leaves the device before asking for anything", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await openWizard();
     expect(document.body.textContent).toContain("Only numbers leave this device");
     expect(document.body.textContent).toContain("Nothing sends by itself");
@@ -119,7 +127,7 @@ describe("getting in", () => {
 describe("choosing a provider", () => {
   it("offers a choice, with the easiest one preselected", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
@@ -131,7 +139,7 @@ describe("choosing a provider", () => {
 
   it("answers the ChatGPT question in place instead of letting people hit a wall", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
@@ -141,7 +149,7 @@ describe("choosing a provider", () => {
 
   it("carries the choice into the steps that follow", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
@@ -156,7 +164,7 @@ describe("choosing a provider", () => {
 
   it("asks a custom provider for an endpoint as well as a key", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
@@ -180,7 +188,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
   it("blocks Continue until a key is verified, and says why", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await reachKeyStep();
     expect(btn(/Save and continue/i)).toHaveProperty("disabled", true);
     expect(document.body.textContent).toContain("Paste your key to continue");
@@ -188,7 +196,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
   it("rejects an incomplete key without spending a request", async () => {
     const fetchMock = stubGoogle();
-    mountApp();
+    await mountApp();
     await reachKeyStep();
     fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: "AIza-short" } });
     await waitFor(() => expect(document.body.textContent).toMatch(/doesn't look like a full key/));
@@ -198,7 +206,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
   it("verifies on paste — there is no Test button to know about", async () => {
     const fetchMock = stubGoogle();
-    mountApp();
+    await mountApp();
     await reachKeyStep();
     expect(screen.queryByRole("button", { name: /^Test/i })).toBeNull();
     fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
@@ -209,7 +217,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
   it("keeps a rejected key fixable instead of dead-ending", async () => {
     stubGoogle({ keyOk: false });
-    mountApp();
+    await mountApp();
     await reachKeyStep();
     fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
     await waitFor(() => expect(document.body.textContent).toMatch(/rejected that key/i), { timeout: 5000 });
@@ -223,7 +231,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
   it("saves the key only once the step is actually completed", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await reachKeyStep();
     fireEvent.change(screen.getByLabelText(/Your Google Gemini API key/i), { target: { value: GOOD_KEY } });
     await waitFor(() => expect(document.body.textContent).toMatch(/Connected\. Using/), { timeout: 5000 });
@@ -234,7 +242,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
   it("never renders the key back in full", async () => {
     stubGoogle();
-    mountApp();
+    await mountApp();
     await reachKeyStep();
     const field = screen.getByLabelText(/Your Google Gemini API key/i) as HTMLInputElement;
     fireEvent.change(field, { target: { value: GOOD_KEY } });
@@ -246,7 +254,7 @@ describe("the key step can't be skipped or fumbled", () => {
 
 describe("the last step", () => {
   async function reachReview(entries?: number) {
-    mountApp(entries);
+    await mountApp(entries);
     await openWizard();
     await toKeyIntro();
     fireEvent.click(btn(/I've copied my key/i));
@@ -306,7 +314,7 @@ describe("the model is discovered, never assumed", () => {
     // A key issued today cannot see gemini-2.5-flash; the old build hard-coded
     // it and 404'd for every new user.
     stubGoogle({ models: ["gemini-3.5-flash", "gemini-3.5-pro", "text-embedding-004"] });
-    mountApp();
+    await mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
@@ -323,7 +331,7 @@ describe("the model is discovered, never assumed", () => {
 
   it("blocks the step when a key works but has no usable model behind it", async () => {
     stubGoogle({ models: ["text-embedding-004"] });
-    mountApp();
+    await mountApp();
     await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
@@ -344,8 +352,8 @@ describe("someone who is already set up", () => {
   it("skips straight to the run instead of being walked through again", async () => {
     stubGoogle();
     await saveKey(GOOD_KEY, "persist");
-    mountApp(undefined, true);
-    // With a key present and the feature on, the dashboard offers the analysis
+    await mountApp(undefined, true);
+    // With a key present and the feature on, Insights offers the analysis
     // rather than the walkthrough.
     await waitFor(
       () => expect(document.body.textContent).toMatch(/Analyse my last 90 days|Regenerate/),
@@ -357,7 +365,7 @@ describe("someone who is already set up", () => {
   it("offers a one-tap re-enable, not a rerun of setup, when only the toggle is off", async () => {
     stubGoogle();
     await saveKey(GOOD_KEY, "persist");
-    mountApp(); // key on device, feature off
+    await mountApp(); // key on device, feature off
     await waitFor(
       () => expect(document.body.textContent).toMatch(/Turn it back on/),
       { timeout: 10000 }
