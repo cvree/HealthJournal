@@ -86,7 +86,7 @@ const pickerDialog = async () => {
 /** A log sheet's primary action, which is pinned to the bottom of the sheet.
     A new row reads "Log it"; an existing one being edited reads "Save". */
 const saveSheet = (root: any = screen) =>
-  fireEvent.click(root.getByRole("button", { name: /^(Log it|Save)$/ }));
+  fireEvent.click(root.getByRole("button", { name: /^(Log it|Save changes)$/ }));
 
 /** Open one of a sheet's folded sections by its heading. The everyday path
     through these sheets doesn't touch them — that is the point of folding
@@ -843,7 +843,7 @@ describe("scrolling inside a sheet", () => {
     expect(document.body.style.position).toBe("fixed");
     expect(document.body.style.overflow).toBe("hidden");
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByText("Log bowel movement")).toBeNull());
     expect(document.body.style.position).not.toBe("fixed");
     expect(document.body.style.overflow).not.toBe("hidden");
@@ -865,7 +865,7 @@ describe("scrolling inside a sheet", () => {
 
     expect(sent).toHaveLength(0);
     expect(document.body.style.position).toBe("fixed"); // the food sheet is still open
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByText("Log food")).toBeNull());
     expect(document.body.style.position).not.toBe("fixed");
     vi.unstubAllGlobals();
@@ -891,7 +891,7 @@ describe("what the sheet promises about the photo", () => {
     expect(bowel.textContent).toMatch(/sent for a reading as soon as you add it/);
     expect(bowel.textContent).not.toMatch(/Nothing is sent anywhere unless you ask/);
 
-    fireEvent.click(within(bowel).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(bowel).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByText("Log bowel movement")).toBeNull());
 
     await openFoodForm();

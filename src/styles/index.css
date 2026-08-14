@@ -1323,6 +1323,10 @@ button.fhj-section:disabled {
 }
 
 .fhj-sheet-head {
+  /* Part of the drag surface — see useSheetDrag. `pan-y` is deliberate: the
+     heading itself never scrolls, so the browser can hand us the gesture
+     without waiting to see whether it was a scroll. */
+  touch-action: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;

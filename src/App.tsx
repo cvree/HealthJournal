@@ -1357,6 +1357,11 @@ function useSheetDrag(panelRef, onClose) {
 
   const onPointerDown = (e) => {
     if (!onClose || e.button > 0) return;
+    /* The heading area is a drag surface too — reaching for the little grabber
+       specifically is a precision ask, and the whole top of a sheet is what a
+       thumb actually lands on. Controls inside it are not: a pointerdown on
+       Close is a press, not the start of a gesture. */
+    if (e.target instanceof Element && e.target.closest("button, a, input, select, textarea")) return;
     drag.current = { id: e.pointerId, startY: e.clientY, y: e.clientY, t: Date.now() };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const el = panelRef.current;
@@ -1434,7 +1439,7 @@ function Modal({ title, children, onClose, labelledBy, footer, eyebrow }) {
             the accessible ways out; this one is for the thumb. */}
         <div className="fhj-sheet-grab" aria-hidden="true" {...dragHandlers} />
         {title ? (
-          <div className="fhj-sheet-head">
+          <div className="fhj-sheet-head" {...dragHandlers}>
             <div className="min-w-0">
               {eyebrow && <div className="fhj-eyebrow mb-0.5">{eyebrow}</div>}
               <h2 id={titleId} className="font-display text-xl leading-snug">{title}</h2>
@@ -8737,14 +8742,14 @@ function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTi
 
   return (
     <Modal title={title} onClose={onClose}
+      /* One action, full width. The header's × already dismisses, as do
+         Escape, a tap on the scrim and a drag on the grabber — a Cancel button
+         was a fifth way to do the same thing, and it was taking half the
+         action bar from the button people actually came to press. */
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <div className="flex-1" />
-          <Button onClick={() => { feedback("save"); onSave(log); }}>
-            {initial ? "Save" : "Log it"}
-          </Button>
-        </>
+        <Button block onClick={() => { feedback("save"); onSave(log); }}>
+          {initial ? "Save changes" : "Log it"}
+        </Button>
       }>
       <div className="fhj-cat-food" ref={bodyRef}>
         {/* ---------- the photo, first ----------
@@ -9057,14 +9062,14 @@ function BowelLogSheet({ initial, date, aiEnabled, aiAuto, onSave, onDelete, onC
 
   return (
     <Modal title={initial ? "Edit entry" : "Log bowel movement"} onClose={onClose}
+      /* One action, full width. The header's × already dismisses, as do
+         Escape, a tap on the scrim and a drag on the grabber — a Cancel button
+         was a fifth way to do the same thing, and it was taking half the
+         action bar from the button people actually came to press. */
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <div className="flex-1" />
-          <Button onClick={() => { feedback("save"); onSave(log); }}>
-            {initial ? "Save" : "Log it"}
-          </Button>
-        </>
+        <Button block onClick={() => { feedback("save"); onSave(log); }}>
+          {initial ? "Save changes" : "Log it"}
+        </Button>
       }>
       <div className="fhj-cat-bowel" ref={bodyRef}>
         {photoLeads && <div className="mb-3">{photoBlock}</div>}
@@ -9500,16 +9505,12 @@ function FoodPicker({ library, meal: initialMeal, date, onLog, onOpenFull, onUpd
       {detail && (
         <Modal title={detail.item.name} onClose={() => setDetail(null)}
           footer={
-            <>
-              <Button variant="ghost" onClick={() => setDetail(null)}>Cancel</Button>
-              <div className="flex-1" />
-              <Button onClick={() => {
-                feedback("save");
-                onLog(logFromFoodItem(detail.item, { date, time, meal, servings: detail.servings }));
-              }}>
-                Add to {mealLabel(meal).toLowerCase()}
-              </Button>
-            </>
+            <Button block onClick={() => {
+              feedback("save");
+              onLog(logFromFoodItem(detail.item, { date, time, meal, servings: detail.servings }));
+            }}>
+              Add to {mealLabel(meal).toLowerCase()}
+            </Button>
           }>
           <div className="fhj-cat-food">
             <div className="flex items-center justify-between gap-3 mb-4">
