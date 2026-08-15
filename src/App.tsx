@@ -20,6 +20,10 @@ import {
   buildFoodTable, buildBowelTable, logsInRange,
 } from "./lib/exports";
 import { playSound, setSoundEnabled, suspendSound, resumeSound } from "./lib/sound";
+import {
+  feedback, pulse, hapticsSupported, scaleHaptic, setFeedbackPrefs, getFeedbackPrefs,
+  HAPTIC_PATTERNS, HAPTIC_SCALE, HAPTIC_LEVELS,
+} from "./lib/feedback";
 import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
 import { createPinRecord, verifyPin } from "./lib/lock";
 import {
@@ -33,6 +37,13 @@ import {
   isIOSWebBrowser, isStandalone,
 } from "./lib/durability";
 import { screenFromSearch, clearDeepLink } from "./lib/deeplink";
+import { SyncEngine } from "./lib/sync/engine";
+import { SupabaseBackend } from "./lib/sync/supabase";
+import { syncConfig, syncAvailable, setDeviceConfig, clearDeviceConfig } from "./lib/sync/config";
+import { ratePassphrase, suggestPassphrase } from "./lib/sync/crypto";
+import { addTombstone } from "./lib/sync/project";
+import { sweepTombstones } from "./lib/sync/merge";
+import { IDLE_STATUS } from "./lib/sync/types";
 import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
 import {
@@ -5819,7 +5830,468 @@ function AiSettingsCard({ ai, setAi, db, onSetupComplete }) {
   );
 }
 
-function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete }) {
+/* ---------- cross-device sync ----------
+
+   The product decision this UI encodes: **Local Only is not a downgrade.** It
+   is the default, it needs no account, and everything below is an option
+   someone may never take. So the card leads with which of the two states the
+   journal is in, in two words, and nothing here ever nags.
+
+   The other decision: the word "Supabase" appears nowhere a normal user can
+   see it, and neither do "database", "bucket", "token", or "row". Someone
+   turning this on is answering two questions — what's your email, and what
+   passphrase should encrypt this — and the rest is the app's problem. The one
+   place infrastructure surfaces is the self-hosting panel, which is folded
+   away and addressed to a different person entirely.
+
+   ============================================================ */
+
+/* Sync is on when it is on. The only moments that earn a sound are the ones a
+   person caused: finishing setup, and a failure that needs them. Everything
+   else — a laptop picking up a change made on a phone an hour ago — happens
+   without a word, which is what "invisible" has to mean. */
+
+function SyncBadge({ status }) {
+  const { phase, pending } = status;
+  const tone =
+    phase === "idle" ? "good" :
+    phase === "syncing" ? "neutral" :
+    phase === "offline" ? "neutral" :
+    phase === "off" ? "neutral" : "warn";
+  const label =
+    phase === "off" ? "Local only" :
+    phase === "idle" ? "Synced" :
+    phase === "syncing" ? "Syncing…" :
+    phase === "offline" ? (pending ? `${pending} waiting` : "Offline") :
+    phase === "blocked" ? "Needs you" : "Retrying";
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
+/** The one sentence under the badge. Never alarming, never a lie, and always
+    the same shape: what is true, then what happens next. */
+function syncLine(status) {
+  const { phase, pending, lastSyncedAt } = status;
+  if (phase === "off") {
+    return "Saved on this device. No account, nothing uploaded.";
+  }
+  if (phase === "blocked" || phase === "error") return status.message;
+  if (phase === "offline") {
+    return pending
+      ? `${pending} ${pending === 1 ? "change is" : "changes are"} saved here and will sync when you're back online.`
+      : "Offline. Everything here is saved on this device.";
+  }
+  if (pending) {
+    return `${pending} ${pending === 1 ? "change" : "changes"} saved on this device, sending now.`;
+  }
+  if (!lastSyncedAt) return "Saved on this device and synced across your devices.";
+  const mins = Math.round((Date.now() - Date.parse(lastSyncedAt)) / 60000);
+  const when =
+    !Number.isFinite(mins) ? "" :
+    mins < 1 ? " Last synced just now." :
+    mins < 60 ? ` Last synced ${mins} min ago.` :
+    ` Last synced ${new Date(lastSyncedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`;
+  return `Saved on this device and synced across your devices.${when}`;
+}
+
+/* ---------- the guided flow ---------- */
+
+const SYNC_STEPS = ["What this does", "Sign in", "Passphrase", "Done"];
+
+function SyncFlowProgress({ index }) {
+  return (
+    <div className="flex gap-1.5 mb-4" aria-hidden="true">
+      {SYNC_STEPS.map((label, i) => (
+        <div key={label} className="flex-1 rounded-full" style={{
+          height: 3,
+          background: i <= index ? C.accent : C.line,
+          transition: "background-color 200ms ease",
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function PassphraseMeter({ verdict }) {
+  const tone = verdict.score >= 4 ? C.good : verdict.score >= 3 ? C.accent : verdict.score >= 2 ? C.warn : C.alert;
+  return (
+    <div className="mt-2">
+      <div className="flex gap-1" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex-1 rounded-full" style={{
+            height: 3, background: i < verdict.score ? tone : C.line,
+          }} />
+        ))}
+      </div>
+      <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: verdict.ok ? C.subtle : C.alert }}>
+        <span className="font-semibold" style={{ color: tone }}>{verdict.label}.</span> {verdict.hint}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Explain → Sign in → Passphrase → Done.
+ *
+ * Four screens, one job each, and every one of them survivable: closing at any
+ * point leaves the journal exactly as it was, because nothing is uploaded until
+ * the last step and the local copy is never the thing being changed.
+ */
+function SyncSetupFlow({ engine, onClose, onFinished }) {
+  const [step, setStep] = useState("explain");
+  const [email, setEmail] = useState(engine?.getEmail?.() || "");
+  const [code, setCode] = useState("");
+  const [pass, setPass] = useState("");
+  const [existing, setExisting] = useState(false);
+  const [photos, setPhotos] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const index = { explain: 0, email: 1, code: 1, passphrase: 2, done: 3 }[step] ?? 0;
+
+  const fail = (e) => {
+    setErr(String(e?.message || e || "Something went wrong.").replace(/^session: /, ""));
+    feedback("error");
+  };
+
+  const sendCode = async () => {
+    setErr(null); setBusy(true);
+    try {
+      await engine.requestCode(email);
+      feedback("select");
+      setStep("code");
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  };
+
+  const verify = async () => {
+    setErr(null); setBusy(true);
+    try {
+      await engine.verifyCode(email, code);
+      /* Which question the next screen asks depends entirely on this: a journal
+         that has been set up before needs the passphrase it already has, and
+         asking someone to "choose" one there would silently lock them out of
+         everything they have already synced. */
+      setExisting(await engine.hasRemoteMeta());
+      feedback("save");
+      setStep("passphrase");
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  };
+
+  const finish = async () => {
+    setErr(null); setBusy(true);
+    try {
+      const before = engine.countLocal();
+      await engine.unlock(pass);
+      await engine.enable({ photos });
+      await engine.settle();
+      setSummary({ before, after: engine.countLocal() });
+      feedback("complete");
+      setStep("done");
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  };
+
+  const body = {
+    explain: (
+      <>
+        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+          Turn this on and your journal stays on every device you use it on. Log a meal on your
+          phone, open your laptop, and it's already there.
+        </p>
+        <ul className="flex flex-col gap-2.5 mb-3">
+          {[
+            ["device", "Nothing changes about how it feels", "Saving stays instant and works with no signal. Syncing happens quietly afterwards."],
+            ["key", "Encrypted before it leaves this device", "Your entries are locked with a passphrase you choose in a moment. It never leaves your device, so the server only ever holds unreadable data."],
+            ["download", "Still yours", "Exports, backups and offline use all work exactly as they do now. You can switch this off any time and keep everything."],
+          ].map(([icon, title, text]) => (
+            <li key={title} className="flex gap-2.5">
+              <span className="fhj-icon-btn shrink-0" style={{ width: "1.9rem", height: "1.9rem", pointerEvents: "none" }}>
+                <Icon name={icon} size={14} color={C.accentText} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-semibold">{title}</span>
+                <span className="block text-[11.5px] leading-relaxed" style={{ color: C.subtle }}>{text}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[11px] leading-relaxed" style={{ color: C.subtle }}>
+          Worth knowing: because the app is delivered over the web, encryption in the browser can't
+          protect you from someone who controls the site itself. It does mean the sync server never
+          receives anything readable. This is not a medical-records service and makes no compliance
+          claim.
+        </p>
+      </>
+    ),
+    email: (
+      <>
+        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+          Your devices need one thing in common to find each other. We'll email you a six-digit
+          code — there's no password to invent or remember.
+        </p>
+        <label className="fhj-label" htmlFor="fhj-sync-email">Email</label>
+        <input id="fhj-sync-email" className="fhj-input" type="email" inputMode="email"
+          autoComplete="email" placeholder="you@example.com"
+          value={email} onChange={(e) => setEmail(e.target.value)} />
+      </>
+    ),
+    code: (
+      <>
+        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+          We sent a code to <span className="font-semibold" style={{ color: C.ink }}>{email}</span>.
+          It may take a minute, and it's worth checking spam.
+        </p>
+        <label className="fhj-label" htmlFor="fhj-sync-code">Six-digit code</label>
+        <input id="fhj-sync-code" className="fhj-input" inputMode="numeric" autoComplete="one-time-code"
+          maxLength={8} placeholder="123456"
+          style={{ letterSpacing: "0.3em", fontSize: "1.1rem" }}
+          value={code} onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ""))} />
+        <button type="button" className="text-[12px] font-semibold mt-2.5"
+          style={{ color: C.accentText }}
+          onClick={() => { feedback("tap"); setCode(""); setStep("email"); }}>
+          Use a different email
+        </button>
+      </>
+    ),
+    passphrase: (
+      <>
+        <p className="text-sm leading-relaxed mb-3" style={{ color: C.sub }}>
+          {existing
+            ? "This journal is already encrypted. Enter the same passphrase you used on your other device to unlock it here."
+            : "Choose a passphrase. It encrypts your journal before it's uploaded, and it never leaves your device — which also means nobody, including us, can reset it for you."}
+        </p>
+        <label className="fhj-label" htmlFor="fhj-sync-pass">Sync passphrase</label>
+        <input id="fhj-sync-pass" className="fhj-input" type="password"
+          autoComplete={existing ? "current-password" : "new-password"}
+          placeholder={existing ? "Your passphrase" : "Three or four unrelated words"}
+          value={pass} onChange={(e) => setPass(e.target.value)} />
+        {!existing && (
+          <>
+            <PassphraseMeter verdict={ratePassphrase(pass)} />
+            <button type="button" className="text-[12px] font-semibold mt-1"
+              style={{ color: C.accentText }}
+              onClick={() => { feedback("select"); setPass(suggestPassphrase()); }}>
+              Suggest one for me
+            </button>
+            <div className="fhj-note mt-3">
+              <Icon name="warn" size={14} color={C.warn} />
+              <span>Write it down somewhere safe. Lose it and the synced copy can't be read again —
+                the journal on this device is unaffected either way.</span>
+            </div>
+          </>
+        )}
+        <SwitchRow on={photos} onChange={(on) => { feedback(on ? "toggleOn" : "toggleOff"); setPhotos(on); }}
+          label="Sync photos too"
+          desc="Off by default — photos are much larger than entries. They're encrypted the same way." />
+      </>
+    ),
+    done: (
+      <>
+        <div className="text-center py-2">
+          <div className="fhj-icon-btn mx-auto mb-3" style={{ width: "3rem", height: "3rem", pointerEvents: "none" }}>
+            <Icon name="check" size={22} color={C.good} />
+          </div>
+          <div className="font-display text-xl mb-1.5">Syncing</div>
+          <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+            {summary && summary.after > summary.before
+              ? `Your journals were merged — ${summary.before} ${summary.before === 1 ? "day was" : "days were"} already here and ${summary.after - summary.before} more came from your other device. Nothing was overwritten.`
+              : "Everything on this device is now on your other devices too. Open Health Journal anywhere and it'll be waiting."}
+          </p>
+        </div>
+      </>
+    ),
+  }[step];
+
+  const actions = {
+    explain: <Button variant="primary" block onClick={() => { feedback("nav"); setStep("email"); }}>Continue</Button>,
+    email: (
+      <Button variant="primary" block disabled={busy || !/.+@.+\..+/.test(email)} onClick={sendCode}>
+        {busy ? "Sending…" : "Email me a code"}
+      </Button>
+    ),
+    code: (
+      <Button variant="primary" block disabled={busy || code.length < 6} onClick={verify}>
+        {busy ? "Checking…" : "Continue"}
+      </Button>
+    ),
+    passphrase: (
+      <Button variant="primary" block
+        disabled={busy || (existing ? pass.length < 1 : !ratePassphrase(pass).ok)}
+        onClick={finish}>
+        {busy ? "Setting up…" : existing ? "Unlock and sync" : "Turn on sync"}
+      </Button>
+    ),
+    done: <Button variant="primary" block onClick={() => { feedback("tap"); onFinished(); }}>Done</Button>,
+  }[step];
+
+  return (
+    <Modal title={step === "done" ? "You're all set" : "Sync across devices"}
+      eyebrow={step === "done" ? undefined : SYNC_STEPS[index]}
+      onClose={busy ? undefined : onClose}
+      footer={actions}>
+      <SyncFlowProgress index={index} />
+      {body}
+      {err && (
+        <div className="fhj-note mt-3" role="alert" style={{ borderColor: C.alert }}>
+          <Icon name="warn" size={14} color={C.alert} />
+          <span>{err}</span>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ---------- self-hosting ----------
+
+   Addressed to a different reader than everything above: someone running their
+   own copy of the app who has their own project to point it at. Folded away by
+   default, because for everyone else its existence is noise. */
+
+function SyncServerPanel({ onSaved }) {
+  const [url, setUrl] = useState("");
+  const [key, setKey] = useState("");
+  const [msg, setMsg] = useState(null);
+  const cfg = syncConfig();
+  return (
+    <Disclosure label="Use your own sync server"
+      summary={cfg ? `Configured (${cfg.source === "build" ? "built in" : "set on this device"})` : "Not configured"}
+      className="mt-3">
+      <p className="text-[11.5px] leading-relaxed mb-2.5" style={{ color: C.subtle }}>
+        Health Journal syncs through a Supabase project you control. Create one, run{" "}
+        <code>supabase/schema.sql</code> from the repository in its SQL editor, then paste the
+        project URL and its <em>public anon</em> key below. The anon key is designed to be public —
+        every table is restricted to the signed-in owner. Never paste a service-role key anywhere.
+      </p>
+      <label className="fhj-label" htmlFor="fhj-sync-url">Project URL</label>
+      <input id="fhj-sync-url" className="fhj-input" placeholder="https://xxxx.supabase.co"
+        value={url} onChange={(e) => setUrl(e.target.value)} />
+      <label className="fhj-label mt-2" htmlFor="fhj-sync-key">Public anon key</label>
+      <input id="fhj-sync-key" className="fhj-input" placeholder="eyJhbGciOi…"
+        value={key} onChange={(e) => setKey(e.target.value)} />
+      <div className="flex gap-2 mt-2.5">
+        <Button variant="secondary" size="sm" onClick={() => {
+          if (setDeviceConfig(url, key)) {
+            feedback("save");
+            setMsg({ ok: true, text: "Saved on this device." });
+            onSaved && onSaved();
+          } else {
+            feedback("error");
+            setMsg({ ok: false, text: "That doesn't look like a project URL and an anon key." });
+          }
+        }}>Save</Button>
+        {cfg?.source === "device" && (
+          <Button variant="ghost" size="sm" onClick={() => {
+            feedback("tap"); clearDeviceConfig(); setMsg({ ok: true, text: "Cleared." }); onSaved && onSaved();
+          }}>Clear</Button>
+        )}
+      </div>
+      {msg && (
+        <p className="text-[11.5px] mt-2" style={{ color: msg.ok ? C.good : C.alert }}>{msg.text}</p>
+      )}
+    </Disclosure>
+  );
+}
+
+/* ---------- the Settings card ---------- */
+
+function SyncCard({ engine, status, available, onRefreshConfig }) {
+  const [flow, setFlow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [, force] = useState(0);
+  const on = status.phase !== "off";
+
+  const syncNow = async () => {
+    setBusy(true);
+    feedback("tap");
+    const next = await engine.settle();
+    setBusy(false);
+    /* One sound, and only for the outcome the person asked to see. A silent
+       background sync is the normal case and stays silent. */
+    feedback(next.phase === "idle" ? "syncDone" : next.phase === "blocked" || next.phase === "error" ? "warn" : "tap");
+  };
+
+  const stop = async (purge) => {
+    const question = purge
+      ? "Delete the synced copy from the server and stop syncing on this device? Your journal here is kept, and nothing else changes."
+      : "Stop syncing on this device? Your journal stays here in full — this only disconnects it.";
+    if (!window.confirm(question)) return;
+    setBusy(true);
+    await engine.disable({ purge });
+    setBusy(false);
+    feedback("save");
+    toast({ text: purge ? "Synced copy deleted" : "Sync turned off — your journal is still here", icon: "check" });
+  };
+
+  return (
+    <Card className="mt-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="fhj-eyebrow mb-1">Sync across devices</div>
+          <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>{syncLine(status)}</p>
+        </div>
+        <SyncBadge status={status} />
+      </div>
+
+      {!available && !on && (
+        <>
+          <p className="text-[11.5px] leading-relaxed mt-3" style={{ color: C.subtle }}>
+            This copy of Health Journal doesn't have a sync server set up, so the journal is local
+            only — which is the default and works completely. Everything else on this screen is
+            unaffected.
+          </p>
+          <SyncServerPanel onSaved={() => { onRefreshConfig && onRefreshConfig(); force((n) => n + 1); }} />
+        </>
+      )}
+
+      {available && !on && (
+        <div className="mt-3">
+          <Button variant="primary" block icon="link" onClick={() => { feedback("nav"); setFlow(true); }}>
+            Set up sync
+          </Button>
+          <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+            Takes about a minute. You can turn it off again whenever you like and keep everything.
+          </p>
+        </div>
+      )}
+
+      {on && (
+        <div className="mt-3 flex flex-col gap-2">
+          {status.email && (
+            <div className="text-[11.5px]" style={{ color: C.subtle }}>
+              Signed in as <span className="font-semibold" style={{ color: C.ink }}>{status.email}</span>
+            </div>
+          )}
+          {status.action === "signIn" || status.action === "passphrase" ? (
+            <Button variant="primary" block icon="key" onClick={() => { feedback("nav"); setFlow(true); }}>
+              {status.action === "signIn" ? "Sign in again" : "Enter passphrase"}
+            </Button>
+          ) : (
+            <Button variant="secondary" block icon="refresh" disabled={busy} onClick={syncNow}>
+              {busy ? "Syncing…" : "Sync now"}
+            </Button>
+          )}
+          <SwitchRow
+            on={engine.photosEnabled()}
+            onChange={(v) => { feedback(v ? "toggleOn" : "toggleOff"); engine.setPhotoSync(v); force((n) => n + 1); }}
+            label="Sync photos too"
+            desc="Photos are much larger than entries, so this is a separate choice. Encrypted the same way." />
+          <Button variant="ghost" size="sm" block disabled={busy} onClick={() => stop(false)}>
+            Stop syncing on this device
+          </Button>
+          <Button variant="ghost" size="sm" block disabled={busy} onClick={() => stop(true)}>
+            Stop and delete the synced copy
+          </Button>
+        </div>
+      )}
+
+      {flow && (
+        <SyncSetupFlow engine={engine}
+          onClose={() => setFlow(false)}
+          onFinished={() => { setFlow(false); force((n) => n + 1); }} />
+      )}
+    </Card>
+  );
+}
+
+function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete, syncEngine, syncStatus, syncConfigured, onRefreshSyncConfig }) {
   const prefs = db.profile.prefs || DEFAULT_PREFS;
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
@@ -5918,6 +6390,11 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
         )}
       </Card>
 
+      {syncEngine && (
+        <SyncCard engine={syncEngine} status={syncStatus} available={syncConfigured}
+          onRefreshConfig={onRefreshSyncConfig} />
+      )}
+
       <AiSettingsCard ai={db.ai} setAi={setAi} db={db} onSetupComplete={onAiSetupComplete} />
 
       <Card className="mt-3">
@@ -5982,10 +6459,19 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
             Restore example data
           </Button>
           <Button variant="danger" block icon="trash" onClick={async () => {
-            if (window.confirm("Erase your setup, all entries, and all saved photos? This cannot be undone. You'll go back through first-time setup.")) {
+            /* With sync on, erasing only the local copy would be a trap: the
+               next pull would bring the whole journal back within seconds. So
+               the question says what actually happens, and the cloud copy goes
+               with it. */
+            const synced = syncStatus && syncStatus.phase !== "off";
+            const question = synced
+              ? "Erase your setup, all entries, and all saved photos — on this device and on the sync server? This cannot be undone, and it signs this device out of sync."
+              : "Erase your setup, all entries, and all saved photos? This cannot be undone. You'll go back through first-time setup.";
+            if (window.confirm(question)) {
+              if (synced && syncEngine) await syncEngine.disable({ purge: true });
               const ix = await loadPhotoIndex();
               await deletePhotos(Object.keys(ix));
-              setDb({ profile: blankProfile(), entries: [], reports: [], ack: false, onboarded: false, ai: DEFAULT_AI, schemaVersion: SCHEMA_VERSION }); goHome();
+              setDb({ profile: blankProfile(), entries: [], reports: [], tombstones: [], ack: false, onboarded: false, ai: DEFAULT_AI, schemaVersion: SCHEMA_VERSION }); goHome();
             }
           }}>
             Erase all data
@@ -8064,60 +8550,20 @@ function ReportHistoryList({ reports, openSaved, deleteSaved }) {
    shared empty state
    ============================================================ */
 
-const FB = { prefs: DEFAULT_PREFS, ctx: null };
-const hapticsSupported = () => typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
+/* The whole feedback layer now lives in src/lib/feedback.ts — haptics (native
+   Taptic Engine where there is one, `navigator.vibrate` where there isn't),
+   sound, and the visual acknowledgement, behind one call that names what the
+   person did. What stays here is the adapter this file's several thousand call
+   sites already speak to.
 
-/* Haptics stayed a flat pattern table; the audio moved out to lib/sound.ts,
-   which is a proper little instrument rather than six fixed beeps. The two are
-   kept in one call so a call site says what the person did — `feedback("save")`
-   — and the app decides how that is expressed. */
-const HAPTIC_PATTERNS = {
-  tap: 10, select: 15, include: 15, skip: 8, expand: 8, nav: 8, reorder: 12,
-  toggleOn: 14, toggleOff: 10, delete: [12, 24],
-  batch: [10, 30, 10], quickadd: [12, 20], save: [20, 40],
-  complete: [18, 40, 18], milestone: [30, 50, 30],
+   `FB.prefs` is a live view of the module's preferences rather than a copy, so
+   the many places that assign to it (Settings, the strength picker) keep
+   working and reach the real engine instead of a stale object. */
+const FB = {
+  get prefs() { return getFeedbackPrefs(); },
+  set prefs(p) { setFeedbackPrefs(p); },
+  ctx: null,
 };
-
-/* The web has no amplitude control — `navigator.vibrate` takes durations and
-   nothing else. Strength is therefore expressed the only way the platform
-   allows: a longer pulse, which a phone's motor renders as a firmer one.
-
-   The gaps between pulses in a multi-part pattern are scaled far less than the
-   pulses themselves (see below), because stretching the silences too turns a
-   crisp double-tap into two separate events. */
-const HAPTIC_SCALE = { soft: 0.6, medium: 1, strong: 1.7, vivid: 2.4 };
-const HAPTIC_GAP_SCALE = { soft: 0.9, medium: 1, strong: 1.15, vivid: 1.25 };
-const HAPTIC_LEVELS = [
-  ["soft", "Soft"], ["medium", "Medium"], ["strong", "Strong"], ["vivid", "Vivid"],
-];
-
-/** Scale a pattern for the chosen strength. Even indices are pulses, odd ones
-    are the silences between them, which is how `navigator.vibrate` reads an
-    array. A single number is one pulse. */
-function scaleHaptic(pattern, strength) {
-  const pulse = HAPTIC_SCALE[strength] ?? HAPTIC_SCALE.vivid;
-  const gap = HAPTIC_GAP_SCALE[strength] ?? HAPTIC_GAP_SCALE.vivid;
-  const scaleOne = (v, i) => Math.max(1, Math.round(v * (i % 2 === 0 ? pulse : gap)));
-  return Array.isArray(pattern) ? pattern.map(scaleOne) : scaleOne(pattern, 0);
-}
-
-/* Finishing the journal and hitting a streak happen once a day, and they are
-   the two moments the app most wants to land. The rattle guard below exists
-   for repeated taps, so they are exempt from it — otherwise a celebration that
-   happens to follow a tap by 30ms is silently dropped. */
-const UNMISSABLE = new Set(["complete", "milestone"]);
-
-let lastFb = 0;
-function feedback(type) {
-  const now = Date.now();
-  if (now - lastFb < 40 && !UNMISSABLE.has(type)) return; // rattle guard
-  lastFb = now;
-  if (FB.prefs.haptics !== false && hapticsSupported()) {
-    const pat = scaleHaptic(HAPTIC_PATTERNS[type] || 10, FB.prefs.hapticStrength);
-    try { navigator.vibrate(pat); } catch (e) { /* ignore */ }
-  }
-  playSound(type);
-}
 
 /* ============================================================
    Toasts and Undo
@@ -11077,6 +11523,10 @@ function migrateDb(data) {
   /* Reminders moved from one time to a list. readReminders migrates a
      pre-list install on the way through, so nobody loses the time they set. */
   d.profile.reminders = readReminders(d.profile);
+  /* Deletion markers. Swept on every load rather than on a timer: the list is
+     tiny, the sweep is pure, and a journal that sat closed for a year should
+     not carry a year of them around. */
+  d.tombstones = sweepTombstones(Array.isArray(d.tombstones) ? d.tombstones : []);
   d.schemaVersion = SCHEMA_VERSION;
   return d;
 }
@@ -11261,6 +11711,59 @@ export default function App({ viewer = false }) {
     saveTimer.current = setTimeout(() => { store.set(SKEY, JSON.stringify(db)); }, 500);
     return () => clearTimeout(saveTimer.current);
   }, [db]);
+
+  /* ---------- cross-device sync ----------
+
+     Deliberately *after* the save effect above and completely separate from it.
+     The journal reaches disk on its own 500ms debounce whether or not sync
+     exists, is on, is signed in, or can see a network — and `nudge()` below is
+     a flag set on an object, not a request. That ordering is the whole reason
+     a save can never be slowed down, blocked, or lost by anything to do with
+     syncing. */
+  const dbRef = useRef(db);
+  dbRef.current = db;
+  const [syncStatus, setSyncStatus] = useState(IDLE_STATUS);
+  const [syncConfigured, setSyncConfigured] = useState(syncAvailable);
+  const engineRef = useRef(null);
+  if (!engineRef.current && !viewer) {
+    engineRef.current = new SyncEngine({
+      backend: new SupabaseBackend(),
+      kv: { get: store.get, set: store.set, del: store.del },
+      getDb: () => dbRef.current,
+      /* Remote changes come in through the same setState every local edit uses,
+         so they persist on the same debounce and re-render the same way. There
+         is no second write path to keep in step. */
+      applyDb: (next) => setDb(next),
+      onStatus: setSyncStatus,
+      photos: {
+        listLocal: async () => Object.keys(await loadPhotoIndex()),
+        read: async (id) => {
+          const full = await loadPhotoData(id);
+          if (!full) return null;
+          return { full, thumb: (await loadThumbData(id)) || full };
+        },
+        write: async (id, blob) => {
+          const ix = await loadPhotoIndex();
+          if (ix[id]) return; // already here; never overwrite a local original
+          await savePhotos([{ id, full: blob.full, thumb: blob.thumb, takenAt: new Date().toISOString() }]);
+        },
+      },
+    });
+  }
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (viewer || !engine) return;
+    engine.start().catch(() => {});
+    return () => engine.stop();
+  }, [viewer]);
+
+  /* One nudge per journal change. Coalesced inside the engine, so a burst of
+     taps in Quick Log is one round trip and not fifteen. */
+  useEffect(() => {
+    if (viewer || !db || !loaded.current) return;
+    engineRef.current?.nudge();
+  }, [db, viewer]);
 
   // Push a tiny summary to the iOS Home Screen widget (no-op outside the
   // native shell — see src/lib/widgetBridge.ts). Same debounce as the save
@@ -11594,7 +12097,16 @@ export default function App({ viewer = false }) {
     });
   };
   const removeLog = (slice) => (log) => {
-    setDb((prev) => ({ ...prev, [slice]: (prev[slice] || []).filter((r) => r.id !== log.id) }));
+    /* A deletion has to be written down, not just performed. A row that is
+       simply absent is indistinguishable from a row that hasn't arrived yet, so
+       without a tombstone the next pull from another device brings it straight
+       back. Harmless when sync is off — the list is swept and never read. */
+    const deviceId = engineRef.current?.getDeviceId?.() || "local";
+    setDb((prev) => addTombstone(
+      { ...prev, [slice]: (prev[slice] || []).filter((r) => r.id !== log.id) },
+      slice, log.id, deviceId
+    ));
+    engineRef.current?.noteDeleted?.(slice, log.id);
     let undone = false;
     toast({
       text: slice === "food" ? "Meal deleted" : "Entry deleted",
@@ -11602,7 +12114,14 @@ export default function App({ viewer = false }) {
       cat: LOG_CAT[slice],
       undo: () => {
         undone = true;
-        setDb((prev) => ({ ...prev, [slice]: [...(prev[slice] || []), log] }));
+        setDb((prev) => ({
+          ...prev,
+          [slice]: [...(prev[slice] || []), log],
+          /* Undo has to lift the tombstone too, or the row comes back here and
+             is deleted again on the next sync. */
+          tombstones: (prev.tombstones || []).filter((t) => !(t.kind === slice && t.id === log.id)),
+        }));
+        engineRef.current?.noteDeleted?.(slice, log.id);
       },
     });
     /* The photo blob outlives the toast rather than going with the row. An
@@ -11652,6 +12171,8 @@ export default function App({ viewer = false }) {
   } else if (screen === "settings") {
     content = <SettingsScreen db={db} setDb={setDb} setAi={setAi} goHome={goHome} goSetup={() => setScreen("setup")}
       goExport={() => setScreen("export")}
+      syncEngine={engineRef.current} syncStatus={syncStatus} syncConfigured={syncConfigured}
+      onRefreshSyncConfig={() => setSyncConfigured(syncAvailable())}
       onAiSetupComplete={() => { setAiAutoRun((n) => n + 1); setScreen("dashboard"); }}
       goImport={() => setScreen("fitbit")} lockEnabled={!!lock}
       onSetupPin={() => setLockFlow("setup")} onChangePin={() => setLockFlow("change-verify")}

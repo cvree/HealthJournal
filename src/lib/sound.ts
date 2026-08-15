@@ -275,6 +275,36 @@ const VOICES: Record<string, () => void> = {
     tick(0, 0.05, 1500, 0.014);
   },
 
+  /* Something did not work.
+
+     The hard part of an error sound is that the obvious answer — a buzzer — is
+     wrong here. This app is used by someone recording how much pain they were
+     in today; being scolded by their journal because a sync retry failed is a
+     reason to close it. So: two notes, a descending whole tone rather than a
+     dissonance, played on the same wooden instrument as everything else, with a
+     touch more body so it registers as *different* rather than as *bad*. It is
+     unmistakably not the save sound, and it is not an alarm. */
+  error() {
+    tick(0, 0.09, 900, 0.03);
+    blip({ f: 392.0, d: 0.1, g: 0.22, type: "triangle", attack: 0.008 });
+    blip({ f: 349.23, t: 0.085, d: 0.19, g: 0.2, type: "sine", bend: 0.97, attack: 0.01 });
+  },
+
+  /* Something needs attention but nothing is lost — an estimate the model was
+     unsure about, a sync waiting on a signal. One note, held, slightly open. */
+  warn() {
+    tick(0, 0.05, 1200, 0.018);
+    blip({ f: 440.0, d: 0.13, g: 0.17, type: "triangle", bend: 0.98, attack: 0.01 });
+  },
+
+  /* Devices agreed. The quietest voice in the app on purpose: this can fire
+     when the user is not the one who caused it, so it has to be closer to a
+     room sound than to a notification. */
+  syncDone() {
+    blip({ f: 523.25, d: 0.05, g: 0.08, type: "sine", attack: 0.008 });
+    blip({ f: 698.46, t: 0.05, d: 0.09, g: 0.07, type: "sine", filter: 2200, attack: 0.01 });
+  },
+
   /* A streak milestone. `complete`, opened out one note further and lifted. */
   milestone() {
     const notes = [349.23, 440.0, 523.25, 698.46];
@@ -298,10 +328,14 @@ VOICES.photo = VOICES.quickadd;
 
 let lastAt = 0;
 const lastByVoice: Record<string, number> = {};
-const LONG = new Set(["complete", "milestone", "save"]);
+const LONG = new Set(["complete", "milestone", "save", "error"]);
 /* Once-a-day moments skip the rattle floor. Their own per-voice floor still
-   stops them stacking, so a celebration can't overlap itself into mush. */
-const UNMISSABLE = new Set(["complete", "milestone"]);
+   stops them stacking, so a celebration can't overlap itself into mush.
+
+   Failures are on this list for a different reason: an error that lands in the
+   middle of a burst of taps is the one sound the user actually needs, and
+   dropping it would make a failed save sound exactly like a successful one. */
+const UNMISSABLE = new Set(["complete", "milestone", "error", "warn"]);
 
 export type SoundName = keyof typeof VOICES | string;
 
