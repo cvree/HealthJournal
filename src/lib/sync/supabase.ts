@@ -67,13 +67,37 @@ function toSession(user: any): Session | null {
   return user ? { userId: user.id, email: user.email ?? null } : null;
 }
 
-/** Supabase surfaces failures as a value, not a throw. Everything here funnels
-    through one place so the engine sees ordinary Errors with messages a person
-    could read, and so an auth failure is recognisable as one. */
+/**
+ * Turn whatever came back into a sentence a person can act on.
+ *
+ * Two rewrites matter here, and both are the difference between a screen that
+ * helps and one that shows an implementation detail:
+ *
+ * - Auth failures keep a `session:` prefix, which is how the engine recognises
+ *   "you need to sign in again" as distinct from "the network is flaky" and
+ *   offers the right single button.
+ * - "Failed to fetch" is what a *browser* says. It is also the most likely
+ *   thing to appear here — no signal, a paused project, a mistyped address —
+ *   and all three have the same answer, so they get one sentence containing it,
+ *   including the part the user most needs to hear.
+ */
+export function describeBackendError(error: any, fallback = "Something went wrong."): string {
+  /* Read the message, never the object. `String(new Error(""))` is the literal
+     word "Error", which is worse than the fallback it would have shadowed. */
+  const raw = typeof error?.message === "string" ? error.message
+    : typeof error === "string" ? error : "";
+  const msg = raw.trim() || fallback;
+  if (/expired|invalid.*token|jwt/i.test(msg)) return `session: ${msg}`;
+  if (/failed to fetch|networkerror|load failed|network request failed|ERR_[A-Z_]+/i.test(msg)) {
+    return "Couldn't reach the sync server. Check your connection and try again — nothing has been lost.";
+  }
+  return msg;
+}
+
+/** Supabase surfaces failures as a value, not a throw, so every call site
+    funnels through here and the engine only ever sees ordinary Errors. */
 function raise(error: any, fallback: string): never {
-  const msg = String(error?.message || error || fallback);
-  if (/expired|invalid.*token|jwt/i.test(msg)) throw new Error(`session: ${msg}`);
-  throw new Error(msg);
+  throw new Error(describeBackendError(error, fallback));
 }
 
 export class SupabaseBackend implements SyncBackend {

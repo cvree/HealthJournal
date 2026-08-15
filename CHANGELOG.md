@@ -1,5 +1,118 @@
 # Changelog
 
+## 1.10.0
+
+### One feedback system
+
+Haptics lived in a pattern table in `App.tsx`, sound lived in its own
+instrument, motion lived in GSAP, and visual response lived in a scattering
+of `:active` rules. Four systems, no shared vocabulary, and no way at all to
+say "that failed" — the app had eleven sounds for things going right and
+none for anything going wrong.
+
+They are one door now (`src/lib/feedback.ts`). A call site names what the
+person did and this decides how that reads on the device in their hand:
+
+```js
+feedback("save")                  // haptic + sound
+feedback("error", { el: button }) // …and the button shakes
+```
+
+- **Haptics feel native where the hardware is.** On a phone with a Taptic
+  Engine, choosing an option is a selection tick, saving is a success
+  notification, and deleting is a heavy impact — the same three sensations
+  every other app on the phone uses, driven through Capacitor. Elsewhere it
+  falls back to the scaled `navigator.vibrate` patterns it always used,
+  because duration is the only lever the web gives you. The strength setting
+  now shifts impact *weight* natively rather than being ignored.
+- **Sound gained the two voices it was missing.** A failure that is
+  unmistakably not the save sound and is also not an alarm — a descending
+  whole tone on the same wooden instrument, because being scolded by your
+  journal for a failed sync retry is a reason to close it. And a sync note
+  quiet enough to fire when the user did not cause it.
+- **A third channel that needs no hardware.** Sound needs a speaker and
+  haptics need a motor; a 260ms scale pulse on the element you touched needs
+  neither, and reaches the people the other two never did. Failures shake
+  laterally instead — the one gesture that has meant "no" since physical
+  dialogs.
+- **Every channel degrades on its own.** Sound off, haptics off, reduced
+  motion, no motor, no audio device, a browser that throws when asked to
+  vibrate: each subtracts exactly one channel and leaves the rest working.
+  None of them can take a save down.
+
+### Sync across devices, if you want it
+
+Off by default. **Local Only is still the product** — no account, nothing
+uploaded, every privacy claim intact — and this is an option most people will
+never take.
+
+Take it and one thing happens: log a meal on your phone, open your laptop,
+and it's there. Edit it there and the change comes back. Settings says
+*Local only* or *Synced*, and turning it on is four screens — what this does,
+a code emailed to you, a passphrase, done. No password to invent. The words
+*database*, *bucket* and *token* appear nowhere a normal user can see them.
+
+**Local saves never wait for the network.** The journal reaches disk on the
+same debounce it always used; the engine finds out afterwards. No signal, an
+expired session, a server that's down, a lid closed mid-push — none of it can
+reach the save path.
+
+The problems that actually make sync hard, and what each one cost:
+
+- **Two devices both logging Tuesday.** A day's identity is its *date*, not
+  the random id each device minted for it. One Tuesday, always.
+- **Two devices editing the same Tuesday.** Entries merge answer by answer. A
+  phone that recorded pain at breakfast and a laptop that recorded sleep at
+  midnight are not in conflict, and last-write-wins would silently throw one
+  of them away.
+- **Deletions coming back.** They travel as tombstones kept in the journal
+  itself, so they survive a reload, an export and a restore. Undo lifts the
+  tombstone with the row.
+- **A pull skipping a row.** The cursor rides a server-assigned sequence, not
+  a timestamp — two writes in the same millisecond can't slip through.
+- **A request that may or may not have arrived.** Pushes are idempotent, so
+  retrying is always safe, which is what lets the engine retry freely.
+- **A device back from a week offline.** The conflict rule is enforced in SQL
+  as well as on the client, so a stale write is dropped by the server.
+- **Both sides already having a journal.** The first pass is a union. Every
+  day from both devices survives and neither side is overwritten — the setup
+  screen tells you how many came from where.
+- **Photos being enormous.** A separate opt-in, so entries can sync without a
+  year of daily photos on a metered connection.
+
+### What the encryption claims, and what it refuses to
+
+Records are sealed on the device with AES-256-GCM under a PBKDF2-SHA256 key
+(600,000 iterations) derived from a passphrase that is never transmitted. The
+ciphertext is bound to the row it belongs to, so it can't be moved between
+records without failing to decrypt. The derived key is stored
+non-extractable, so the passphrase is never written down anywhere and the key
+can't be read back out as bytes by any code, including this app's. The server
+holds dates and unreadable blocks.
+
+What is *not* claimed, in the app or the README: not zero-knowledge (the app
+is delivered over the web, and whoever controls the host controls the code
+that handles your passphrase — said plainly, on the screen where you choose
+it), not HIPAA, not "medical grade", and not protection against someone
+holding your unlocked phone.
+
+The Privacy card now changes with the app rather than describing an app you
+might not be running: turn sync on and the "no account" and "no server" lines
+are replaced rather than left standing.
+
+### Tests
+
+143 new ones. The merge rules and the projection are pure and tested
+exhaustively; the crypto is tested through its negative cases (wrong
+passphrase, moved ciphertext, tampered bytes) more than its happy path; and
+the engine is driven end to end against a complete in-memory implementation
+of the same contract Supabase implements — offline, reconnecting,
+half-pushed, wrong passphrase, two devices racing the same day, sign-out,
+restart, purge. Two real bugs surfaced that way and were fixed before
+shipping: a pull page being mistaken for a snapshot (which would have
+re-uploaded the whole journal after every incremental pull), and an engine
+that answered "yes, done" to a caller when it had merely deferred.
+
 ## 1.9.0
 
 ### The first screen is for logging

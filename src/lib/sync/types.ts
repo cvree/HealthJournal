@@ -22,13 +22,16 @@
       ties resolve to the *same* answer everywhere, rather than to a different
       one on each device. */
 
-/** The collections that sync. Photos are handled separately (blobs, optional,
-    and far larger), and reports are derived rather than authored. */
-export type RecordKind = "entry" | "food" | "bowel" | "foodItem" | "profile" | "photoMeta";
+/** The collections that sync.
 
-export const RECORD_KINDS: RecordKind[] = [
-  "entry", "food", "bowel", "foodItem", "profile", "photoMeta",
-];
+    Photo blobs are not on this list and never will be: they are two or three
+    orders of magnitude larger than everything else here, they are optional, and
+    they travel on their own path (see engine.syncPhotos). Reports are absent
+    for the opposite reason — they are derived from entries, so syncing them
+    would be syncing the same facts twice. */
+export type RecordKind = "entry" | "food" | "bowel" | "foodItem" | "profile";
+
+export const RECORD_KINDS: RecordKind[] = ["entry", "food", "bowel", "foodItem", "profile"];
 
 /** One syncable thing, in the form both sides agree on. `payload` is the
     plaintext record; it is encrypted before it ever reaches the network. */

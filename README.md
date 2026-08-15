@@ -9,10 +9,17 @@ with you.
 
 There is no account, no server, and no tracking. Out of the box, after the app has loaded once
 it makes **no network requests at all** — it installs to a phone's Home Screen and works
-completely offline. The one exception is opt-in: if you add your own Google Gemini API key in
-Settings, the AI observations feature will send a minimal summary of your logged numbers to
-Google *when you ask it to*, and shows you exactly what it's about to send first. It ships off,
-and everything else keeps working whether you turn it on or not.
+completely offline.
+
+Two things can change that, both opt-in, both off until you turn them on, and both leaving
+everything else working exactly as it does now:
+
+- **AI observations.** Add your own Google Gemini API key in Settings and it sends a minimal
+  summary of your logged numbers *when you ask it to*, showing you exactly what first.
+- **Sync across devices.** Turn it on and your journal follows you from phone to laptop —
+  encrypted on your device before it's uploaded, with a passphrase that never leaves it. Local
+  saves still never wait for the network. [How it works, and what it doesn't
+  claim.](#optional-sync-across-devices)
 
 > **Not medical advice.** This is a personal tracking tool. It does not diagnose, treat, cure, or
 > prevent any condition. It surfaces *possible patterns* in your own logs and never claims a cause.
@@ -239,6 +246,78 @@ how much they help:
 
 Clearing site data by hand still erases everything. Export a backup first.
 
+### Optional sync across devices
+
+**Off by default. Local Only is the product; this is an option.** No account is needed, nothing
+is uploaded, and every word above stays true unless you turn this on yourself.
+
+Turned on, it does one thing: log something on your phone, open the app on your computer, and
+it's already there. Edit it there and the change comes back. Settings shows two words — *Local
+only* or *Synced* — and the setup is four screens: what this does, a code emailed to you, a
+passphrase, done. There is no password to invent, and the words *database*, *bucket* and *token*
+appear nowhere a normal user can see them.
+
+**Local saves never wait for the network.** The journal is written to disk on the same debounce
+it always used, and the sync engine finds out afterwards. No signal, expired session, server
+down, laptop lid closed mid-push — none of it can reach the save path.
+
+What that costs to build, and what it buys:
+
+| Problem | How it's solved |
+| --- | --- |
+| Two devices both log Tuesday | A day's sync identity is its **date**, not the random local id each device minted. One Tuesday, always. |
+| Two devices edit the same day | Entries merge **answer by answer**. A phone recording pain at breakfast and a laptop recording sleep at midnight are not in conflict, and last-write-wins would throw one away. |
+| A deletion gets undone by the other device | Deletions are **tombstones** in the journal itself, so they survive a reload and travel like any other change. Undo lifts the tombstone too. |
+| A pull silently skips a row | The cursor rides a **server sequence**, not a timestamp. Two rows written in the same millisecond can't slip through the gap. |
+| A request that may or may not have arrived | Pushes are **idempotent** — the server keeps the newer of two versions — so retrying is always safe. |
+| A device that's been offline for a week | The conflict rule is enforced **in SQL**, not only on the client, so a stale write is dropped by the server. |
+| Both sides already have a journal | The first pass is a **union**. Every day from both devices survives; neither side is overwritten. |
+| Photos are enormous | **Separate opt-in.** Sync your entries without paying for a year of daily photos on a metered connection. |
+
+#### What the encryption does and doesn't claim
+
+Every record's contents are sealed on your device with **AES-256-GCM**, under a key derived by
+**PBKDF2-SHA256 at 600,000 iterations** (OWASP's current figure) from a passphrase that is never
+transmitted. The ciphertext is bound to the row it belongs to, so it can't be moved between
+records without failing to decrypt. The server holds a kind, an id, a timestamp, a device id, a
+deleted flag — and blocks it cannot read. The derived key is stored **non-extractable** in
+IndexedDB, so the passphrase is never written down anywhere and the key can't be read back out
+as bytes by any code, including this app's.
+
+What is deliberately **not** claimed, in the app or here:
+
+- **Not zero-knowledge.** The app is delivered over the web. Whoever controls the host controls
+  the code that handles your passphrase. That's true of every browser-delivered encrypted app,
+  and saying so is more useful than a badge implying otherwise.
+- **Not HIPAA, not "medical grade".** No compliance posture is claimed anywhere in this project.
+- **Not protection against someone holding your unlocked phone.** The local journal is plaintext
+  on the device — that's what makes it instant and offline-first.
+
+Losing the passphrase means the synced copy can't be read again. The copy on your device is
+unaffected, and a downloaded backup still survives everything.
+
+#### Pointing it at a server
+
+This repository ships no server and no credentials, because a shared one would mean strangers'
+health journals landing in an account nobody owns. Sync becomes available when a Supabase project
+is configured, in either of two ways:
+
+1. **For a deployment.** Set the repository secrets `VITE_SUPABASE_URL` and
+   `VITE_SUPABASE_ANON_KEY`; the Pages workflow passes them to the build.
+2. **For one device.** Settings → Sync across devices → *Use your own sync server*, and paste the
+   two values.
+
+Either way: create a project, open its SQL editor, and run [`supabase/schema.sql`](supabase/schema.sql)
+— it creates the tables, the row-level security policies, the conflict rule, the realtime
+publication, and the private photo bucket, and it's safe to re-run.
+
+The **anon key is meant to be public**: it identifies the project and authorises nothing on its
+own, because every table is restricted to the signed-in owner. The **service-role key bypasses
+all of that** and must never be added to this repository, the build, or a browser.
+
+With neither source set, `syncConfig()` returns null, Settings says so in one plain sentence, and
+the app is exactly the local-first journal it has always been.
+
 ### Optional AI observations, and your API key
 
 Off by default, and everything else works identically whether it's on or off.
@@ -357,13 +436,26 @@ health-journal/
 │   │   ├── durability.ts       # persistent storage, backup freshness
 │   │   ├── deeplink.ts         # ?screen= allowlist for Home Screen shortcuts
 │   │   ├── motion.ts           # Lenis + GSAP
+│   │   ├── sound.ts            # the synthesised instrument
+│   │   ├── feedback.ts         # one door: haptics + sound + motion + visual
+│   │   ├── sync/               # optional cross-device sync
+│   │   │   ├── types.ts        #   the record contract
+│   │   │   ├── merge.ts        #   conflict resolution (pure)
+│   │   │   ├── project.ts      #   journal <-> records (pure)
+│   │   │   ├── crypto.ts       #   PBKDF2 + AES-GCM sealing
+│   │   │   ├── keyStore.ts     #   non-extractable key in IndexedDB
+│   │   │   ├── backend.ts      #   the server contract + an in-memory one
+│   │   │   ├── supabase.ts     #   the only file that knows what Supabase is
+│   │   │   ├── config.ts       #   where the server address comes from
+│   │   │   └── engine.ts       #   pull, merge, apply, push, retry
 │   │   └── widgetBridge.ts     # iOS widget App Group bridge
 │   ├── types/models.ts         # the data contract
 │   └── styles/index.css
+├── supabase/schema.sql         # sync tables, RLS policies, conflict rule
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 508 tests across 20 suites
+└── tests/                      # 641 tests across 25 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
@@ -389,7 +481,16 @@ download before any reset, never a silent wipe.
   swipe-deck fling physics.
 - **The ambient backdrop is CSS** — three blurred layers on the compositor, tinted live from
   `--fhj-hue`. Under `prefers-reduced-motion` it holds still rather than disappearing.
+- **One feedback layer** (`src/lib/feedback.ts`). A call site names what the person did —
+  `feedback("save")`, `feedback("error", { el })` — and four channels answer: haptics, sound,
+  motion, and a visual acknowledgement on the element itself. On a phone with a Taptic Engine it
+  drives real impact weights and notification patterns through Capacitor; everywhere else it
+  falls back to scaled `navigator.vibrate` patterns; on a laptop with neither it still pulses the
+  button, which is the one channel every user has.
 - Every animation, sound, and haptic respects `prefers-reduced-motion` and the in-app toggles.
+  Each channel degrades **independently**: sound off, haptics off, reduced motion, no motor, no
+  audio device — each subtracts one and leaves the others working, and none of them can take a
+  save down with it.
 - Keyboard users get a skip link, a `main` landmark, visible focus rings, and `aria-current` on
   the active tab. `prefers-contrast: more` darkens text and card borders.
 - The 30-day trend metric picker is a single tab stop with roving focus: ←/→/Home/End move

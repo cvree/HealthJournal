@@ -77,7 +77,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.9.0";
+export const APP_VERSION = "1.10.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -5948,9 +5948,13 @@ function SyncSetupFlow({ engine, onClose, onFinished }) {
   const [summary, setSummary] = useState(null);
   const index = { explain: 0, email: 1, code: 1, passphrase: 2, done: 3 }[step] ?? 0;
 
+  const bodyRef = useRef(null);
   const fail = (e) => {
     setErr(String(e?.message || e || "Something went wrong.").replace(/^session: /, ""));
-    feedback("error");
+    /* A wrong code and a wrong passphrase are the two things people will
+       actually hit here, and both are worth answering in the same breath they
+       were made — the shake lands before the sentence is read. */
+    feedback("error", { el: bodyRef.current });
   };
 
   const sendCode = async () => {
@@ -6128,7 +6132,7 @@ function SyncSetupFlow({ engine, onClose, onFinished }) {
       onClose={busy ? undefined : onClose}
       footer={actions}>
       <SyncFlowProgress index={index} />
-      {body}
+      <div ref={bodyRef}>{body}</div>
       {err && (
         <div className="fhj-note mt-3" role="alert" style={{ borderColor: C.alert }}>
           <Icon name="warn" size={14} color={C.alert} />
@@ -6479,9 +6483,13 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
         </div>
       </Card>
 
-      <PrivacyCard aiEnabled={db.ai?.enabled === true} aiAuto={db.ai?.enabled === true && db.ai?.auto === true} />
+      <PrivacyCard aiEnabled={db.ai?.enabled === true} aiAuto={db.ai?.enabled === true && db.ai?.auto === true}
+        syncOn={!!syncStatus && syncStatus.phase !== "off"} syncEmail={syncStatus?.email} />
       <p className="text-[11px] mt-4 text-center" style={{ color: C.subtle }}>
-        {APP_NAME} {APP_VERSION} · your data stays on this device.
+        {APP_NAME} {APP_VERSION} ·{" "}
+        {syncStatus && syncStatus.phase !== "off"
+          ? "saved on this device, encrypted across yours."
+          : "your data stays on this device."}
       </p>
     </div>
   );
@@ -6491,11 +6499,21 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
    than taken on faith. Every line here is verifiable from the source: there is
    no analytics call, no fetch to a backend, and after first load no network
    request at all — the fonts are bundled, not fetched from a CDN. */
-function PrivacyCard({ aiEnabled = false, aiAuto = false }) {
+/* The claim the whole app rests on, written so it can be checked rather than
+   taken on faith — which means every line of it has to track what is actually
+   switched on right now. Two options change what is true here: AI observations,
+   and sync. Both rewrite their own line rather than leaving a promise standing
+   that the app has stopped keeping. A privacy card that is right by default and
+   quietly wrong once you use a feature is worse than no card. */
+function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEmail = null }) {
   const [open, setOpen] = useState(false);
   const facts = [
-    ["No account", "There's no sign-up, no email, no password. Nothing identifies you to anyone."],
-    ["No server", "Your entries, photos, and reports are written to this browser's storage and never uploaded. There is no backend to upload them to."],
+    syncOn
+      ? ["Signed in for sync", `Sync across devices is on${syncEmail ? `, using ${syncEmail}` : ""}. That email is the only thing identifying you, and it exists so your own devices can find each other. Turning sync off removes it from this device and leaves your journal untouched.`]
+      : ["No account", "There's no sign-up, no email, no password. Nothing identifies you to anyone."],
+    syncOn
+      ? ["Encrypted before it's uploaded", "Your entries are sealed on this device with a key derived from your sync passphrase, which is never sent anywhere. The server holds dates and unreadable blocks. Because the app is delivered over the web, this can't protect you from someone who controls the site itself — and no HIPAA or medical-records claim is made."]
+      : ["No server", "Your entries, photos, and reports are written to this browser's storage and never uploaded. There is no backend to upload them to."],
     ["No tracking", "No analytics, no cookies, no advertising or third-party scripts of any kind."],
     // This claim has to track reality, not the ideal. Turning on AI
     // observations adds exactly one outbound call — the card says so, on the
@@ -6504,7 +6522,9 @@ function PrivacyCard({ aiEnabled = false, aiAuto = false }) {
       ? ["Photos are sent as you attach them", "AI observations are on, and so is letting AI fill in the log. A photo you attach to a meal or a bowel entry is sent to your AI provider for a reading as soon as you add it, without a confirmation each time — that is what the switch in Settings turned on, and turning it back off restores the confirm step. Everything else still stays on this device."]
       : aiEnabled
         ? ["One network call, on request", "AI observations are on. Nothing is sent automatically: each analysis you ask for sends a summary of your logged numbers to your AI provider, and shows you exactly what before it goes. Everything else still stays here, and the rest of the app works offline."]
-        : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations in Settings is the one thing that changes this.)"],
+        : syncOn
+          ? ["Still offline-first", "Saving never waits for the network. Everything is written here first and sent afterwards, so a full day logged in airplane mode is normal — it catches up when you're back."]
+          : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations or sync in Settings is what changes this.)"],
     ["Your files, your move", "Exports and backups are ordinary files saved to your device. Where they go next is entirely up to you."],
   ];
   return (
@@ -6528,9 +6548,9 @@ function PrivacyCard({ aiEnabled = false, aiAuto = false }) {
       )}
       {open && (
         <p className="text-[11px] leading-relaxed mt-3 pt-3" style={{ color: C.sub, borderTop: `1px solid ${C.line}` }}>
-          The flip side of all this: nobody can recover your journal for you. If you clear this browser's
-          site data, uninstall the app, or lose the device, the only copy that survives is a backup file
-          you saved yourself.
+          {syncOn
+            ? "The flip side: your sync passphrase can't be reset by anyone, including us — that is what makes the encryption worth anything. Lose it and the synced copy becomes unreadable, though the journal on this device is unaffected. A downloaded backup is still the thing that survives everything."
+            : "The flip side of all this: nobody can recover your journal for you. If you clear this browser's site data, uninstall the app, or lose the device, the only copy that survives is a backup file you saved yourself."}
         </p>
       )}
     </Card>
@@ -10349,7 +10369,10 @@ function QuickAdd({ ids, checkedIn, actions }) {
         const done = t.id === "checkin" && checkedIn;
         return (
           <button key={t.id} type="button"
-            onClick={() => { feedback("quickadd"); actions[t.id](); }}
+            /* The third channel. Sound needs a speaker and haptics need a
+               motor; this reaches the person who has neither — and on the
+               most-tapped control in the app, that matters most. */
+            onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); actions[t.id](); }}
             className={`fhj-tile fhj-pop ${t.cat}${done ? " is-done" : ""}`}>
             <span className="fhj-tile-icon">
               <Icon name={done ? "check" : t.icon} size={17} color="currentColor" />
@@ -12324,6 +12347,7 @@ export default function App({ viewer = false }) {
 /* Test-only handle: pure functions exercised by the Node unit tests.
    Harmless at runtime — the artifact still uses the default export. */
 export const __internals = {
+  SyncCard, SyncSetupFlow, SyncBadge, syncLine, PrivacyCard,
   pickReportRange, buildReport, pickPairs, computeInsightsWindow,
   medianDefaultFor, yesterdayToggleFor, longestRunInRange, recentNotes,
   availableReportCards, cardIncluded, migrateDb, genSampleData,

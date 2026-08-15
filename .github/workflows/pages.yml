@@ -56,6 +56,18 @@ jobs:
       - name: Build for Pages
         env:
           BASE_PATH: ${{ steps.base.outputs.base_path || '/' }}
+          # Optional. Set these two repository secrets to switch on the
+          # "Sync across devices" option for visitors to the deployed site;
+          # leave them unset and the app is exactly the local-only journal it
+          # has always been, with the Settings card saying so plainly.
+          #
+          # The anon key is designed to be public — it identifies the project
+          # and authorises nothing on its own, because every table is behind
+          # row-level security keyed on the signed-in user (supabase/schema.sql).
+          # The service-role key must never be added here or anywhere else in
+          # this repository: it bypasses those policies entirely.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
           BASE_PATH="${BASE_PATH:-/}"
           echo "Building with base $BASE_PATH"
