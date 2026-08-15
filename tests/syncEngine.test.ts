@@ -594,6 +594,55 @@ describe("optional photo sync", () => {
     expect(backend.photos.size).toBe(0);
   });
 
+  it("deletes the uploaded copy when the photo is deleted here", async () => {
+    /* The mirror of "no silent data loss", and the one that matters more for a
+       health journal: deleting a photo has to mean deleting it, not deleting
+       the reference and leaving the picture in a bucket. */
+    const backend = new MemoryBackend();
+    const blobs = new Map([["p1", { full: "FULLDATA", thumb: "TH" }]]);
+    const phone = new Device(backend, "phone");
+    phone.engine = new SyncEngine({
+      backend, kv: phone.kv, getDb: () => phone.db,
+      applyDb: (n) => { phone.db = n; }, photos: bridge(blobs), kdfIterations: 1000,
+    });
+    live.push(phone.engine);
+    await phone.connect();
+    await phone.engine.setPhotoSync(true);
+    phone.db.entries.push({ id: "e", date: "2026-03-04", photos: { skin: { photoId: "p1" } }, updatedAt: "2026-03-04T09:00:00.000Z" });
+    await phone.sync();
+    expect(backend.photos.has("p1")).toBe(true);
+
+    blobs.delete("p1");
+    phone.engine.notePhotoDeleted(["p1"]);
+    await phone.sync();
+    expect(backend.photos.has("p1")).toBe(false);
+  });
+
+  it("keeps retrying a deletion the server never confirmed", async () => {
+    const backend = new MemoryBackend();
+    const blobs = new Map([["p1", { full: "FULLDATA", thumb: "TH" }]]);
+    const phone = new Device(backend, "phone");
+    phone.engine = new SyncEngine({
+      backend, kv: phone.kv, getDb: () => phone.db,
+      applyDb: (n) => { phone.db = n; }, photos: bridge(blobs), kdfIterations: 1000,
+    });
+    live.push(phone.engine);
+    await phone.connect();
+    await phone.engine.setPhotoSync(true);
+    phone.db.entries.push({ id: "e", date: "2026-03-04", photos: { skin: { photoId: "p1" } }, updatedAt: "2026-03-04T09:00:00.000Z" });
+    await phone.sync();
+
+    blobs.delete("p1");
+    backend.offline = true;
+    phone.engine.notePhotoDeleted(["p1"]);
+    await phone.sync();
+    expect(backend.photos.has("p1")).toBe(true); // couldn't be told yet
+
+    backend.offline = false;
+    await phone.sync();
+    expect(backend.photos.has("p1")).toBe(false);
+  });
+
   it("carries a photo across, encrypted, once it is", async () => {
     const backend = new MemoryBackend();
     const phoneBlobs = new Map([["p1", { full: "FULLDATA", thumb: "TH" }]]);

@@ -22,6 +22,7 @@
    reminders, the goals — travels. */
 
 import type { RecordKind, SyncRecord, Tombstone } from "./types";
+import { tombstoneRecords } from "./merge";
 
 /* ---------- what stays on the device ---------- */
 
@@ -110,12 +111,7 @@ export function projectDb(db: Db, deviceId: string, rev = 0): SyncRecord[] {
     }
   }
 
-  for (const t of db.tombstones || []) {
-    out.push({
-      kind: t.kind, id: t.id, updatedAt: t.deletedAt,
-      rev: t.rev, deviceId: t.deviceId, deleted: true, payload: null,
-    });
-  }
+  out.push(...tombstoneRecords(db.tombstones || []));
   return out;
 }
 

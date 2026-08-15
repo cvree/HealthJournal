@@ -968,11 +968,22 @@ async function savePhotos(items) {
     throw e;
   }
 }
+/* The live sync engine, if there is one. Module-level for the same reason the
+   theme tokens and the feedback layer are: photo deletion happens from half a
+   dozen call sites spread across several thousand lines, and threading a
+   reference to every one of them to close one gap would be its own bug. */
+let SYNC_ENGINE = null;
+
 async function deletePhotos(ids) {
   if (!ids.length) return;
   const ix = await loadPhotoIndex();
   for (const id of ids) { await store.del(PHOTO_KEY(id)); await store.del(THUMB_KEY(id)); delete ix[id]; }
   await store.set(PHOTO_INDEX_KEY, JSON.stringify(ix));
+  /* Deleting a photo has to mean deleting it. Removing the local blob and
+     leaving the uploaded copy sitting in a bucket would be the quietest
+     possible way for this app to break its own promise. No-op when sync is
+     off, and retried on the normal loop when the network is not there. */
+  SYNC_ENGINE?.notePhotoDeleted?.(ids);
 }
 async function loadPhotoData(id) {
   return id ? await store.get(PHOTO_KEY(id)) : null;
@@ -11811,6 +11822,7 @@ export default function App({ viewer = false }) {
         },
       },
     });
+    SYNC_ENGINE = engineRef.current;
   }
 
   useEffect(() => {

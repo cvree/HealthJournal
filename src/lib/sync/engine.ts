@@ -69,11 +69,15 @@ interface PersistedState {
   lastSyncedAt: string | null;
   rev: number;
   photos: boolean;
+  /** Photo ids deleted here that the server has not been told about yet.
+      Persisted, because a deletion that only survives until the tab closes is
+      not a deletion — see `notePhotoDeleted`. */
+  photoTrash: string[];
 }
 
 const blankState = (): PersistedState => ({
   enabled: false, deviceId: "", email: null, seq: 0,
-  lastSyncedAt: null, rev: 0, photos: false,
+  lastSyncedAt: null, rev: 0, photos: false, photoTrash: [],
 });
 
 const newDeviceId = () =>
@@ -477,6 +481,10 @@ export class SyncEngine {
     try {
       await this.pull();
       await this.push();
+      /* Before uploading anything: get rid of what the user deleted. This runs
+         whether or not photo sync is currently on, because the blobs that need
+         removing are the ones uploaded while it *was*. */
+      await this.emptyPhotoTrash();
       if (this.state.photos && this.o.photos) await this.syncPhotos();
       this.attempt = 0;
       this.state.lastSyncedAt = new Date(this.o.now?.() ?? Date.now()).toISOString();
@@ -645,6 +653,42 @@ export class SyncEngine {
      daily photos is three orders of magnitude larger than the journal itself,
      and someone on a metered connection should get to say no to that without
      giving up sync entirely. The blobs are sealed with the same key. */
+
+  /**
+   * Tell the server about photos the user removed here.
+   *
+   * The mirror of "no silent data loss", and the one that matters more for a
+   * health journal: no silent data *retention*. Deleting a photo has to mean
+   * deleting it, not deleting the reference and leaving the picture in a bucket
+   * indefinitely. It cannot be inferred from a missing local blob either —
+   * "deleted" and "not downloaded yet" look identical from there — so the
+   * deletion is recorded explicitly and retried until the server confirms it.
+   */
+  private async emptyPhotoTrash() {
+    if (!this.state.photoTrash.length) return;
+    const remaining: string[] = [];
+    for (const id of this.state.photoTrash) {
+      try {
+        await this.backend.deletePhoto(id);
+        this.pushed.delete(`photo ${id}`);
+      } catch {
+        remaining.push(id); // try again next pass
+      }
+    }
+    this.state.photoTrash = remaining;
+    await this.writeState();
+    await this.writePushed();
+  }
+
+  /** Called on every local photo deletion. Cheap and safe when sync is off —
+      the list is only ever read while a session and a key are in hand. */
+  notePhotoDeleted(ids: string[]) {
+    if (!this.state.enabled || !ids.length) return;
+    const set = new Set([...this.state.photoTrash, ...ids]);
+    this.state.photoTrash = [...set];
+    void this.writeState();
+    this.nudge();
+  }
 
   private async syncPhotos() {
     const bridge = this.o.photos;

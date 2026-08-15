@@ -31,8 +31,6 @@
     would be syncing the same facts twice. */
 export type RecordKind = "entry" | "food" | "bowel" | "foodItem" | "profile";
 
-export const RECORD_KINDS: RecordKind[] = ["entry", "food", "bowel", "foodItem", "profile"];
-
 /** One syncable thing, in the form both sides agree on. `payload` is the
     plaintext record; it is encrypted before it ever reaches the network. */
 export interface SyncRecord<T = unknown> {
@@ -84,14 +82,6 @@ export interface RemoteMeta {
   verifier_iv: string;
   /** Bumped if the payload projection ever changes shape. */
   schema: number;
-}
-
-/** Where a device is in its conversation with the server. Persisted locally. */
-export interface SyncCursor {
-  /** Highest `server_seq` this device has applied. */
-  seq: number;
-  /** ISO time of the last completed pull, for the UI. */
-  at: string | null;
 }
 
 export type SyncPhase =
