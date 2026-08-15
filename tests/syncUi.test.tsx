@@ -264,3 +264,58 @@ describe("what a failure says", () => {
     expect(describeBackendError(new Error(""))).toBe("Something went wrong.");
   });
 });
+
+describe("the one place sync appears outside Settings", () => {
+  it("renders nothing while everything is fine", async () => {
+    const { SyncAlert } = await I();
+    for (const status of [OFF, ON, { ...ON, phase: "syncing" }, { ...ON, phase: "offline", pending: 4 }]) {
+      const { container } = render(React.createElement(SyncAlert, { status, onOpen: () => {} }));
+      // A permanent status light on a journal someone opens to record pain is a
+      // small anxiety generator. Working, offline and retrying all mean "do
+      // nothing", so nothing is drawn.
+      expect(container.textContent).toBe("");
+      cleanup();
+    }
+  });
+
+  it("stays quiet while a transient failure is retrying on its own", async () => {
+    const { SyncAlert } = await I();
+    const { container } = render(React.createElement(SyncAlert, {
+      status: { ...ON, phase: "error", action: "retry", message: "Couldn't reach the sync server." },
+      onOpen: () => {},
+    }));
+    expect(container.textContent).toBe("");
+  });
+
+  it("appears only when the app genuinely can't proceed alone", async () => {
+    const { SyncAlert } = await I();
+    const onOpen = vi.fn();
+    const { container } = render(React.createElement(SyncAlert, {
+      status: { ...ON, phase: "blocked", action: "signIn", message: "Your sign-in expired." },
+      onOpen,
+    }));
+    expect(container.textContent).toContain("Sync");
+    fireEvent.click(container.querySelector("button")!);
+    expect(onOpen).toHaveBeenCalled();
+  });
+});
+
+describe("results are heard, not only seen", () => {
+  /* Before the feedback layer had a failure voice, a failed backup and a
+     successful one were equally silent — the app only had sounds for things
+     going right. These assert the message still lands and that reporting one
+     can never itself throw, whatever the audio device is doing. */
+  it("shows the message and reports the outcome", async () => {
+    const { reportResult } = await I();
+    const setMsg = vi.fn();
+    const failure = { ok: false, text: "Couldn't build the backup on this device." };
+    expect(reportResult(setMsg, failure)).toBe(failure);
+    expect(setMsg).toHaveBeenCalledWith(failure);
+  });
+
+  it("never lets reporting a result become its own failure", async () => {
+    const { reportResult } = await I();
+    expect(() => reportResult(() => {}, { ok: true, text: "Saved." })).not.toThrow();
+    expect(() => reportResult(() => {}, null)).not.toThrow();
+  });
+});

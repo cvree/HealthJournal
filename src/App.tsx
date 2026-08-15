@@ -5295,12 +5295,12 @@ function ReminderCard({ profile, onSave }) {
     try {
       const ics = buildRemindersICS(live);
       download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "health-journal-reminders.ics");
-      setMsg({
+      reportResult(setMsg, {
         ok: true,
         text: `Calendar file saved with ${live.length} reminder${live.length === 1 ? "" : "s"} — open it to add them to your phone.`,
       });
     } catch (e) {
-      setMsg({ ok: false, text: "Couldn't build the calendar file on this device." });
+      reportResult(setMsg, { ok: false, text: "Couldn't build the calendar file on this device." });
     }
   };
 
@@ -5308,9 +5308,9 @@ function ReminderCard({ profile, onSave }) {
     const result = await requestNotificationPermission();
     setPerm(result);
     if (result === "granted") {
-      setMsg({ ok: true, text: "Browser reminders on, for the days you leave the app open." });
+      reportResult(setMsg, { ok: true, text: "Browser reminders on, for the days you leave the app open." });
     } else if (result === "denied") {
-      setMsg({ ok: false, text: "Your browser blocked notifications for this site. The calendar file above works regardless." });
+      reportResult(setMsg, { ok: false, text: "Your browser blocked notifications for this site. The calendar file above works regardless." });
     }
   };
 
@@ -5480,7 +5480,7 @@ function DataDurabilityCard({ db, setDb }) {
   const askPersist = async () => {
     const status = await requestPersistentStorage();
     setPersist(status);
-    setMsg(status.persisted
+    reportResult(setMsg, status.persisted
       ? { ok: true, text: "This browser will now keep your journal even when storage runs low." }
       : { ok: false, text: "The browser declined for now. Installing the app to your Home Screen usually earns it — and a downloaded backup protects you either way." });
   };
@@ -5492,9 +5492,9 @@ function DataDurabilityCard({ db, setDb }) {
       download(new Blob([JSON.stringify(payload)], { type: "application/json" }),
         `health-journal_full-backup_${todayStr()}.json`);
       markBackedUp(setDb);
-      setMsg({ ok: true, text: `Full backup saved — ${payload.entries.length} entries, ${payload.photos.length} photos.` });
+      reportResult(setMsg, { ok: true, text: `Full backup saved — ${payload.entries.length} entries, ${payload.photos.length} photos.` });
     } catch (e) {
-      setMsg({ ok: false, text: "Couldn't build the backup on this device." });
+      reportResult(setMsg, { ok: false, text: "Couldn't build the backup on this device." });
     }
     setBusy(null);
   };
@@ -5506,7 +5506,7 @@ function DataDurabilityCard({ db, setDb }) {
     try {
       const obj = JSON.parse(await file.text());
       const v = validateBackup(obj);
-      if (!v.ok) { setMsg({ ok: false, text: v.error }); setBusy(null); return; }
+      if (!v.ok) { reportResult(setMsg, { ok: false, text: v.error }); setBusy(null); return; }
       const s = v.summary;
       const desc = `Restore this backup? It replaces your current setup, entries, photos, and saved reports.\n\n` +
         `Setup: ${s.name || "(unnamed)"}\nEntries: ${s.entries}${s.from ? ` (${s.from} to ${s.to})` : ""}\n` +
@@ -5514,9 +5514,9 @@ function DataDurabilityCard({ db, setDb }) {
         `Saved reports: ${s.reports}${s.exportedAt ? `\nExported: ${s.exportedAt.slice(0, 10)}` : ""}`;
       if (!window.confirm(desc)) { setBusy(null); return; }
       await restoreBackup(obj, setDb);
-      setMsg({ ok: true, text: `Restored ${s.entries} entries and ${s.photos} photos.` });
+      reportResult(setMsg, { ok: true, text: `Restored ${s.entries} entries and ${s.photos} photos.` });
     } catch (e) {
-      setMsg({ ok: false, text: "Restore failed — your current data was not changed. The file may be corrupted or too large for this device's storage." });
+      reportResult(setMsg, { ok: false, text: "Restore failed — your current data was not changed. The file may be corrupted or too large for this device's storage." });
     }
     setBusy(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -5537,9 +5537,9 @@ function DataDurabilityCard({ db, setDb }) {
     try {
       await deletePhotos(ids);
       setDb((prev) => scrubPhotoRefs(prev, new Set(ids)));
-      setMsg({ ok: true, text: `Freed ${fmtBytes(bytes)} — ${ids.length} photo${ids.length === 1 ? "" : "s"} removed.` });
+      reportResult(setMsg, { ok: true, text: `Freed ${fmtBytes(bytes)} — ${ids.length} photo${ids.length === 1 ? "" : "s"} removed.` });
     } catch (e) {
-      setMsg({ ok: false, text: "Couldn't delete some photos." });
+      reportResult(setMsg, { ok: false, text: "Couldn't delete some photos." });
     }
     setBusy(null);
     refresh();
@@ -5893,6 +5893,29 @@ function syncLine(status) {
   return `Saved on this device and synced across your devices.${when}`;
 }
 
+/**
+ * The only place sync appears outside Settings, and it appears for exactly one
+ * reason: something is stuck and the app cannot unstick it alone.
+ *
+ * Not a status light. A permanent "synced" pill would be a small anxiety
+ * generator on a screen someone opens to record how much pain they are in, and
+ * a spinner on every save would advertise a network the app has spent its whole
+ * design not depending on. Working, offline, retrying and syncing are all
+ * states where the right thing to do is nothing — so this renders nothing.
+ */
+function SyncAlert({ status, onOpen }) {
+  if (!status || !status.action || status.action === "retry") return null;
+  return (
+    <button type="button" onClick={() => { feedback("nav"); onOpen(); }}
+      className="fhj-badge fhj-badge-warn shrink-0"
+      style={{ gap: "0.3rem", cursor: "pointer" }}
+      title={status.message}>
+      <Icon name="warn" size={11} color="currentColor" />
+      Sync
+    </button>
+  );
+}
+
 /* ---------- the guided flow ---------- */
 
 const SYNC_STEPS = ["What this does", "Sign in", "Passphrase", "Done"];
@@ -6178,7 +6201,7 @@ function SyncServerPanel({ onSaved }) {
             onSaved && onSaved();
           } else {
             feedback("error");
-            setMsg({ ok: false, text: "That doesn't look like a project URL and an anon key." });
+            setMsg({ ok: false, text: "That doesn't look like a project URL and an anon key." }); // feedback already fired
           }
         }}>Save</Button>
         {cfg?.source === "device" && (
@@ -8635,6 +8658,19 @@ function toast({ text, undo, icon = "check", cat = "fhj-cat-symptom", duration =
   return id;
 }
 
+/** Report the outcome of something the user asked for: show the message *and*
+    say so through the feedback layer.
+
+    Before there was an `error` voice this could not be done honestly — the
+    only sounds the app had were for things going right, so a failed backup and
+    a successful one were equally silent. Now a result is a result: success
+    resolves, failure does not, and neither is an alarm. */
+function reportResult(setMsg, msg) {
+  setMsg(msg);
+  feedback(msg && msg.ok === false ? "error" : "save");
+  return msg;
+}
+
 function ToastHost() {
   const [items, setItems] = useState(TOASTS.items);
   useEffect(() => {
@@ -10780,7 +10816,7 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel }) {
+function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -10829,7 +10865,10 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
             Read-only
           </span>
         ) : (
-          <div className="flex gap-2 shrink-0 mt-1">
+          <div className="flex items-center gap-2 shrink-0 mt-1">
+            {/* Renders nothing at all unless sync is stuck on something only
+                the user can resolve. See SyncAlert. */}
+            <SyncAlert status={syncStatus} onOpen={goSettings} />
             <button onClick={goSetup} aria-label="edit survey setup" className="fhj-icon-btn">
               <Icon name="sliders" size={18} color={C.sub} />
             </button>
@@ -12174,7 +12213,7 @@ export default function App({ viewer = false }) {
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     goSettings: () => setScreen("settings"), goSetup: () => setScreen("setup"),
     goFood: () => setScreen("food"), goInsights: () => setScreen("insights"),
-    onUpdateQuickAdd: setQuickAdd, ai: db.ai,
+    onUpdateQuickAdd: setQuickAdd, ai: db.ai, syncStatus,
   };
 
   const insightsProps = {
@@ -12267,6 +12306,9 @@ export default function App({ viewer = false }) {
               style={{ width: "2.5rem", height: "2.5rem" }}>
               <Icon name="home" size={18} color={C.sub} />
             </button>
+            {screen !== "settings" && (
+              <SyncAlert status={syncStatus} onOpen={() => setScreen("settings")} />
+            )}
             <div className="flex-1 min-w-0">
               <h1 className="font-display text-lg leading-tight truncate">
                 {screen === "log" ? (logDate === todayStr() ? "Today" : fmtNice(logDate)) : screenTitle}
@@ -12347,7 +12389,7 @@ export default function App({ viewer = false }) {
 /* Test-only handle: pure functions exercised by the Node unit tests.
    Harmless at runtime — the artifact still uses the default export. */
 export const __internals = {
-  SyncCard, SyncSetupFlow, SyncBadge, syncLine, PrivacyCard,
+  SyncCard, SyncSetupFlow, SyncBadge, SyncAlert, syncLine, PrivacyCard, reportResult,
   pickReportRange, buildReport, pickPairs, computeInsightsWindow,
   medianDefaultFor, yesterdayToggleFor, longestRunInRange, recentNotes,
   availableReportCards, cardIncluded, migrateDb, genSampleData,
