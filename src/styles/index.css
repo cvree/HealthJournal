@@ -2423,6 +2423,553 @@ button.fhj-section:disabled {
   animation: fhjPulse 1.15s ease infinite;
 }
 
+/* ============================================================
+   The shell, and the one screen that outgrows it
+   ============================================================
+
+   Every screen in this app is a list you read top to bottom, and a phone-width
+   column is the right shape for all of them — a 1440px-wide list is not an
+   improvement, it is just a list with more air on either side of it. So the
+   shell is 28rem and centred, and stays that way.
+
+   The Detailed Log is the exception, and the only one. It is not a list; it is
+   a form with forty fields in seven groups, and in a 448px ribbon down the
+   middle of a laptop screen it showed maybe five of them at once while three
+   quarters of the display sat empty. `is-wide` is scoped to that screen, gated
+   behind a desktop breakpoint, and does nothing whatsoever on a phone. */
+
+.fhj-shell {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+@media (min-width: 900px) {
+  .fhj-shell.is-wide {
+    max-width: min(74rem, 100%);
+  }
+}
+
+/* Controls that are one preference wide don't grow with the shell — a
+   segmented switch stretched across 1100px reads as a banner, not a control. */
+.fhj-log-modes {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+/* One card per section of the survey. At phone width this is a single column
+   and behaves exactly like the stack it replaced; from 900px the columns fill
+   in. `align-items: start` matters: without it every card in a row stretches to
+   the tallest one and a two-question section grows a field of empty space. */
+.fhj-log-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+}
+@media (min-width: 900px) {
+  .fhj-log-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+}
+@media (min-width: 1320px) {
+  .fhj-log-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.fhj-log-card {
+  overflow: hidden;
+}
+/* The heading is the fold control. It is sticky inside its own card, so on a
+   long section the name of what you are answering stays on screen — the single
+   thing the old one-card form could not do at any scroll position. */
+.fhj-log-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--fhj-tap);
+  padding: 0.75rem 1rem;
+  background: var(--fhj-card, #1e2026);
+  border-bottom: 1px solid var(--fhj-line, #31343d);
+  text-align: left;
+  cursor: pointer;
+}
+.fhj-log-head:not(button) {
+  cursor: default;
+}
+@media (hover: hover) {
+  button.fhj-log-head:hover {
+    background: var(--fhj-card-hover, #25272e);
+  }
+}
+.fhj-log-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-log-chev {
+  display: inline-flex;
+  transition: transform var(--fhj-ease) var(--fhj-out);
+}
+.fhj-log-head[aria-expanded="false"] .fhj-log-chev {
+  transform: rotate(-90deg);
+}
+.fhj-log-body {
+  padding: 0 1rem;
+}
+/* The final field's rule used to land exactly on the card's own border, drawing
+   the boundary twice. */
+.fhj-log-body > *:last-child > div[style*="border-bottom"],
+.fhj-log-body > div:last-child {
+  border-bottom-color: transparent;
+}
+
+/* ---------- the 1-10 scale ----------
+
+   Ten equal rungs that carry their numerals. They used to be blank tiles,
+   which works under a thumb that is already on the one it wants and does not
+   work at all under a pointer that is somewhere else on a laptop screen.
+
+   `minmax(0, 1fr)` on the track and `min-width: 0` on the rung are what stop
+   the row from ever overflowing its card: without both, ten items with content
+   refuse to shrink past their own text and the tenth gets clipped by the
+   rounded corner. */
+
+.fhj-scale {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 0.1875rem;
+}
+@media (min-width: 400px) {
+  .fhj-scale {
+    gap: 0.25rem;
+  }
+}
+.fhj-scale-rung {
+  min-width: 0;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1.5px solid transparent;
+  color: var(--fhj-subtle, #9a9ca6);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--fhj-quick) ease, color var(--fhj-quick) ease,
+    border-color var(--fhj-quick) ease, box-shadow var(--fhj-quick) ease;
+}
+@media (min-width: 900px) {
+  .fhj-scale-rung {
+    height: 2.5rem;
+    font-size: 0.75rem;
+  }
+}
+.fhj-scale-rung.is-filled {
+  background: var(--fhj-rung, var(--fhj-accent, #8fb0e3));
+  color: var(--fhj-on-accent, #121419);
+}
+/* The rung actually chosen, as opposed to the ones filled in under it. */
+.fhj-scale-rung.is-picked {
+  box-shadow: inset 0 0 0 2px var(--fhj-ink, #ecebe7);
+  font-weight: 800;
+}
+@media (hover: hover) {
+  .fhj-scale-rung:hover:not(.is-filled) {
+    background: var(--fhj-faint-hover, #32353e);
+    color: var(--fhj-ink, #ecebe7);
+  }
+}
+
+/* ---------- "you were here last time" ----------
+
+   One dashed ring, used identically on a scale rung, a Yes/No slab and a
+   number. It is a mark, not a question: no banner above the control, no
+   sentence to dismiss, nothing to answer. Tapping it is how it is accepted,
+   which is the same gesture as choosing any other value. */
+
+.fhj-recent,
+.fhj-scale-rung.is-recent {
+  border: 2px dashed var(--fhj-line-strong, #464a55);
+  color: var(--fhj-ink, #ecebe7);
+}
+
+/* The legend for the above, printed once per screen and only while there is
+   something on that screen wearing the dashes. */
+.fhj-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  white-space: nowrap;
+}
+.fhj-legend-swatch {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 0.3125rem;
+  border: 2px dashed var(--fhj-line-strong, #464a55);
+}
+
+/* ---------- tappable number ----------
+   The value is the control. It has to look like one before it is touched —
+   the input it replaces was a borderless number between two circles, which is
+   why nobody ever discovered they could type into it. */
+
+.fhj-numtap {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.1875rem;
+  min-width: 5rem;
+  min-height: var(--fhj-tap);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
+}
+.fhj-numtap.is-lg {
+  min-width: 7rem;
+  padding: 0.5rem 1rem;
+}
+.fhj-numtap.is-empty {
+  color: var(--fhj-muted, #787b86);
+  border-style: dashed;
+}
+.fhj-numtap-unit {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+@media (hover: hover) {
+  .fhj-numtap:hover {
+    background: var(--fhj-faint-hover, #32353e);
+    border-color: var(--fhj-accent, #8fb0e3);
+  }
+}
+
+/* ---------- number pad ----------
+   Three things: the value at reading size, a nudge row, and ten keys. Anything
+   else on this sheet would be something to read on the way to typing 196.1. */
+
+.fhj-pad {
+  padding-bottom: 0.5rem;
+}
+.fhj-pad-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0 1rem;
+  min-height: 4.5rem;
+}
+.fhj-pad-value {
+  font-family: var(--fhj-font-display);
+  font-optical-sizing: auto;
+  font-size: clamp(2.5rem, 12vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.fhj-pad-unit {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-pad-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  margin-left: 0.125rem;
+  vertical-align: baseline;
+  background: var(--fhj-accent, #8fb0e3);
+  animation: fhjCaret 1.05s steps(1) infinite;
+}
+@keyframes fhjCaret {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-pad-caret {
+    animation: none;
+  }
+}
+
+.fhj-pad-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.fhj-pad-nudge > button {
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+  color: var(--fhj-sub, #adafb8);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.fhj-pad-recall {
+  color: var(--fhj-accent-text, #a6c3ea) !important;
+  border-color: var(--fhj-accent-line, rgba(143, 176, 227, 0.4)) !important;
+}
+@media (hover: hover) {
+  .fhj-pad-nudge > button:hover {
+    border-color: var(--fhj-line-strong, #464a55);
+    color: var(--fhj-ink, #ecebe7);
+  }
+}
+
+.fhj-pad-keys {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.fhj-pad-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.25rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  color: var(--fhj-ink, #ecebe7);
+  font-family: var(--fhj-font-display);
+  font-optical-sizing: auto;
+  font-size: 1.375rem;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  /* The keys are the one place in this sheet allowed the tactile register:
+     they are a keypad, and a keypad that doesn't travel is a picture of one. */
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.55));
+  transition: background-color var(--fhj-quick) ease, border-color var(--fhj-quick) ease,
+    box-shadow var(--fhj-quick) var(--fhj-out), transform var(--fhj-quick) var(--fhj-out);
+}
+.fhj-pad-key:active {
+  transform: translate(var(--fhj-press), var(--fhj-press));
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+.fhj-pad-key[data-variant="action"] {
+  background: transparent;
+  box-shadow: none;
+}
+.fhj-pad-key[data-variant="action"]:active {
+  transform: scale(0.94);
+}
+@media (hover: hover) {
+  .fhj-pad-key:hover {
+    border-color: var(--fhj-line-strong, #464a55);
+  }
+}
+
+/* ============================================================
+   First run
+   ============================================================
+
+   Seven screens is a lot to ask of a stranger. What earns them is that each one
+   is visibly about *this* person's situation rather than about the app's
+   feature list — the name is asked first and used immediately, the appearance
+   choice is worn by every screen after it, the estimate updates as questions
+   are picked, and the last screen reads back the actual words the check-in will
+   ask tomorrow. None of the styling below does that; it just gets out of the
+   way of it. */
+
+.fhj-hello {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-bottom: 0.75rem;
+}
+
+/* The app, having listened. One line, in the display face, tinted — it is the
+   first thing on the screen after the name was typed, and it should read like
+   a person answering rather than a field being validated. */
+.fhj-greet {
+  font-family: var(--fhj-font-display);
+  font-optical-sizing: auto;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--fhj-accent-text, #a6c3ea);
+  margin-bottom: 0.375rem;
+}
+
+.fhj-promises {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6875rem;
+}
+.fhj-promises > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-promise-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-good-soft, rgba(127, 190, 158, 0.15));
+  color: var(--fhj-good, #7fbe9e);
+}
+
+/* ---------- the step rail ----------
+   Scrolls horizontally when seven labels don't fit, which on a narrow phone is
+   most of the time — the current step is what has to be legible, and the ones
+   on either side of it are the context. */
+
+.fhj-rail {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 0.125rem;
+  /* Seven named steps do not fit beside a back button in a 28rem column, and
+     they are not going to. The mask is the same answer the rest of the app
+     gives an overflowing row of chips: the last one fades out instead of being
+     guillotined by the container's edge, which is what "there is more over
+     here" looks like. The rail also scrolls the current step into view on
+     every change, so the fade is never hiding the one that matters. */
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
+  scroll-padding-inline: 1.5rem;
+}
+.fhj-rail::-webkit-scrollbar {
+  display: none;
+}
+.fhj-rail > li {
+  flex: none;
+}
+.fhj-rail button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.3125rem 0.4375rem;
+  border-radius: var(--fhj-radius-pill);
+  background: transparent;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--fhj-muted, #787b86);
+  cursor: pointer;
+}
+/* Steps ahead of you are shown, not offered: knowing what is coming is the
+   point, and jumping to a screen whose answers depend on the current one is
+   not. */
+.fhj-rail button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.fhj-rail-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--fhj-line-strong, #464a55);
+  transition: background-color var(--fhj-ease) ease, transform var(--fhj-ease) var(--fhj-spring);
+}
+.fhj-rail button[data-state="done"] {
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-rail button[data-state="done"] .fhj-rail-dot {
+  background: var(--fhj-rail-on, var(--fhj-accent, #8fb0e3));
+}
+.fhj-rail button[data-state="current"] {
+  color: var(--fhj-ink, #ecebe7);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-rail button[data-state="current"] .fhj-rail-dot {
+  background: var(--fhj-rail-on, var(--fhj-accent, #8fb0e3));
+  transform: scale(1.5);
+}
+/* Only the current step carries its name at phone width; seven labels in a row
+   would either wrap the header or shrink past reading. The rest keep their dot,
+   which is all a step you are not on needs to say. */
+.fhj-rail-label {
+  display: none;
+}
+.fhj-rail button[data-state="current"] .fhj-rail-label {
+  display: inline;
+}
+@media (min-width: 420px) {
+  .fhj-rail-label {
+    display: inline;
+  }
+}
+@media (hover: hover) {
+  .fhj-rail button:not(:disabled):hover {
+    color: var(--fhj-ink, #ecebe7);
+  }
+}
+
+/* ---------- the check-in, read back ----------
+   Three real question labels, set as the rows they will be. A count of nine is
+   an abstraction; "Itch", "Sleep quality", "Stress" is the thing itself. */
+
+.fhj-preview {
+  margin-top: 0.875rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--fhj-line, #31343d);
+}
+.fhj-preview-row {
+  position: relative;
+  padding: 0.3125rem 0 0.3125rem 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-preview-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.8125rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+.fhj-preview-more {
+  padding: 0.3125rem 0 0 0.875rem;
+  font-size: 0.75rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
 /* Skip link: off-canvas until a keyboard reaches it. */
 .fhj-skip {
   position: fixed;

@@ -178,6 +178,21 @@ function nextNote(): number {
   return bag.pop()!;
 }
 
+/* Two octaves of the same key, for the sounds that carry a *position* rather
+   than an event: rung 4 of 10 on a scale, step 3 of 7 in a wizard, the sixth
+   digit of a number. Those are the moments where a fixed pitch throws away the
+   one thing the ear is best at — hearing where you are in a series. */
+const LADDER = [
+  349.23, 392.0, 440.0, 523.25, 587.33, // F G A C D
+  698.46, 784.0, 880.0, 1046.5, 1174.66, // F G A C D, an octave up
+];
+/** Map a 1-based position in a series of `outOf` onto the ladder. */
+function rung(pos: number, outOf: number): number {
+  if (!isFinite(pos) || outOf <= 1) return LADDER[0];
+  const i = Math.round(((pos - 1) / (outOf - 1)) * (LADDER.length - 1));
+  return LADDER[Math.min(LADDER.length - 1, Math.max(0, i))];
+}
+
 /* ---------- the palette ----------
 
    Named for what the person did, not for what it sounds like, so call sites
@@ -305,6 +320,42 @@ const VOICES: Record<string, () => void> = {
     blip({ f: 698.46, t: 0.05, d: 0.09, g: 0.07, type: "sine", filter: 2200, attack: 0.01 });
   },
 
+  /* A sheet rising from the bottom edge. Low, soft, and *opening* — a bend
+     upward under a breath of noise, so it reads as a drawer rather than as a
+     notification. It fires on every dialog in the app, so it is deliberately
+     one of the quietest things here. */
+  sheetOpen() {
+    tick(0, 0.05, 700, 0.05);
+    blip({ f: 196, d: 0.13, g: 0.11, type: "sine", bend: 1.35, attack: 0.02 });
+    blip({ f: 392, t: 0.03, d: 0.1, g: 0.05, type: "triangle", bend: 1.12, attack: 0.02 });
+  },
+  /* The same gesture, run backwards and shorter. Closing should never sound
+     like an event — only like the end of one. */
+  sheetClose() {
+    blip({ f: 330, d: 0.1, g: 0.09, type: "sine", bend: 0.7, attack: 0.012 });
+    tick(0.015, 0.035, 620, 0.03);
+  },
+
+  /* A menu or a segmented control taking a new position. Two very short
+     partials a fourth apart — a detent, not a chime. */
+  menu() {
+    tick(0, 0.07, 1500, 0.014);
+    blip({ f: 523.25, d: 0.04, g: 0.14, type: "triangle" });
+    blip({ f: 698.46, t: 0.028, d: 0.055, g: 0.1, type: "sine" });
+  },
+
+  /* Backspace on the keypad. Downward, dry, and unmistakably a subtraction. */
+  erase() {
+    tick(0, 0.08, 1100, 0.018);
+    blip({ f: 440, d: 0.05, g: 0.13, type: "triangle", bend: 0.78, attack: 0.004 });
+  },
+  /* Wiping a value out entirely. The erase sound with the floor dropped out
+     from under it — bigger than one digit, still not a warning. */
+  clear() {
+    tick(0, 0.1, 800, 0.034);
+    blip({ f: 392, d: 0.11, g: 0.15, type: "triangle", bend: 0.55, attack: 0.006 });
+  },
+
   /* A streak milestone. `complete`, opened out one note further and lifted. */
   milestone() {
     const notes = [349.23, 440.0, 523.25, 698.46];
@@ -319,6 +370,39 @@ const VOICES: Record<string, () => void> = {
 /* `include` is the swipe deck keeping a card; it reads as a gentle yes. */
 VOICES.include = VOICES.batch;
 VOICES.photo = VOICES.quickadd;
+
+/* ---------- positional voices ----------
+
+   Everything above answers "what happened". These answer "where are you" — a
+   rung on a 1-10 scale, a step in a seven-screen setup, a digit landing in a
+   number. Same instrument, same key; only the pitch moves, and it moves with
+   the position. That is the difference between an app that beeps at you and an
+   app you can hear yourself playing: a 3 never sounds like an 8, and the last
+   step of the wizard resolves an octave above the first.
+
+   Each has a fallback entry in VOICES so `feedback("scale")` without a position
+   is still a sound rather than silence. */
+
+const PITCHED: Record<string, (f: number) => void> = {
+  scale(f) {
+    tick(0, 0.07, 1900, 0.014);
+    blip({ f, d: 0.075, g: 0.22, type: "triangle", bend: 1.01 });
+    blip({ f: f * 2, t: 0.004, d: 0.05, g: 0.05, type: "sine", filter: 2400 });
+  },
+  step(f) {
+    blip({ f, d: 0.085, g: 0.2, type: "triangle", attack: 0.008 });
+    blip({ f: f * 1.5, t: 0.05, d: 0.115, g: 0.13, type: "sine" });
+    tick(0, 0.05, 1500, 0.014);
+  },
+  key(f) {
+    tick(0, 0.09, 2600, 0.012);
+    blip({ f: f * 2, d: 0.035, g: 0.13, type: "sine", bend: 0.98, attack: 0.003 });
+  },
+};
+
+VOICES.scale = () => PITCHED.scale(nextNote() * 2);
+VOICES.step = () => PITCHED.step(440);
+VOICES.key = () => PITCHED.key(nextNote());
 
 /* ---------- throttling ----------
 
@@ -371,6 +455,28 @@ export function playSound(name: SoundName) {
   }
 }
 
+/** Play a positional voice — `pos` of `outOf` picks the pitch. Falls back to
+    the plain voice of the same name when the position isn't meaningful.
+
+    The per-voice floor is shorter here than for the named voices: these fire
+    on deliberate repeated input (running a finger up a scale, typing a weight)
+    where suppressing the second one would break the run rather than tidy it. */
+export function playPitched(name: string, pos: number, outOf: number) {
+  if (!enabled) return;
+  const shape = PITCHED[name];
+  if (!shape) return playSound(name);
+  const t = Date.now();
+  if (t - (lastByVoice[name] || 0) < 45) return;
+  if (!ensureContext()) return;
+  lastAt = t;
+  lastByVoice[name] = t;
+  try {
+    shape(rung(pos, outOf));
+  } catch {
+    /* see playSound */
+  }
+}
+
 /** Let go of the audio hardware when the app is backgrounded, and pick it back
     up on return. Mobile browsers otherwise keep the output route warm. */
 export function suspendSound() {
@@ -381,4 +487,4 @@ export function resumeSound() {
 }
 
 /** Test hook: the sound layer has no visible output to assert on. */
-export const __soundInternals = { VOICES, SCALE, nextNote };
+export const __soundInternals = { VOICES, PITCHED, SCALE, LADDER, nextNote, rung };

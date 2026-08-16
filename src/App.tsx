@@ -7,7 +7,7 @@ import {
   BarChart, Bar, CartesianGrid, ComposedChart, Area, Cell,
 } from "recharts";
 import * as XLSX from "xlsx";
-import { initSmoothScroll, scrollToTop, animateScreenIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll } from "./lib/motion";
+import { initSmoothScroll, scrollToTop, animateScreenIn, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll } from "./lib/motion";
 import AmbientBackdrop from "./components/AmbientBackdrop";
 import AppearancePanel from "./components/AppearancePanel";
 import RecoveryScreen from "./components/RecoveryScreen";
@@ -21,7 +21,7 @@ import {
 } from "./lib/exports";
 import { playSound, setSoundEnabled, suspendSound, resumeSound } from "./lib/sound";
 import {
-  feedback, pulse, hapticsSupported, scaleHaptic, setFeedbackPrefs, getFeedbackPrefs,
+  feedback, place, pulse, hapticsSupported, scaleHaptic, setFeedbackPrefs, getFeedbackPrefs,
   HAPTIC_PATTERNS, HAPTIC_SCALE, HAPTIC_LEVELS,
 } from "./lib/feedback";
 import { syncWidgetSnapshot, onWidgetDeepLink } from "./lib/widgetBridge";
@@ -1191,6 +1191,10 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     bell: <g><path {...p} d="M6 9a6 6 0 0 1 12 0c0 3.5.8 5.2 1.6 6.2.4.5 0 1.3-.7 1.3H5.1c-.7 0-1.1-.8-.7-1.3C5.2 14.2 6 12.5 6 9z" /><path {...p} d="M10 20a2 2 0 0 0 4 0" /></g>,
     target: <g><circle {...p} cx="12" cy="12" r="8.5" /><circle {...p} cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1.6" fill={color} stroke="none" /></g>,
     search: <g><circle {...p} cx="11" cy="11" r="6.5" /><path {...p} d="M16 16l4.5 4.5" /></g>,
+    /* The delete key, drawn as the key it is — an arrow-ended tag with an x in
+       it. A bare chevron here reads as "go back a screen", which on a keypad
+       is exactly the wrong promise. */
+    backspace: <g><path {...p} d="M9 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6-7z" /><path {...p} d="M12.5 9.5l4 5M16.5 9.5l-4 5" /></g>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -1481,37 +1485,73 @@ function Modal({ title, children, onClose, labelledBy, footer, eyebrow }) {
   );
 }
 
-/* Signature control: the 1–10 tap scale */
-function ScaleInput({ field, value, onChange }) {
+/* What a dashed outline means, said once per screen — not once per question.
+
+   This is the entire replacement for the "tap to confirm — same as usual"
+   banner that used to sit above every scale. The app still remembers where you
+   were; it marks the spot and stops talking about it. Printing the explanation
+   under all forty fields would have been the same mistake in a smaller font:
+   a legend is a thing you read once and then stop seeing, which is exactly
+   what this should be. */
+function RecentLegend({ className = "" }) {
+  return (
+    <span className={"fhj-legend " + className}>
+      <span className="fhj-legend-swatch" aria-hidden="true" />
+      your recent answer
+    </span>
+  );
+}
+
+/* Signature control: the 1–10 tap scale.
+
+   The rungs carry their numerals. They used to be ten blank tiles, which works
+   on a phone where the thumb is already on the one it wants and the big number
+   to the right reads back what it landed on — and does not work at all with a
+   mouse on a laptop, where the pointer is somewhere else entirely and the row
+   is a bar chart with no axis. Ten numerals cost nothing and answer "which one
+   am I about to click" without moving the eye.
+
+   `ghost` is the recent value for this question. It is drawn as a dashed rung
+   and nothing else: no banner, no confirm step, no sentence asking whether
+   today was the same as usual. It marks where the user has been. Tapping it is
+   how it gets accepted, exactly like tapping any other number. */
+function ScaleInput({ field, value, onChange, ghost = null }) {
   const lowLbl = field.dir === "pos" ? "1 · low" : "1 · none";
   const highLbl = field.dir === "pos" ? "10 · great" : "10 · severe";
+  const set = (n) => {
+    if (value === n) { feedback("erase"); onChange(null); return; }
+    place("scale", n, 10);
+    onChange(n);
+  };
   return (
     <div className="py-3" style={{ borderBottom: `1px solid ${C.line}` }}>
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-baseline justify-between gap-3 mb-2">
         <span className="text-sm font-medium">{field.label}</span>
-        <span className="font-display text-2xl leading-none" style={{ color: value != null ? colorFor(value, field.dir) : C.muted }}>
+        <span className="font-display text-2xl leading-none shrink-0"
+          style={{ color: value != null ? colorFor(value, field.dir) : C.muted }}>
           {value != null ? value : "–"}
         </span>
       </div>
-      <div className="flex gap-1" role="group" aria-label={field.label}>
+      <div className="fhj-scale" role="group" aria-label={field.label}>
         {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
-          const active = value != null && n <= value;
+          const filled = value != null && n <= value;
+          const isGhost = value == null && ghost === n;
           return (
             <button key={n} type="button"
               aria-label={`${field.label} ${n}`}
-              onClick={() => onChange(value === n ? null : n)}
-              className="flex-1 h-9 rounded-md transition-colors duration-100"
-              style={{
-                background: active ? colorFor(value, field.dir) : C.faint,
-                boxShadow: value === n ? `inset 0 0 0 2px ${C.ink}` : "none",
-              }}
-            />
+              aria-pressed={value === n}
+              onClick={() => set(n)}
+              className={"fhj-scale-rung" + (filled ? " is-filled" : "") + (value === n ? " is-picked" : "") + (isGhost ? " is-recent" : "")}
+              style={filled ? { "--fhj-rung": colorFor(value, field.dir) } : undefined}
+            >
+              {n}
+            </button>
           );
         })}
       </div>
       <div className="flex justify-between mt-1 text-[10px]" style={{ color: C.sub }}>
         <span>{lowLbl}</span>
-        <span className="opacity-70">tap again to clear</span>
+        <span className="opacity-70">{value != null ? "tap again to clear" : ""}</span>
         <span>{highLbl}</span>
       </div>
     </div>
@@ -1569,36 +1609,201 @@ function ChipsInput({ field, value, onChange, tint }) {
   );
 }
 
-function NumberInput({ field, value, onChange }) {
-  const step = field.step || 1;
+/* ---------- number entry ----------
+
+   A weight is 196.1, and 196.1 used to cost eleven presses of a `+` button
+   whose step is 0.1 — or a hunt for the fact that the number between the two
+   buttons happened to be a text input. Nothing said so: it had no border, no
+   caret until focused, and on a phone tapping it summoned the OS keyboard over
+   the field it was meant to edit.
+
+   So the number *is* the control now. It is a button, it looks like one, and
+   it opens this: the value at reading size, one pad, and nothing else. The
+   plus and minus keep their place for a nudge of one step, because "a pound
+   heavier than yesterday" is a different gesture from "196.1".
+
+   `digits` is derived from the field's own step, so a weight takes one decimal
+   and a step count takes none — the pad never offers a decimal point the field
+   can't hold. */
+
+function decimalsFor(field) {
+  const s = field?.step || 1;
+  if (s >= 1) return 0;
+  // 0.1 -> 1, 0.01 -> 2. Rounded because 0.1 is not 0.1 in binary.
+  return Math.min(3, Math.max(0, Math.round(-Math.log10(s))));
+}
+
+/** The pad itself. Draft is a string, so a half-typed "19" and "19." are both
+    representable — a number can't tell you the user is mid-decimal. */
+function NumberPadSheet({ field, value, ghost, onCommit, onClose }) {
+  const decimals = decimalsFor(field);
+  const unit = field.unit || "";
+  const min = field.min ?? -Infinity;
+  const max = field.max ?? Infinity;
+  const [draft, setDraft] = useState(value != null ? String(value) : "");
+  /* Opening on an existing value and typing a digit should *replace* it, the
+     way selecting the contents of a field would. Backspace is what turns that
+     off — at that point the user is editing, not starting over. */
+  const [fresh, setFresh] = useState(value != null);
+
+  const parsed = draft === "" || draft === "." || draft === "-" ? null : parseFloat(draft);
+  const outOfRange = parsed != null && (parsed < min || parsed > max);
+  const canSave = draft === "" || (parsed != null && !isNaN(parsed) && !outOfRange);
+
+  const digit = (d) => {
+    setDraft((prev) => {
+      const base = fresh ? "" : prev;
+      if (d === ".") {
+        if (!decimals || base.includes(".")) return base;
+        return (base || "0") + ".";
+      }
+      // Don't grow past the precision the field actually stores.
+      const dot = base.indexOf(".");
+      if (dot >= 0 && base.length - dot - 1 >= decimals) return base;
+      if (base === "0") return d;
+      if (base.length >= 9) return base;
+      return base + d;
+    });
+    setFresh(false);
+    // Digits climb the ladder, so typing a number reads as a little run.
+    place("key", d === "." ? 10 : Number(d) + 1, 11);
+  };
+
+  const back = () => {
+    setFresh(false);
+    setDraft((prev) => prev.slice(0, -1));
+    feedback("erase");
+  };
+
   const bump = (dir) => {
-    const cur = typeof value === "number" ? value : field.base ?? field.min ?? 0;
-    const next = Math.round((cur + dir * step) * 100) / 100;
+    const step = field.step || 1;
+    const cur = parsed ?? ghost ?? field.base ?? field.min ?? 0;
+    const next = clamp(Math.round((cur + dir * step) * 1000) / 1000, min, max);
+    setFresh(false);
+    setDraft(next.toFixed(decimals));
+    feedback("select");
+  };
+
+  const save = () => {
+    if (!canSave) return;
+    onCommit(draft === "" ? null : Math.round(parsed * 1000) / 1000);
+    feedback("save");
+    onClose();
+  };
+
+  /* A physical keyboard should drive this too — it is a dialog on a laptop as
+     often as a sheet on a phone, and retyping a weight with the mouse would be
+     a worse experience than the input this replaced. */
+  const onKeyDown = (e) => {
+    if (e.key >= "0" && e.key <= "9") { e.preventDefault(); digit(e.key); }
+    else if (e.key === "." || e.key === ",") { e.preventDefault(); digit("."); }
+    else if (e.key === "Backspace") { e.preventDefault(); back(); }
+    else if (e.key === "Enter") { e.preventDefault(); save(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); bump(1); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); bump(-1); }
+  };
+
+  const shown = draft === "" ? (ghost != null ? String(ghost) : "–") : draft;
+  const isPlaceholder = draft === "";
+
+  const key = (label, onPress, opts = {}) => (
+    <button type="button" key={label} onClick={onPress} aria-label={opts.aria || label}
+      className="fhj-pad-key" data-variant={opts.variant || "digit"}>
+      {opts.node || label}
+    </button>
+  );
+
+  return (
+    <Modal title={field.label} eyebrow={field.sec} onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => { setDraft(""); setFresh(false); feedback("clear"); }}>
+            Clear
+          </Button>
+          <Button block onClick={save} disabled={!canSave}>Save</Button>
+        </>
+      }>
+      <div onKeyDown={onKeyDown} className="fhj-pad">
+        <div className="fhj-pad-readout" aria-live="polite">
+          <span className="fhj-pad-value" style={{ color: isPlaceholder ? C.muted : C.ink }}>
+            {shown}
+            {/* A caret only while there is something being typed — a blinking
+                bar under a greyed-out suggestion would claim it was the value. */}
+            {!isPlaceholder && <i className="fhj-pad-caret" aria-hidden="true" />}
+          </span>
+          {unit && <span className="fhj-pad-unit">{unit}</span>}
+        </div>
+
+        <div className="fhj-pad-nudge">
+          <button type="button" onClick={() => bump(-1)} aria-label={`down ${field.step || 1}`}>−{field.step || 1}</button>
+          {ghost != null && draft !== String(ghost) && (
+            <button type="button" className="fhj-pad-recall"
+              onClick={() => { setFresh(false); setDraft(String(ghost)); feedback("select"); }}>
+              Last {ghost}{unit ? " " + unit : ""}
+            </button>
+          )}
+          <button type="button" onClick={() => bump(1)} aria-label={`up ${field.step || 1}`}>+{field.step || 1}</button>
+        </div>
+
+        <div className="fhj-pad-keys" role="group" aria-label={`${field.label} keypad`}>
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => key(d, () => digit(d)))}
+          {decimals > 0
+            ? key(".", () => digit("."), { aria: "decimal point" })
+            : <span aria-hidden="true" />}
+          {key("0", () => digit("0"))}
+          {key("back", back, {
+            variant: "action", aria: "delete last digit",
+            node: <Icon name="backspace" size={20} color={C.sub} />,
+          })}
+        </div>
+
+        {outOfRange && (
+          <div className="fhj-note mt-3" role="status">
+            <Icon name="info" size={14} color={C.sub} />
+            <span>
+              {field.label} is recorded between {min} and {max}{unit ? " " + unit : ""}.
+            </span>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** The number as it sits in a form row: label, nudge buttons, and a value that
+    is itself the way to type one. */
+function NumberInput({ field, value, onChange, ghost = null }) {
+  const [pad, setPad] = useState(false);
+  const step = field.step || 1;
+  const decimals = decimalsFor(field);
+  const bump = (dir) => {
+    const cur = typeof value === "number" ? value : ghost ?? field.base ?? field.min ?? 0;
+    const next = Math.round((cur + dir * step) * 1000) / 1000;
+    feedback("select");
     onChange(clamp(next, field.min ?? -Infinity, field.max ?? Infinity));
   };
+  const shown = value != null ? Number(value).toFixed(decimals) : ghost != null ? Number(ghost).toFixed(decimals) : "–";
   return (
-    <div className="py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.line}` }}>
+    <div className="py-3 flex items-center justify-between gap-2" style={{ borderBottom: `1px solid ${C.line}` }}>
       <span className="text-sm font-medium">{field.label}</span>
       <div className="flex items-center gap-1.5">
         <button type="button" onClick={() => bump(-1)} aria-label={`decrease ${field.label}`}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
           style={{ background: C.faint, color: C.ink }}>−</button>
-        <div className="flex items-baseline justify-center" style={{ minWidth: "4.5rem" }}>
-          <input inputMode="decimal" value={value ?? ""} placeholder="–"
-            aria-label={field.label}
-            onChange={(e) => {
-              const t = e.target.value.trim();
-              if (t === "") return onChange(null);
-              const n = parseFloat(t);
-              if (!isNaN(n)) onChange(n);
-            }}
-            className="w-16 text-center font-display text-xl bg-transparent outline-none" />
-          {field.unit && <span className="text-xs -ml-1" style={{ color: C.sub }}>{field.unit}</span>}
-        </div>
+        <button type="button" onClick={() => { feedback("sheetOpen"); setPad(true); }}
+          aria-label={`edit ${field.label}`}
+          className={"fhj-numtap" + (value == null ? " is-empty" : "")}>
+          <span className="font-display text-xl">{shown}</span>
+          {field.unit && <span className="fhj-numtap-unit">{field.unit}</span>}
+        </button>
         <button type="button" onClick={() => bump(1)} aria-label={`increase ${field.label}`}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
           style={{ background: C.faint, color: C.ink }}>+</button>
       </div>
+      {pad && (
+        <NumberPadSheet field={field} value={value} ghost={ghost}
+          onCommit={onChange} onClose={() => { feedback("sheetClose"); setPad(false); }} />
+      )}
     </div>
   );
 }
@@ -1625,11 +1830,11 @@ function DateTimeInput({ field, value, onChange }) {
   );
 }
 
-function FieldInput({ field, value, onChange, tint }) {
-  if (field.type === "scale") return <ScaleInput field={field} value={value} onChange={onChange} />;
+function FieldInput({ field, value, onChange, tint, ghost = null }) {
+  if (field.type === "scale") return <ScaleInput field={field} value={value} onChange={onChange} ghost={ghost} />;
   if (field.type === "toggle") return <ToggleInput field={field} value={value} onChange={onChange} tint={tint} />;
   if (field.type === "chips") return <ChipsInput field={field} value={value} onChange={onChange} tint={tint} />;
-  if (field.type === "number") return <NumberInput field={field} value={value} onChange={onChange} />;
+  if (field.type === "number") return <NumberInput field={field} value={value} onChange={onChange} ghost={ghost} />;
   if (field.type === "text") return <TextField field={field} value={value} onChange={onChange} />;
   if (field.type === "time" || field.type === "date") return <DateTimeInput field={field} value={value} onChange={onChange} />;
   return null; // photo handled by PhotoInlineField / PhotoSession
@@ -2268,7 +2473,24 @@ function SummaryRow({ fld, tpl, meta, answers, cacheSrc, rating, onRate, onDelet
 
 const QUICK_BATCH_SIZE = 4;
 
+/* What the app remembers about each question: a 7-day median for scales,
+   yesterday's answer for toggles, the last value for numbers. Both logging
+   surfaces read this — the guided run and the long form — so "where you were
+   last time" means the same thing whichever way you open the day.
+
+   None of it is ever written. It is drawn, dashed, and waits to be tapped. */
+function recentAnswers(fields, entries, date) {
+  const g = {};
+  for (const f of fields) {
+    if (f.type === "scale") g[f.k] = medianDefaultFor(entries, f.k, date);
+    else if (f.type === "toggle") g[f.k] = yesterdayToggleFor(entries, f.k, date);
+    else if (f.type === "number") g[f.k] = lastValueFor(entries, f.k, date);
+  }
+  return g;
+}
+
 function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped, onSkip }) {
+  const [pad, setPad] = useState(false);
   const tap = (k, val, kind = "tap") => { feedback(kind); set(k, val); };
   const bigBtn = (active, color) => ({
     background: active ? color : C.faint, color: active ? readableInk(color) : C.ink,
@@ -2282,21 +2504,22 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
 
       {f.type === "scale" && (
         <>
-          {v == null && ghost != null && (
-            <button onClick={() => tap(f.k, ghost, "select")}
-              className="w-full mb-3 py-2 rounded-xl text-xs font-semibold"
-              style={{ background: C.faint, color: C.ink, border: `1.5px dashed ${tint}` }}>
-              Tap to confirm <b>{ghost}</b> · same as usual
-            </button>
-          )}
+          {/* No confirm banner. The recent value is *marked*, not asked about:
+              a dashed ring on the number the user last gave, which is picked by
+              tapping it like any other. The banner it replaces put a sentence
+              ("same as usual?") in front of someone every single question of
+              every single day, and a question they have to answer to dismiss is
+              not a shortcut — it is one more question. */}
           <div className="grid grid-cols-5 gap-2 mb-2">
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <button key={n} onClick={() => tap(f.k, v === n ? null : n)}
-                className="aspect-square rounded-2xl font-display text-lg flex items-center justify-center transition-all"
-                style={{
-                  ...bigBtn(v === n, colorFor(n, f.dir)),
-                  ...(v == null && ghost === n ? { border: `2px dashed ${tint}` } : {}),
-                }}>{n}</button>
+              <button key={n} aria-pressed={v === n}
+                onClick={() => {
+                  if (v === n) { feedback("erase"); set(f.k, null); return; }
+                  place("scale", n, 10);
+                  set(f.k, n);
+                }}
+                className={"aspect-square rounded-2xl font-display text-lg flex items-center justify-center transition-all" + (v == null && ghost === n ? " fhj-recent" : "")}
+                style={bigBtn(v === n, colorFor(n, f.dir))}>{n}</button>
             ))}
           </div>
           <div className="flex justify-between text-[11px]" style={{ color: C.sub }}>
@@ -2309,17 +2532,11 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
       {f.type === "toggle" && (
         <div className="flex gap-3">
           {[["No", false], ["Yes", true]].map(([lbl, val]) => (
-            <button key={lbl} onClick={() => tap(f.k, v === val ? null : val)}
-              className="flex-1 py-5 rounded-2xl text-base font-semibold transition-all relative"
-              style={{
-                ...bigBtn(v === val, val ? tint : C.subtle),
-                ...(v == null && ghost === val ? { border: `2px dashed ${tint}` } : {}),
-              }}>
+            <button key={lbl} aria-pressed={v === val}
+              onClick={() => tap(f.k, v === val ? null : val, v === val ? "erase" : "select")}
+              className={"flex-1 py-5 rounded-2xl text-base font-semibold transition-all relative" + (v == null && ghost === val ? " fhj-recent" : "")}
+              style={bigBtn(v === val, val ? tint : C.subtle)}>
               {lbl}
-              {v == null && ghost === val && (
-                <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[9px] font-semibold"
-                  style={{ background: tint, color: readableInk(tint) }}>yesterday</span>
-              )}
             </button>
           ))}
         </div>
@@ -2346,23 +2563,31 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
 
       {f.type === "number" && (
         <>
-          {v == null && ghost != null && (
-            <button onClick={() => tap(f.k, ghost, "select")}
-              className="w-full mb-3 py-2 rounded-xl text-xs font-semibold"
-              style={{ background: C.faint, color: C.ink, border: `1.5px dashed ${tint}` }}>
-              Last time: <b>{ghost}{f.unit ? ` ${f.unit}` : ""}</b> · tap to use
-            </button>
-          )}
+          {/* Same rule as the scale: the recent value is shown, greyed, in the
+              slot it would occupy — not offered in a sentence above it. The
+              minus and plus start from it, and tapping the number opens the pad
+              already holding it. */}
           <div className="flex items-center justify-center gap-3">
-            <button onClick={() => tap(f.k, clamp(Math.round(((v ?? ghost ?? f.base ?? f.min ?? 0) - (f.step || 1)) * 100) / 100, f.min ?? -Infinity, f.max ?? Infinity))}
-              className="w-11 h-11 rounded-full text-xl font-medium" style={{ background: C.faint }}>−</button>
-            <div className="font-display text-2xl" style={{ minWidth: "4.5rem", textAlign: "center" }}>
-              {v ?? (ghost != null ? <span style={{ color: C.sub }}>{ghost}</span> : "–")}
-              {f.unit && <span className="text-sm ml-1" style={{ color: C.sub }}>{f.unit}</span>}
-            </div>
-            <button onClick={() => tap(f.k, clamp(Math.round(((v ?? ghost ?? f.base ?? f.min ?? 0) + (f.step || 1)) * 100) / 100, f.min ?? -Infinity, f.max ?? Infinity))}
-              className="w-11 h-11 rounded-full text-xl font-medium" style={{ background: C.faint }}>+</button>
+            <button aria-label={`decrease ${f.label}`}
+              onClick={() => tap(f.k, clamp(Math.round(((v ?? ghost ?? f.base ?? f.min ?? 0) - (f.step || 1)) * 1000) / 1000, f.min ?? -Infinity, f.max ?? Infinity), "select")}
+              className="w-11 h-11 rounded-full text-xl font-medium shrink-0" style={{ background: C.faint }}>−</button>
+            <button type="button" aria-label={`edit ${f.label}`}
+              onClick={() => { feedback("sheetOpen"); setPad(true); }}
+              className={"fhj-numtap is-lg" + (v == null ? " is-empty" : "")}>
+              <span className="font-display text-2xl">
+                {v ?? (ghost != null ? Number(ghost).toFixed(decimalsFor(f)) : "–")}
+              </span>
+              {f.unit && <span className="fhj-numtap-unit">{f.unit}</span>}
+            </button>
+            <button aria-label={`increase ${f.label}`}
+              onClick={() => tap(f.k, clamp(Math.round(((v ?? ghost ?? f.base ?? f.min ?? 0) + (f.step || 1)) * 1000) / 1000, f.min ?? -Infinity, f.max ?? Infinity), "select")}
+              className="w-11 h-11 rounded-full text-xl font-medium shrink-0" style={{ background: C.faint }}>+</button>
           </div>
+          {pad && (
+            <NumberPadSheet field={f} value={v} ghost={ghost}
+              onCommit={(n) => set(f.k, n)}
+              onClose={() => { feedback("sheetClose"); setPad(false); }} />
+          )}
         </>
       )}
 
@@ -2424,18 +2649,7 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
   const [celebrating, setCelebrating] = useState(false);
   const [skippedKeys, setSkippedKeys] = useState(() => new Set()); // session-local "prefer not to answer"
 
-  /* smart defaults: 7-day median for scales, yesterday's answer for toggles,
-     the most recent value for numbers (weight, water…) — shown as a ghost the
-     user must explicitly tap. Never auto-saved. */
-  const ghosts = useMemo(() => {
-    const g = {};
-    for (const f of fields) {
-      if (f.type === "scale") g[f.k] = medianDefaultFor(entries, f.k, date);
-      else if (f.type === "toggle") g[f.k] = yesterdayToggleFor(entries, f.k, date);
-      else if (f.type === "number") g[f.k] = lastValueFor(entries, f.k, date);
-    }
-    return g;
-  }, [fields, entries, date]);
+  const ghosts = useMemo(() => recentAnswers(fields, entries, date), [fields, entries, date]);
   const noteChips = useMemo(() => recentNotes(entries), [entries]);
 
   if (fields.length === 0) {
@@ -2553,12 +2767,17 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
         <span>Step {page + 1} of {totalPages}</span>
         <span>{remainingCount === 0 ? "almost done" : `~${secondsLeft}s left`}</span>
       </div>
-      <div className="flex gap-1 mb-4">
+      <div className="flex gap-1 mb-2.5">
         {chunks.map((_, i) => (
           <div key={i} className="h-1.5 rounded-full flex-1 transition-all duration-300"
             style={{ background: i < page ? tpl.color : i === page ? `${tpl.color}66` : C.faint }} />
         ))}
       </div>
+      {/* One legend for the run, above the questions, rather than a caption
+          under each of the four cards on screen. */}
+      {chunk.some((f) => ghosts[f.k] != null && answers[f.k] == null) && (
+        <div className="mb-3 flex justify-center"><RecentLegend /></div>
+      )}
 
       {chunk.map((f) => (
         <div key={f.k} ref={(el) => { cardRefs.current[f.k] = el; }}>
@@ -2600,10 +2819,34 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
   const sessionFields = tpl.fields.filter((f) => f.type === "photo" && f.requiredInSession !== false);
   const quickHasPhotos = sessionFields.some((f) => f.quick !== false);
 
+  /* Grouped in the order the fields already come in, so a survey the user
+     arranged themselves keeps its arrangement — this only draws the boundaries
+     that `sec` was always describing. */
+  const logSections = useMemo(() => {
+    const out = [];
+    for (const f of fields) {
+      const sec = f.sec || "Other";
+      let g = out.find((x) => x.sec === sec);
+      if (!g) { g = { sec, fields: [] }; out.push(g); }
+      g.fields.push(f);
+    }
+    return out;
+  }, [fields]);
+  const [folded, setFolded] = useState(() => new Set());
+
+  /* The long form gets the same memory the guided one has: the recent answer
+     for each question, marked but never filled in. */
+  const ghosts = useMemo(() => recentAnswers(fields, entries, date), [fields, entries, date]);
+  /* The legend earns its line only once there is something for it to explain —
+     on day one there is no history, so no dashes, so nothing to say. */
+  const hasRecent = useMemo(
+    () => fields.some((f) => ghosts[f.k] != null && answers[f.k] == null),
+    [fields, ghosts, answers]
+  );
+
   const set = (k, v) => onPatch(profile.id, date, { answers: { [k]: v } }, mode);
   const setPhoto = (k, meta) => onPatch(profile.id, date, { photos: { [k]: meta } }, mode);
 
-  let lastSec = null;
   return (
     <div className="px-4 pb-8">
       {/* The date pager lives in the app header now — it was a second title row
@@ -2613,7 +2856,7 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
 
           What is left here is the mode switch, at chip height rather than
           button height: it is a preference that most people set once. */}
-      <div className="relative flex p-1 rounded-full mt-3 mb-2.5" style={{ background: C.faint }}>
+      <div className="fhj-log-modes relative flex p-1 rounded-full mt-3 mb-2.5" style={{ background: C.faint }}>
         <span aria-hidden="true" className="absolute rounded-full"
           style={{
             top: 4, bottom: 4, width: "calc(50% - 6px)",
@@ -2654,63 +2897,112 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
               Photo session ({sessionFields.length})
             </button>
           )}
-          <div className="flex items-center justify-between text-xs mb-1" style={{ color: C.sub }}>
-            <span>{done ? "Logged for this day" : "Answer what applies — everything is optional"}</span>
+          <div className="flex items-center justify-between flex-wrap gap-x-3 gap-y-1 text-xs mb-2" style={{ color: C.sub }}>
+            <span className="flex items-center gap-3">
+              {done ? "Logged for this day" : "Answer what applies — everything is optional"}
+              {hasRecent && <RecentLegend />}
+            </span>
             <span className="flex items-center gap-1" style={{ color: C.good }}>
               <Icon name="check" size={13} color={C.good} /> saves automatically
             </span>
           </div>
 
-          <Card className="!p-0 px-4" style={{ padding: "0 1rem" }}>
-            {fields.map((f) => {
-              const header = f.sec !== lastSec ? <SectionTitle key={"s_" + f.sec}>{f.sec}</SectionTitle> : null;
-              lastSec = f.sec;
+          {/* One card per section, in a grid that grows a column at a time.
+              This used to be a single card holding every question in the
+              survey — forty-odd rows, one continuous rule down the page, and
+              the only structure a heading that scrolled away three questions
+              in. On a phone that is merely long. On a laptop it was a 448px
+              ribbon of it down the middle of a 1440px screen, so "where does
+              Skin end and Diet begin" had no answer on screen at any moment.
+
+              Sections are cards now: each one carries its own heading, its own
+              answered count, and its own fold. The grid is one column at phone
+              width and untouched there; from 900px it lays the cards out two
+              or three across, which is the width the screen was always
+              offering and the form was never taking. */}
+          <div className="fhj-log-grid">
+            {logSections.map((s) => {
+              const open = !folded.has(s.sec);
+              const filled = s.fields.filter((f) => (
+                f.type === "photo" ? !!entry?.photos?.[f.k]?.photoId : answers[f.k] != null
+              )).length;
               return (
-                <React.Fragment key={f.k}>
-                  {header}
-                  {f.type === "photo" ? (
-                    <PhotoInlineField field={f} meta={entry?.photos?.[f.k]} date={date} answers={answers} tpl={tpl}
-                      entries={entries} baselines={profile.photoBaselines} onSetBaseline={onSetBaseline}
-                      timer={profile.cameraTimer ?? 3}
-                      onSave={(meta) => setPhoto(f.k, meta)} tint={tpl.color} />
-                  ) : (
-                    <>
-                      <FieldInput field={f} value={answers[f.k]} onChange={(v) => set(f.k, v)} tint={tpl.color} />
-                      {(() => {
-                        const deps = depsFor(tpl, f.k);
-                        if (!deps.length) return null;
-                        const open = answers[f.k] === true;
-                        return (
-                          <div aria-hidden={!open} style={{
-                            maxHeight: open ? deps.length * 84 : 0, opacity: open ? 1 : 0,
-                            overflow: "hidden", transition: "max-height 260ms ease, opacity 220ms ease",
-                          }}>
-                            {deps.map((d) => (
-                              <div key={d.k} className="pb-3 pl-3" style={{ borderLeft: `2px solid ${C.line}` }}>
-                                <div className="text-xs font-medium mb-1" style={{ color: C.sub }}>{d.label}</div>
-                                <input type="text" value={answers[d.k] ?? ""}
-                                  onChange={(e) => set(d.k, e.target.value || null)}
-                                  placeholder="Optional — a few words is plenty"
-                                  className="w-full rounded-xl px-3 py-2 text-sm outline-none"
-                                  style={{ background: C.faint, border: `1px solid ${C.line}` }} />
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </>
-                  )}
-                </React.Fragment>
+                <Card key={s.sec} className="fhj-log-card !p-0">
+                  <button type="button" className="fhj-log-head" aria-expanded={open}
+                    onClick={() => {
+                      feedback("expand");
+                      setFolded((prev) => {
+                        const next = new Set(prev);
+                        next.has(s.sec) ? next.delete(s.sec) : next.add(s.sec);
+                        return next;
+                      });
+                    }}>
+                    <h2 className="fhj-section-title">{s.sec}</h2>
+                    <span className="fhj-log-count">
+                      {filled}/{s.fields.length}
+                      <span className="fhj-log-chev" aria-hidden="true">
+                        <Icon name="down" size={15} color={C.sub} />
+                      </span>
+                    </span>
+                  </button>
+                  <div className={"fhj-expand" + (open ? " is-open" : "")}>
+                    <div>
+                      <div className="fhj-log-body fhj-expand-body">
+                        {s.fields.map((f) => (
+                          f.type === "photo" ? (
+                            <PhotoInlineField key={f.k} field={f} meta={entry?.photos?.[f.k]} date={date}
+                              answers={answers} tpl={tpl}
+                              entries={entries} baselines={profile.photoBaselines} onSetBaseline={onSetBaseline}
+                              timer={profile.cameraTimer ?? 3}
+                              onSave={(meta) => setPhoto(f.k, meta)} tint={tpl.color} />
+                          ) : (
+                            <React.Fragment key={f.k}>
+                              <FieldInput field={f} value={answers[f.k]} ghost={ghosts[f.k]}
+                                onChange={(v) => set(f.k, v)} tint={tpl.color} />
+                              {(() => {
+                                const deps = depsFor(tpl, f.k);
+                                if (!deps.length) return null;
+                                const depOpen = answers[f.k] === true;
+                                return (
+                                  <div aria-hidden={!depOpen} style={{
+                                    maxHeight: depOpen ? deps.length * 84 : 0, opacity: depOpen ? 1 : 0,
+                                    overflow: "hidden", transition: "max-height 260ms ease, opacity 220ms ease",
+                                  }}>
+                                    {deps.map((d) => (
+                                      <div key={d.k} className="pb-3 pl-3" style={{ borderLeft: `2px solid ${C.line}` }}>
+                                        <div className="text-xs font-medium mb-1" style={{ color: C.sub }}>{d.label}</div>
+                                        <input type="text" value={answers[d.k] ?? ""}
+                                          onChange={(e) => set(d.k, e.target.value || null)}
+                                          placeholder="Optional — a few words is plenty"
+                                          className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                                          style={{ background: C.faint, border: `1px solid ${C.line}` }} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </React.Fragment>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
               );
             })}
-            <SectionTitle>Notes</SectionTitle>
-            <div className="py-3">
-              <textarea rows={3} value={entry?.notes ?? ""} placeholder="Anything worth remembering about this day…"
-                onChange={(e) => onPatch(profile.id, date, { notes: e.target.value }, mode)}
-                className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
-                style={{ background: C.faint, border: `1px solid ${C.line}` }} />
-            </div>
-          </Card>
+
+            <Card className="fhj-log-card !p-0">
+              <div className="fhj-log-head">
+                <h2 className="fhj-section-title">Notes</h2>
+              </div>
+              <div className="fhj-log-body pb-4">
+                <textarea rows={3} value={entry?.notes ?? ""} placeholder="Anything worth remembering about this day…"
+                  onChange={(e) => onPatch(profile.id, date, { notes: e.target.value }, mode)}
+                  className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
+                  style={{ background: C.faint, border: `1px solid ${C.line}` }} />
+              </div>
+            </Card>
+          </div>
         </>
       )}
 
@@ -11013,6 +11305,38 @@ const ONBOARD_PACKS = [
   { key: "wellness", desc: "Wellbeing, mood, energy, sleep, habits — a gentle default" },
 ];
 
+/* What the first screen promises, and why it is a list rather than a paragraph.
+
+   A privacy paragraph on a first-run screen is read by nobody, because every
+   app has one and they all say the same thing. These five are different: each
+   is a checkable fact about this build, phrased so that a user who wanted to
+   could go and confirm it before logging a single day. That is the only kind of
+   trust claim worth making to a stranger who is about to type their symptoms
+   into something.
+
+   If any of these stops being true, this list is the thing that has to change
+   first — before the README, before the store copy. */
+const PROMISES = [
+  ["key", "No account. No sign-up, no email address, no password to lose."],
+  ["device", "Your journal is written to this device and read back from it. There is no server holding it."],
+  ["eye", "No analytics, no trackers, no ads. Nobody is counting your taps."],
+  ["download", "Export the whole thing to a spreadsheet whenever you want. It's your data, in a file you keep."],
+  ["trash", "Delete everything, permanently, from Settings. No 'contact us to close your account'."],
+];
+
+/* The setup, named. Seven dots told someone they were on the fourth of seven
+   somethings; these tell them what the fourth one is and what is left after it,
+   which is the difference between a progress bar and an agenda. */
+const ONBOARD_STEPS = [
+  { key: "welcome", label: "Welcome" },
+  { key: "look", label: "Look" },
+  { key: "focus", label: "Focus" },
+  { key: "questions", label: "Questions" },
+  { key: "photos", label: "Photos" },
+  { key: "body", label: "Body" },
+  { key: "done", label: "Done" },
+];
+
 /* part|side → severity scale key it can link a photo rating to */
 const ONBOARD_SEVERITY_LINK = {
   "Scalp|": "scalp_severity", "Face|": "face_severity", "Neck|": "neck_severity",
@@ -11148,26 +11472,73 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
   const [name, setName] = useState("");
   const [customs, setCustoms] = useState([]);
   const scrollRef = useRef(null);
+  const bodyRef = useRef(null);
+  const railRef = useRef(null);
+
+  /* One way to change step, so the sound, the scroll and the entrance can never
+     disagree about which of the three happened. The pitch climbs with the step
+     — the last screen of the setup resolves an octave above the first — which
+     is a small thing that makes a seven-screen form feel like it is going
+     somewhere rather than repeating. */
+  const go = (next) => {
+    if (next === step) return;
+    if (next > step) place("step", next + 1, ONBOARD_STEPS.length);
+    else feedback("nav");
+    setStep(next);
+  };
+
+  /* The name, used. Twice, deliberately: once on the screen straight after it
+     was typed, so the app is visibly listening, and once at the end, where the
+     setup being handed over is theirs. Greeting on all seven would be a bit
+     desperate. */
+  const firstName = name.trim().split(/\s+/)[0] || "";
+  const greet = firstName ? (
+    <div className="fhj-greet">Nice to meet you, {firstName}.</div>
+  ) : null;
 
   const tint = mods.length ? TEMPLATES[mods[0]].color : C.accent;
   const merged = useMemo(() => mergedPackFields(mods), [mods]);
   const tunable = useMemo(() => merged.filter((f) => f.type !== "photo" && f.k !== "weight"), [merged]);
 
-  /* keep enabled set in sync when packs change: new keys default on, user choices preserved */
+  /* Keep the enabled set in step with the chosen packs: a question the wizard
+     has never offered before arrives switched on, and one it has offered keeps
+     whatever the user decided about it.
+
+     `seen` has to be read into a local *before* the ref is replaced. It used to
+     be read inside the updater, and an updater passed to setState does not run
+     during the effect — it runs later, during the re-render, by which time
+     `known.current = keys` had already executed. Every key therefore looked
+     like one the user had already seen and ruled on, the "preserve their
+     choice" branch won, and the choice it preserved was the empty set from
+     before any pack existed. The visible result was that picking a pack turned
+     on nothing at all: the estimate read "0 quick questions", every question
+     chip was grey, and the only way forward from step 3 of first-run setup was
+     to notice the disabled button and go tap "Track everything". */
   useEffect(() => {
     const keys = new Set(tunable.map((f) => f.k));
+    const seen = known.current;
+    known.current = keys;
     setEnabled((prev) => {
       const next = new Set();
-      for (const k of keys) { if (known.current.has(k)) { if (prev.has(k)) next.add(k); } else next.add(k); }
+      for (const k of keys) { if (!seen.has(k) || prev.has(k)) next.add(k); }
       return next;
     });
-    known.current = keys;
     const hasCarni = mods.includes("carnivore");
     if (!weightTouched) setWeightOn(hasCarni);
     if (!progressTouched) setProgressAngles(hasCarni ? ["Front", "Side", "Back"] : []);
   }, [mods]); // eslint-disable-line
 
-  useEffect(() => { scrollRef.current?.scrollTo?.(0, 0); window.scrollTo(0, 0); }, [step]);
+  useEffect(() => {
+    scrollRef.current?.scrollTo?.(0, 0);
+    window.scrollTo(0, 0);
+    animateStepIn(bodyRef.current);
+    /* Keep the step you are on inside the rail's visible run, so the fade at
+       its end only ever covers steps you aren't on. `block: "nearest"` stops
+       this from scrolling the page as a side effect of scrolling the rail. */
+    railRef.current
+      ?.querySelector('[aria-current="step"]')
+      ?.scrollIntoView?.({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [step]);
 
   /* live daily-check-in estimate */
   const quickCount = tunable.filter((f) => f.quick && enabled.has(f.k)).length + (weightOn ? 1 : 0)
@@ -11187,10 +11558,15 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     return i >= 0 ? prev.filter((_, j) => j !== i) : [...prev, s];
   });
 
-  const finish = (dest) => onComplete(
-    buildOnboardProfile({ modules: mods, enabledKeys: enabled, spots, weightOn, progressAngles, name, customs }),
-    dest
-  );
+  const finish = (dest) => {
+    /* The one moment in the setup that gets the full chord. It is the only
+       thing here the user will never do again. */
+    feedback("complete");
+    onComplete(
+      buildOnboardProfile({ modules: mods, enabledKeys: enabled, spots, weightOn, progressAngles, name, customs }),
+      dest
+    );
+  };
 
   const chipBtn = (on, label, onClick, key) => (
     <button key={key || label} onClick={onClick}
@@ -11204,15 +11580,49 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
   let body = null; let actions = null;
 
   if (step === 0) {
+    /* The name moved here from the last screen, and that is the whole point of
+       it. Asked at the end it was a label on a profile nobody looks at. Asked
+       first, it is the one thing every screen after this can use — the setup
+       stops being a form and starts being a conversation with someone whose
+       name it knows, and the person filling it in can see that happen from the
+       second screen onward.
+
+       It stays optional, and skipping it costs nothing: the greeting simply
+       doesn't appear. An onboarding step that can't be skipped is a toll. */
     body = (
-      <div className="pt-10">
+      <div className="pt-8">
+        <div className="fhj-hello">Health Journal</div>
         <div className="font-display text-3xl leading-tight mb-2">Your health, in your own words.</div>
         <p className="text-sm leading-relaxed mb-5" style={{ color: C.sub }}>
           Build a daily check-in that fits <i>your</i> situation — a couple of taps a day, trends over time,
           and everything stays privately on this device.
         </p>
+
+        <div className="mb-5">
+          <label className="fhj-label" htmlFor="fhj-onboard-name">What should this app call you?</label>
+          <input id="fhj-onboard-name" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="Optional — a first name is plenty"
+            autoComplete="given-name" className="fhj-input" />
+        </div>
+
+        {/* Trust, as five things that are true about the build rather than as a
+            paragraph about how much we value privacy. Every line here is a
+            claim the user can check from inside the app on day one, which is
+            the only kind worth printing on a first-run screen. */}
         <Card className="mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Before you start</div>
+          <div className="fhj-eyebrow mb-2.5">What this app does, and doesn't</div>
+          <ul className="fhj-promises">
+            {PROMISES.map(([icon, text]) => (
+              <li key={text}>
+                <span className="fhj-promise-mark"><Icon name={icon} size={13} color={C.good} /></span>
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card className="mb-4">
+          <div className="fhj-eyebrow mb-2">Before you start</div>
           <p className="text-sm leading-relaxed">{DISCLAIMER}</p>
           <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
             The app highlights <i>possible patterns</i> in what you log. It never concludes that something caused a symptom.
@@ -11222,7 +11632,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     );
     actions = (
       <div className="flex flex-col gap-2">
-        <button onClick={() => setStep(1)} className="fhj-btn fhj-btn-primary fhj-btn-block">I understand — set me up</button>
+        <button onClick={() => go(1)} className="fhj-btn fhj-btn-primary fhj-btn-block">I understand — set me up</button>
         <button onClick={onLoadSample} className="w-full py-2.5 rounded-xl text-sm font-medium"
           style={{ background: C.faint, color: C.sub }}>Just exploring? Load example data</button>
       </div>
@@ -11235,18 +11645,21 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
        like?". Nothing here is load-bearing; all of it is in Settings too. */
     body = (
       <>
-        <div className="font-display text-2xl mb-1">Make it yours</div>
-        <p className="text-sm mb-4" style={{ color: C.sub }}>
-          Pick a look. The rest of the setup will use it, so you can see what you're choosing.
-          You can change any of this later in Settings.
-        </p>
-        <Card>
+        <div>
+          {greet}
+          <div className="font-display text-2xl mb-1">Make it yours</div>
+          <p className="text-sm" style={{ color: C.sub }}>
+            Pick a look. The rest of the setup will use it, so you can see what you're choosing.
+            You can change any of this later in Settings.
+          </p>
+        </div>
+        <Card className="mt-4">
           <AppearancePanel onChoice={() => feedback("select")} />
         </Card>
       </>
     );
     actions = (
-      <button onClick={() => setStep(2)} className="fhj-btn fhj-btn-primary fhj-btn-block">
+      <button onClick={() => go(2)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         Continue
       </button>
     );
@@ -11284,7 +11697,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(3)} disabled={!mods.length}
+      <button onClick={() => go(3)} disabled={!mods.length}
         className="fhj-btn fhj-btn-primary fhj-btn-block">
         {mods.length ? "Continue" : "Pick at least one to continue"}
       </button>
@@ -11360,7 +11773,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(4)} disabled={!enabled.size}
+      <button onClick={() => go(4)} disabled={!enabled.size}
         className="fhj-btn fhj-btn-primary fhj-btn-block">
         {enabled.size ? "Continue" : "Keep at least one question"}
       </button>
@@ -11396,7 +11809,7 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(5)} className="fhj-btn fhj-btn-primary fhj-btn-block">
+      <button onClick={() => go(5)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         {spots.length ? "Continue" : "Skip for now"}
       </button>
     );
@@ -11445,17 +11858,33 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => setStep(6)} className="fhj-btn fhj-btn-primary fhj-btn-block">
+      <button onClick={() => go(6)} className="fhj-btn fhj-btn-primary fhj-btn-block">
         Continue
       </button>
     );
   } else {
     const setupLabel = mods.map((mk) => TEMPLATES[mk].label).join(" + ");
+    /* The first three questions, by name. The estimate pill has been counting
+       them the whole way through, but a count is an abstraction — "9 quick
+       questions" could be anything. Seeing the actual words the app will ask
+       tomorrow morning is what turns a setup screen into a thing that was
+       built, and it is the last chance to notice it asks the wrong ones. */
+    const preview = tunable
+      .filter((f) => f.quick && enabled.has(f.k))
+      .slice(0, 3)
+      .map((f) => f.label);
     body = (
       <>
-        <div className="font-display text-2xl mb-1">You're all set</div>
-        <p className="text-sm mb-4" style={{ color: C.sub }}>Here's your daily check-in. Everything stays on this device.</p>
-        <Card className="mb-4">
+        <div>
+          <div className="font-display text-2xl mb-1">
+            {firstName ? `You're all set, ${firstName}.` : "You're all set"}
+          </div>
+          <p className="text-sm" style={{ color: C.sub }}>
+            Here is the check-in you just built. Everything stays on this device.
+          </p>
+        </div>
+
+        <Card className="mt-4">
           <div className="font-display text-lg mb-2" style={{ color: tint }}>{setupLabel}</div>
           <div className="text-sm leading-relaxed">
             <div>• {quickCount} quick question{quickCount === 1 ? "" : "s"} — {timeLabel} a day</div>
@@ -11464,11 +11893,21 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
             {weightOn && <div>• Daily weight</div>}
             {progressAngles.length > 0 && <div>• Progress photos: {progressAngles.join(" · ").toLowerCase()}</div>}
           </div>
+          {preview.length > 0 && (
+            <div className="fhj-preview">
+              <div className="fhj-eyebrow mb-1.5">Tomorrow morning, it asks</div>
+              {preview.map((label) => <div key={label} className="fhj-preview-row">{label}</div>)}
+              {quickCount > preview.length && (
+                <div className="fhj-preview-more">…and {quickCount - preview.length} more</div>
+              )}
+            </div>
+          )}
         </Card>
-        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.sub }}>What should we call you? (optional)</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name"
-          className="w-full mt-1.5 px-3 py-3 rounded-xl text-sm"
-          style={{ background: C.card, border: `1px solid ${C.line}` }} />
+
+        <p className="text-[11.5px] leading-relaxed mt-4" style={{ color: C.subtle }}>
+          Nothing here is permanent. Every question, photo spot and setting on these screens can be
+          changed, added or removed later from Edit Setup — including all of it at once.
+        </p>
       </>
     );
     actions = (
@@ -11489,25 +11928,36 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
           step 1 is visible for the rest of the flow rather than described. */}
       <AmbientBackdrop />
       <div ref={scrollRef} className="max-w-md mx-auto px-4 relative" style={{ paddingBottom: "9.5rem", zIndex: 1 }}>
-        <div className="sticky top-0 z-20 pt-4 pb-2 flex items-center gap-3" style={{ background: C.bg }}>
+        {/* Seven anonymous dots told someone they were on the fourth of seven
+            somethings. The rail names them: what this screen is, what is left,
+            and — because every step behind you is tappable — a way back to any
+            answer without walking the whole flow in reverse. */}
+        <div className="sticky top-0 z-20 pt-4 pb-2 flex items-center gap-2.5" style={{ background: C.bg }}>
           {step > 0 ? (
-            <button onClick={() => setStep((s) => s - 1)} aria-label="back"
+            <button onClick={() => go(step - 1)} aria-label="back"
               className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
               style={{ background: C.card, border: `1px solid ${C.line}` }}>
               <Icon name="left" size={17} color={C.sub} />
             </button>
-          ) : <div className="w-9 h-9" />}
-          <div className="flex-1 flex justify-center gap-1.5">
-            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="rounded-full" style={{
-                width: i === step ? 18 : 7, height: 7, transition: "width 150ms",
-                background: i <= step ? tint : C.line,
-              }} />
-            ))}
-          </div>
-          <div className="w-9 h-9" />
+          ) : <div className="w-9 h-9 shrink-0" />}
+          <ol ref={railRef} className="fhj-rail" aria-label={`Setup step ${step + 1} of ${ONBOARD_STEPS.length}`}>
+            {ONBOARD_STEPS.map((s, i) => {
+              const state = i === step ? "current" : i < step ? "done" : "todo";
+              return (
+                <li key={s.key}>
+                  <button type="button" data-state={state} disabled={i > step}
+                    aria-current={i === step ? "step" : undefined}
+                    onClick={() => go(i)}
+                    style={i <= step ? { "--fhj-rail-on": tint } : undefined}>
+                    <span className="fhj-rail-dot" aria-hidden="true" />
+                    <span className="fhj-rail-label">{s.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
         </div>
-        {body}
+        <div ref={bodyRef}>{body}</div>
       </div>
       <div className="fixed bottom-0 left-0 right-0 z-30" style={{ background: `linear-gradient(transparent, ${C.bg} 35%)` }}>
         <div className="max-w-md mx-auto px-4 pb-4 pt-5">{actions}</div>
@@ -12304,7 +12754,16 @@ export default function App({ viewer = false }) {
       {/* Keyboard and screen-reader users land on the nav-skip before the
           header controls; it stays out of the way until it's focused. */}
       <a href="#main" className="fhj-skip">Skip to main content</a>
-      <div className="max-w-md mx-auto relative" style={{ paddingBottom: "6rem", zIndex: 1 }}>
+      {/* The app is a phone-shaped column, and it should stay one: every screen
+          here is a list you read top to bottom, and a 1440px-wide list is not
+          an improvement. The Detailed Log is the exception, and the only one —
+          it is a *form* with forty fields in seven groups, and laid out one
+          field per row in a 448px ribbon it wasted the whole screen to show a
+          fraction of itself. Widening it there is the difference between
+          scrolling a form and seeing one. Below 900px this class does nothing
+          at all, so nothing about the phone changes. */}
+      <div className={"fhj-shell relative" + (screen === "log" && logMode === "detailed" ? " is-wide" : "")}
+        style={{ paddingBottom: "6rem", zIndex: 1 }}>
         {showHeader && (
           <header className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
             style={{

@@ -33,7 +33,7 @@
    throws on any of it — each of those subtracts a channel and leaves the others
    working. */
 
-import { playSound, setSoundEnabled, setSoundVolume } from "./sound";
+import { playSound, playPitched, setSoundEnabled, setSoundVolume } from "./sound";
 import { prefersReducedMotion } from "./motion";
 
 /* ---------- vocabulary ----------
@@ -46,12 +46,21 @@ export type FeedbackEvent =
   /* touch */
   | "tap" | "select" | "expand" | "nav" | "reorder" | "skip"
   | "toggleOn" | "toggleOff"
+  /* surfaces and menus */
+  | "sheetOpen" | "sheetClose" | "menu"
+  /* text and number entry */
+  | "key" | "erase" | "clear"
   /* commit */
   | "quickadd" | "batch" | "include" | "save" | "photo" | "delete"
   /* moments */
   | "complete" | "milestone"
   /* result */
   | "error" | "warn" | "syncDone";
+
+/** Events whose meaning includes a *position* — which rung of a scale, which
+    step of a flow, which digit. `place()` takes the position; `feedback()`
+    still works and just picks a neutral pitch. */
+export type PlacedEvent = "scale" | "step" | "key";
 
 export interface FeedbackPrefs {
   sound?: boolean;
@@ -82,6 +91,12 @@ export type HapticStrength = "soft" | "medium" | "strong" | "vivid";
 export const HAPTIC_PATTERNS: Record<string, number | number[]> = {
   tap: 10, select: 15, include: 15, skip: 8, expand: 8, nav: 8, reorder: 12,
   toggleOn: 14, toggleOff: 10, delete: [12, 24],
+  /* Keypad digits are the lightest thing in the table on purpose: a weight is
+     five or six of these in a row, and anything firmer turns entering a number
+     into a rattle. */
+  key: 6, erase: 9, clear: [10, 20],
+  sheetOpen: 10, sheetClose: 6, menu: 10,
+  scale: 14, step: [10, 24],
   batch: [10, 30, 10], quickadd: [12, 20], save: [20, 40],
   complete: [18, 40, 18], milestone: [30, 50, 30],
   /* Failure is the one pattern allowed to be a little insistent: two firm
@@ -136,6 +151,16 @@ export const NATIVE_HAPTICS: Record<string, NativeHaptic> = {
   toggleOff: { kind: "impact", style: "Light" },
   quickadd: { kind: "impact", style: "Medium" },
   batch: { kind: "impact", style: "Medium" },
+  /* A keypad is the textbook case for the selection tick: many events, each
+     one a choice among equals, none of them an outcome. */
+  key: { kind: "selection" },
+  erase: { kind: "impact", style: "Light" },
+  clear: { kind: "impact", style: "Medium" },
+  sheetOpen: { kind: "impact", style: "Light" },
+  sheetClose: { kind: "impact", style: "Light" },
+  menu: { kind: "selection" },
+  scale: { kind: "selection" },
+  step: { kind: "impact", style: "Medium" },
   photo: { kind: "impact", style: "Medium" },
   delete: { kind: "impact", style: "Heavy" },
   save: { kind: "notification", type: "SUCCESS" },
@@ -313,6 +338,39 @@ export function feedback(event: FeedbackEvent | string, opts: FeedbackOptions = 
   playSound(event);
 
   if (opts.el) pulse(opts.el, event === "error" ? "shake" : "pulse");
+}
+
+/** Report that something happened *at a position* — rung `pos` of `outOf`.
+
+    Same four channels as `feedback`, with the sound carrying where in the
+    series this landed. The rattle window is shorter than the general one
+    because the input this covers is deliberately repetitive: running a finger
+    up a 1-10 scale or typing six digits of a weight is a run of intended
+    events, not a double-tap to be tidied away. */
+export function place(
+  event: PlacedEvent | string,
+  pos: number,
+  outOf: number,
+  opts: FeedbackOptions = {}
+) {
+  const now = Date.now();
+  if (now - lastAt < 24) return;
+  lastAt = now;
+
+  if (prefs.haptics !== false && !opts.silentHaptic) {
+    ensureNativePlugin();
+    if (!fireNative(event, prefs.hapticStrength)) {
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        try {
+          navigator.vibrate(scaleHaptic(HAPTIC_PATTERNS[event] ?? 10, prefs.hapticStrength) as any);
+        } catch { /* see feedback() */ }
+      }
+    }
+  }
+
+  playPitched(event, pos, outOf);
+
+  if (opts.el) pulse(opts.el);
 }
 
 /** Success and failure, spelled out, because "did that work?" is the question

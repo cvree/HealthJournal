@@ -118,6 +118,32 @@ export function animateScreenIn(el: HTMLElement | null) {
   );
 }
 
+/** Setup wizard: the step's own blocks arrive in reading order.
+
+    This is the one place in the app where a stagger is doing real work rather
+    than decorating. A setup screen is a stranger's first thirty seconds with
+    the app, and the order the eye takes it in — heading, then the sentence
+    under it, then the thing to touch — is a claim about what matters that a
+    simultaneous fade cannot make. Direct children only, so a step is
+    choreographed by how it is composed rather than by a list of selectors kept
+    in step with the markup.
+
+    Everything is left fully visible under reduced motion, and `clearProps`
+    hands the elements back to CSS the moment it lands. */
+export function animateStepIn(el: HTMLElement | null) {
+  if (!el || prefersReducedMotion()) return;
+  const blocks = Array.from(el.children) as HTMLElement[];
+  if (!blocks.length) return;
+  gsap.fromTo(
+    blocks,
+    { autoAlpha: 0, y: 14 },
+    {
+      autoAlpha: 1, y: 0, duration: 0.42, ease: "power3.out",
+      stagger: 0.055, clearProps: "all",
+    }
+  );
+}
+
 /** Report screens: stagger cards in as a single orchestrated moment. */
 export function animateReportCards(container: HTMLElement | null) {
   if (!container || prefersReducedMotion()) return;
