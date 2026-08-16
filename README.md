@@ -41,9 +41,20 @@ them. Each question has independent visibility across five surfaces: quick log, 
 dashboard, charts, export. The editor groups them into collapsible sections per pack, with a
 filter across the top — sixty questions in one flat list was unusable.
 
-**Log in about a minute.** Quick Log batches four questions per screen with big tap targets,
-smart defaults pre-filled from your own 7-day median, and auto-advance. Detailed Log is the
-long form when you want it. Any past day stays editable from the calendar.
+**Log in about a minute.** Quick Log batches four questions per screen with big tap targets and
+auto-advance. Your recent answer for each question — a 7-day median for scales, yesterday for
+toggles, the last value for numbers — is marked with a dashed ring on the value itself, so
+accepting it is one tap and ignoring it costs nothing. It is never a banner asking whether today
+was the same as usual, and it is never filled in for you.
+
+**The long form is a form, not a scroll.** Detailed Log lays its sections out as cards — each
+with its own sticky heading, answered count, and fold — one column on a phone, two from 900px,
+three from 1320px. It is the only screen in the app that widens on a desktop, because it is the
+only one that is a form rather than a list. Any past day stays editable from the calendar.
+
+**Numbers are typed, not clicked eleven times.** Tapping a weight opens a keypad — the value at
+reading size, a nudge row, ten keys. It takes one decimal for a weight and none for a step count,
+and digits, Backspace, Enter and the arrow keys all drive it from a physical keyboard.
 
 **Food.** A proper food diary: a date pager, a calorie ring, macro bars, and the day grouped
 into Breakfast / Lunch / Dinner / Snack / Drink with per-meal subtotals. Log a meal with the
@@ -477,8 +488,8 @@ download before any reset, never a silent wipe.
 ## Motion and polish
 
 - **Lenis** smooths wheel scrolling; touch stays native so mobile logging is never hijacked.
-- **GSAP** drives screen transitions, the Quick Log finish moment, report card reveals, and the
-  swipe-deck fling physics.
+- **GSAP** drives screen transitions, the Quick Log finish moment, report card reveals, the
+  setup wizard's per-step stagger, and the swipe-deck fling physics.
 - **The ambient backdrop is CSS** — three blurred layers on the compositor, tinted live from
   `--fhj-hue`. Under `prefers-reduced-motion` it holds still rather than disappearing.
 - **One feedback layer** (`src/lib/feedback.ts`). A call site names what the person did —
@@ -487,6 +498,11 @@ download before any reset, never a silent wipe.
   drives real impact weights and notification patterns through Capacitor; everywhere else it
   falls back to scaled `navigator.vibrate` patterns; on a laptop with neither it still pulses the
   button, which is the one channel every user has.
+- **Some sounds carry a position, not an event.** A rung on a 1–10 scale, a step in the setup
+  wizard, and a digit on the keypad each pick their pitch from where they land in the series
+  (`place("scale", 7, 10)`), so a 3 never sounds like an 8, typing a weight reads as a run, and
+  the last setup screen resolves an octave above the first. One key throughout — F major
+  pentatonic — so no two sounds in the app can clash.
 - Every animation, sound, and haptic respects `prefers-reduced-motion` and the in-app toggles.
   Each channel degrades **independently**: sound off, haptics off, reduced motion, no motor, no
   audio device — each subtracts one and leaves the others working, and none of them can take a

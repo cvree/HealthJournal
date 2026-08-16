@@ -1,5 +1,99 @@
 # Changelog
 
+## 1.11.0
+
+### The Detailed Log gets the screen it was standing on
+
+It was one card holding every question in the survey. Forty-odd rows, one
+continuous rule down the page, and the only structure a heading that scrolled
+away three questions in. On a phone that is merely long. On a laptop it was a
+448px ribbon of it down the middle of a 1440px screen — three quarters of the
+display empty, while "where does Skin end and Diet begin" had no answer on
+screen at any moment.
+
+Sections are cards now. Each carries its own sticky heading, its own answered
+count (`3/8`), and its own fold, in a grid that becomes two columns at 900px
+and three at 1320px. **Below 900px nothing about the phone changes** — the
+shell is still 28rem, still centred, and it widens for this one screen and no
+other, because every other screen in the app is a list and a 1440px-wide list
+is not an improvement.
+
+**The 1–10 scale carries its numerals.** Ten blank tiles work under a thumb
+that is already on the one it wants, with the big number to the right reading
+back what it landed on. Under a pointer that is somewhere else on a laptop
+screen, they are a bar chart with no axis. The rungs also can't be clipped by
+a card corner any more, whatever the width.
+
+### "Same as usual?" is no longer a question
+
+Every scale used to open with a banner: *Tap to confirm 3 · same as usual*.
+It was meant as a shortcut. It was a sentence placed in front of the user on
+every question of every day, and a question you have to answer in order to
+dismiss it is not a shortcut — it is one more question.
+
+The memory behind it is untouched and now goes further. The recent answer is
+still worked out the same way (a 7-day median for scales, yesterday for
+toggles, the last value for numbers) and is still pre-selected — as a dashed
+ring on the value itself, accepted by tapping it like any other. What it
+means is explained **once per screen** by a small legend, and only while
+something on that screen is actually wearing the dashes. The Detailed Log now
+shows the marks too; it never used to.
+
+### The number is the control
+
+A weight is 196.1. Entering 196.1 used to cost eleven presses of a `+0.1`
+button — or discovering that the borderless number between the two circles
+was secretly a text input, which nothing said and which on a phone summoned
+the OS keyboard over the field it was editing.
+
+Tapping the number now opens a keypad: the value at reading size, a nudge
+row, ten keys, and nothing else. It takes one decimal for a weight and none
+for a step count, because the precision comes from the field's own step.
+Digits, `.`, Backspace, Enter and the arrow keys all drive it, so it is as
+quick with a keyboard as with a thumb.
+
+### First run is addressed to somebody
+
+- **The name is asked first, not last.** At the end it was a label on a
+  profile nobody opens. At the start, the next screen can greet them by it
+  and the final one can hand them their own setup. Still optional; skipping
+  it just means no greeting.
+- **Five checkable promises, before anything is typed.** No account, no
+  server, no analytics, export whenever, delete permanently. Each is a fact
+  about the build that a stranger could go and confirm — which is the only
+  kind of trust claim worth printing on a first-run screen. The medical
+  disclaimer keeps its own card.
+- **Seven anonymous dots became a named rail.** Welcome · Look · Focus ·
+  Questions · Photos · Body · Done, with every step you have already seen a
+  way back to it.
+- **The last screen reads the check-in back.** Not "9 quick questions" — the
+  actual first three questions it will ask tomorrow morning, which is the
+  last chance to notice it is asking the wrong ones.
+- Steps stagger in in reading order, and the step tone climbs the scale, so
+  the final screen resolves an octave above the first.
+
+**Fixed: picking a pack enabled none of its questions.** The effect that
+syncs the enabled set read `known.current` from inside a `setState` updater —
+and an updater does not run during the effect, it runs later during the
+re-render, by which time the effect body's own `known.current = keys` had
+already executed. Every key therefore looked like one the user had seen and
+ruled on, the "preserve their choice" branch won, and the choice it preserved
+was the empty set from before any pack existed. Step 3 of setup dead-ended on
+a disabled button unless you happened to spot "Track everything".
+`tests/onboarding.test.tsx` fails without the fix.
+
+### Sound learns where it is
+
+The instrument gains **positional voices**: the pitch carries *where you are*
+rather than *what happened*. A 3 on a scale never sounds like an 8, typing a
+weight reads as a little run up the keypad, and a seven-screen setup climbs
+an octave from start to finish. One key throughout (F major pentatonic), so
+nothing ever clashes with anything else.
+
+Plus the four voices the surfaces were missing: a drawer opening, the same
+gesture run backwards for closing, a detent for a menu, and a dry downward
+tick for erasing.
+
 ## 1.10.0
 
 ### One feedback system
