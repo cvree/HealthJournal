@@ -46,6 +46,8 @@ import { sweepTombstones } from "./lib/sync/merge";
 import { IDLE_STATUS } from "./lib/sync/types";
 import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
+import YearHeatmap from "./components/YearHeatmap";
+import { buildHeatmap } from "./lib/heatmap";
 import {
   MEALS, mealLabel, mealForTime, UNITS, BRISTOL, bristolLabel, BOWEL_COLORS,
   BOWEL_CONSISTENCY, BOWEL_AMOUNTS, SEVERITY_0_3, severityLabel,
@@ -4411,6 +4413,25 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
     return out;
   }, [entries, derived, metricSource, chartDates]);
 
+  /* Twelve months of the selected metric, for the year block below the trend
+     chart. It reads `entries` rather than `chartEntries` on purpose: the year
+     view is a 1–10 view, and every 1–10 answer is a survey answer. The derived
+     metrics folded into `chartEntries` are counts and grams, which have no
+     business on a severity ramp — the card says so instead of drawing them. */
+  const heatMonths = useMemo(() => {
+    if (!metricField || metricField.type !== "scale") return null;
+    const byDate = new Map(entries.map((e) => [e.date, e]));
+    return buildHeatmap({
+      today: todayStr(),
+      months: 12,
+      valueOn: (d) => {
+        const v = byDate.get(d)?.answers[metricField.k];
+        return typeof v === "number" ? v : null;
+      },
+      loggedOn: (d) => byDate.has(d),
+    });
+  }, [entries, metricField]);
+
   const today = entryOn(entries, todayStr());
   const streak = calcStreak(entries);
   const keyToday = today?.answers[tpl.keyMetric];
@@ -4543,6 +4564,31 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
           );
         })}
       </div>
+
+      {/* ---------- The year ----------
+          The trend chart is thirty days, which is the wrong window for "was
+          this spring worse than last autumn". One square per day, twelve rows,
+          no scrolling. */}
+      <SectionTitle>Your year</SectionTitle>
+      <Card>
+        <div className="flex items-baseline justify-between gap-3 mb-3.5">
+          <div className="fhj-eyebrow min-w-0 leading-snug">{metricField.label}</div>
+          <span className="text-[11px] shrink-0" style={{ color: C.subtle }}>Last 12 months</span>
+        </div>
+        {heatMonths ? (
+          <YearHeatmap
+            months={heatMonths}
+            dir={metricField.dir}
+            metricLabel={metricField.label}
+            today={todayStr()}
+            onFeedback={feedback}
+            onOpenDay={viewer ? undefined : openLog}
+          />
+        ) : (
+          <ChartEmpty height={150}
+            title={`The year block colours 1–10 ratings. “${metricField.label}” is measured in ${metricField.unit || "other units"} — pick a rating above to see its year.`} />
+        )}
+      </Card>
 
       {/* ---------- Possible Patterns ----------
           Locally calculated, plus optional AI observations. */}

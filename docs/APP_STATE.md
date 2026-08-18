@@ -363,6 +363,53 @@
 > screen-reader pass not done.
 
 
+> **2026-08-18 addendum 16 — 1.14: the 12-month heatmap on Insights.**
+> **New typed module `src/lib/heatmap.ts` + `src/components/YearHeatmap.tsx`.** The lib is pure
+> and clock-free: `monthsEnding(today, n)`, `buildHeatmap({today, months, valueOn, loggedOn})` →
+> `HeatMonth[]` (each row exactly 31 day-of-month slots, `null` past the month's end),
+> `heatSummary(months, dir)` → per-month + whole-year counts/average/best/hardest read through
+> the metric's direction, `mixHex`/`rampBetween`/`heatRamp`/`heatColor` for the ten-step ramp,
+> and `heatLegendEnds`/`heatExtremeLabels` for direction-aware wording. Nothing imports App.tsx.
+>
+> **Layout: months as rows, days-of-month as columns.** Not the contribution-graph shape. The
+> arithmetic decides it: a card is ~330px on a phone, so 53 week columns give ~5px/day and 31 day
+> columns give ~9px. Weekday alignment is the cost; the Calendar screen already owns weekday
+> questions with 44px targets. `.fhj-heat*` classes live at the foot of `src/styles/index.css`;
+> the grid bleeds `-0.75rem` past the card padding because 32px is three more pixels per square.
+>
+> **Interaction: select, then open.** A 9px square cannot be a one-tap route into an editor. First
+> tap sets `selected` and fills the readout strip under the grid (day, score, and an Open / "Log
+> it" button); a second tap on the same square opens it. The strip is always present — it shows
+> the year's headline ("33 of 352 days logged · avg 6.3") when nothing is selected — so the card
+> never changes height. Read-only viewer passes no `onOpenDay`, which drops the button and makes
+> the second tap inert.
+>
+> **A11y.** 365 buttons is one tab stop: roving `tabIndex` (selected → today → last logged),
+> arrows ±1 day / ±31 for a month, Home/End. Every square's `aria-label` is the long date plus
+> "Itch 7 out of 10" / "logged, no rating" / "nothing logged". **Read it month by month** is the
+> non-chart fallback — a real `<table>` with `scope` on both axes, one row per month, plus the
+> year's best/hardest named in prose.
+>
+> **Three empty states, deliberately different.** Score = filled square; logged-but-no-answer-for-
+> this-metric = outline in `C.sub`; nothing logged = `C.faint` fill. A sparse year has to read as
+> sparse rather than as a hole in the drawing.
+>
+> **Scale metrics only.** `heatMonths` is `null` unless `metricField.type === "scale"`, and the
+> card falls back to `ChartEmpty` naming the metric's unit. It reads `entries`, not
+> `chartEntries`: the derived metrics folded into the latter are counts and grams and have no
+> place on a severity ramp.
+>
+> **Gotcha:** cells were first 13px tall with a 3px radius, which at 8px wide rendered as a field
+> of pills rather than a grid; and the fallback table overflowed the card until the headers went
+> to one word ("Best"/"Hardest") and the row header to `Aug 2026`. Both found in a real browser,
+> both themes, at 390px.
+>
+> Tests: **747 across 31 suites** (was 713/29) — new `tests/heatmap.test.ts` (20 pure) and
+> `tests/heatmapUi.test.tsx` (14 jsdom).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

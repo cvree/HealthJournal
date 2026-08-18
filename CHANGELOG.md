@@ -1,5 +1,68 @@
 # Changelog
 
+## 1.14.0
+
+### Your year, on one screen
+
+The trend chart is thirty days. That is the right window for "is this week
+worse than last", and the wrong one for almost everything you actually carry
+into an appointment: *was this spring worse than last autumn, how much of the
+year did I lose to this, when was the last stretch where I was fine.*
+
+Insights now ends its Trends run with the whole year. Twelve rows, one per
+month; thirty-one columns, one per day-of-month; a distinct shade for every
+score from 1 to 10, and nothing at all on the days that were never logged. It
+sits directly under the 30-day chart and follows the same metric picker, so
+zooming out is not a screen you have to go and find.
+
+**Months as rows, not weeks as columns.** The contribution-graph layout puts 53
+week columns across the page, which on a phone is five pixels a day —
+unreadable, and untappable by a wide margin. Thirty-one day columns is nine,
+the largest square a full year can have on this screen, and "each row is a
+month" is a key nobody has to be given. Weekday alignment is what it costs, and
+weekday questions belong on the Calendar screen, which has full-size targets
+and always has.
+
+**Ten shades, not four.** The dashboard's severity ramp buckets 1–10 into four
+colours, which is right for a single number you read at a glance and wrong for
+365 squares: at four steps a 3 and a 5 are the same square, and telling those
+apart is the entire reason to draw a year. The ramp here interpolates the same
+four bucket colours into ten, so a red day is still the red the dashboard used
+this morning — there are just nine other days it can now be told apart from.
+Metrics where high is *good* get the ramp reversed, so a 9 of sleep quality is
+never drawn in the colour of a 9 of pain.
+
+**A tap names the day before it opens it.** A nine-pixel square is not a tap
+target, and pretending otherwise would mean every mis-hit costs a screen you
+have to back out of. Instead the first tap puts the day in a readout under the
+grid — "Fri, Aug 7 · 6/10", or "nothing logged this day" — next to a full-width
+button that opens it. Tapping the same square again opens it too, so the fast
+path is still two taps, and the slow path is one you can correct without
+leaving.
+
+**Three states, three treatments.** A day with a score is a filled square; a
+day that was logged but has no answer for *this* metric is an outline; a day
+with nothing on it is a whisper of the grid. So a sparse year reads as sparse
+instead of as a hole in the drawing, and "I stopped logging in March" and "I
+logged but skipped this question" are not the same picture.
+
+### Saying it without the colour
+
+Colour is the only channel a heatmap has, so it cannot be the only channel the
+section has.
+
+- Every square carries its full date and score as its accessible name.
+- The grid is a single tab stop with arrow-key movement — left and right by a
+  day, up and down by a month, Home and End to the ends of the year.
+- **Read it month by month** opens a real table under the grid: logged days out
+  of elapsed days, average, best and hardest, one row per month, with the
+  year's best and hardest day named underneath. It says exactly what the grid
+  says, in words, and it turns out to be the fastest way to read the monthly
+  figures whether or not you can see the colours.
+
+Best and hardest are read through the metric's own direction throughout, so a 2
+is the best day of the month for a symptom and the worst one for energy.
+
 ## 1.13.0
 
 ### The Diary: one page for the whole day

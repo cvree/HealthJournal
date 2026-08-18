@@ -132,6 +132,17 @@ count, average Bristol type, urgency, straining, discomfort). Possible-pattern c
 least six paired days before they'll say anything. Every chartable metric is reachable in the
 trend picker — it scrolls, it says so, and it works from a keyboard.
 
+**Your year, on one screen.** Under the 30-day chart sits the whole last twelve months of the
+selected 1–10 metric: one row per month, one square per day, a distinct shade for every score
+from 1 to 10, and nothing at all on the days you didn't log. It is months-as-rows rather than the
+usual weeks-as-columns for a plain reason — a phone gives a card about 330px, which is 5px per
+day laid out by week and 9px laid out by day-of-month. Squares that small are not a tap target,
+so a tap *names* the day in a readout under the grid, next to the button that opens it: landing
+on the 14th when you meant the 15th is something you can see rather than a screen you have to
+back out of. The grid is one tab stop with arrow-key movement, every square says its date and
+score out loud, and a month-by-month table underneath states the same figures in words for
+anyone who can't use colour.
+
 **Designed, not just built.** *Soft Clinical* — soft graphite in the dark, warm off-white in
 the light, muted blue with sage, lavender and clay accents, generous spacing and quiet depth —
 with a deliberate hint of neobrutalism: borders a notch above a hairline, hard offset shadows,
@@ -463,7 +474,8 @@ health-journal/
 │   ├── main.tsx                # storage polyfill, mounts App
 │   ├── App.tsx                 # the app (migrated single-file artifact)
 │   ├── components/             # ambient backdrop, appearance panel, lock,
-│   │                           #   recovery, viewer landing, metric picker
+│   │                           #   recovery, viewer landing, metric picker,
+│   │                           #   year heatmap
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving
@@ -473,6 +485,7 @@ health-journal/
 │   │   ├── tracking.ts         # food + bowel logs, food library, goals, daily metrics
 │   │   ├── routine.ts          # meds/supplements/creams/products: items, doses, checklist
 │   │   ├── metrics.ts          # the one registry of chartable derived metrics
+│   │   ├── heatmap.ts          # the 12-month year grid, summaries and colour ramp
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
 │   │   ├── answers.ts          # type-safe answer read/write
@@ -501,7 +514,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 713 tests across 29 suites
+└── tests/                      # 747 tests across 31 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

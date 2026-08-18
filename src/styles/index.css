@@ -3369,3 +3369,153 @@ button.fhj-section:disabled {
     animation: none !important;
   }
 }
+
+/* ============================================================
+   Year heatmap
+   ============================================================
+
+   Twelve month rows, thirty-one day columns. The only fixed measurement is the
+   month gutter; every square is a fraction of what is left, so the block fills
+   whatever width the card gives it and stays square-ish from a 320px phone to a
+   tablet. See src/components/YearHeatmap.tsx for the layout's reasoning. */
+
+.fhj-heat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Bleed to the card's padding edges: 32px of card padding is three more
+     pixels on every square, which at this size is a third of one. */
+  margin-inline: -0.75rem;
+}
+
+.fhj-heat-row {
+  display: grid;
+  grid-template-columns: 2.1rem 1fr;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.fhj-heat-month {
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fhj-heat-days {
+  display: grid;
+  grid-template-columns: repeat(31, minmax(0, 1fr));
+  gap: 2px;
+}
+
+/* A square is small on purpose — a year is 365 of them. It is never the only
+   way to reach a day: the readout under the grid names whatever was hit, and
+   the Calendar screen has full-size targets. */
+.fhj-heat-day {
+  height: 11px;
+  min-width: 0;
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+  transition: transform var(--fhj-quick) var(--fhj-out),
+    box-shadow var(--fhj-quick) ease;
+}
+.fhj-heat-pad {
+  height: 11px;
+}
+@media (hover: hover) {
+  .fhj-heat-day:hover {
+    transform: scale(1.35);
+  }
+}
+.fhj-heat-day.is-selected {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 1.5px var(--fhj-ink, #ecebe7) !important;
+}
+.fhj-heat-day:focus-visible {
+  transform: scale(1.35);
+}
+
+/* The strip under the grid: the year's headline, or the day just touched. */
+.fhj-heat-readout {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: var(--fhj-tap);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--fhj-radius);
+}
+.fhj-heat-readout-swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: 0.4375rem;
+}
+
+.fhj-heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* The ramp is the legend — ten shades in the order they appear in the grid,
+   rather than four words for ten colours. */
+.fhj-heat-ramp {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.fhj-heat-key {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.fhj-heat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.fhj-heat-table th,
+.fhj-heat-table td {
+  padding: 0.375rem 0.125rem;
+  text-align: right;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-heat-table thead th {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fhj-subtle, #9a9ca6);
+  border-bottom: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+.fhj-heat-table tbody th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+  white-space: nowrap;
+  width: 1%;
+}
+.fhj-heat-table thead th:first-child {
+  text-align: left;
+}
+.fhj-heat-table tbody tr + tr th,
+.fhj-heat-table tbody tr + tr td {
+  border-top: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-heat-day,
+  .fhj-heat-day:hover,
+  .fhj-heat-day.is-selected,
+  .fhj-heat-day:focus-visible {
+    transform: none;
+    transition: none;
+  }
+}
