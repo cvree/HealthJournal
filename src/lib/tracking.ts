@@ -22,7 +22,7 @@
 
 import type {
   BowelAiResult, BowelLog, FoodAiResult, FoodItem, FoodLog, MealCategory,
-  NamedReminder, NutritionGoals, NutritionValues,
+  NamedReminder, NutritionGoals, NutritionValues, RoutineItem, RoutineLog,
 } from "../types/models";
 
 export type { BowelLog, FoodItem, FoodLog, MealCategory, NutritionGoals, NutritionValues };
@@ -610,6 +610,22 @@ export function dayTotals(food: FoodLog[], date: string): DayTotals {
    neutral on purpose — there is no healthy calorie count, and colouring one
    red would be the app giving dietary advice. */
 
+/** Everything a derived metric is allowed to look at for one day. Every
+    collection is optional: a metric reads the one it is about and ignores the
+    rest, and a caller that has no routine yet shouldn't have to pass an empty
+    array to plot its calories. */
+export interface MetricCtx {
+  food?: FoodLog[];
+  bowel?: BowelLog[];
+  /** The routine lives in ./routine, which imports this module — so the
+      metrics over it are defined there and folded into one registry by
+      ./metrics. The shapes come from the model contract, which imports
+      nothing, so naming them here costs no runtime dependency. */
+  routine?: RoutineLog[];
+  routineItems?: RoutineItem[];
+  date: string;
+}
+
 export type DerivedMetric = {
   k: string;
   label: string;
@@ -617,7 +633,7 @@ export type DerivedMetric = {
   dir: "sym" | "pos" | "neutral";
   sec: string;
   /** Reduce one day to one number, or null when the day has no data. */
-  value: (ctx: { food: FoodLog[]; bowel: BowelLog[]; date: string }) => number | null;
+  value: (ctx: MetricCtx) => number | null;
 };
 
 const avg = (xs: number[]): number | null =>
@@ -629,7 +645,7 @@ export const FOOD_METRICS: DerivedMetric[] = NUTRIENTS.map((n) => ({
   unit: n.unit,
   dir: "neutral" as const,
   sec: "Food",
-  value: ({ food, date }) => {
+  value: ({ food = [], date }) => {
     const t = dayTotals(food, date);
     const v = t[n.k];
     return v == null ? null : Math.round(v * 10) / 10;
@@ -642,7 +658,7 @@ export const BOWEL_METRICS: DerivedMetric[] = [
     label: "Bowel movements",
     dir: "neutral",
     sec: "Bowel",
-    value: ({ bowel, date }) => {
+    value: ({ bowel = [], date }) => {
       const rows = bowelOn(bowel, date);
       return rows.length ? rows.length : null;
     },
@@ -652,7 +668,7 @@ export const BOWEL_METRICS: DerivedMetric[] = [
     label: "Bristol type (avg)",
     dir: "neutral",
     sec: "Bowel",
-    value: ({ bowel, date }) =>
+    value: ({ bowel = [], date }) =>
       avg(bowelOn(bowel, date).map((b) => b.bristol).filter((n): n is number => typeof n === "number")),
   },
   {
@@ -660,7 +676,7 @@ export const BOWEL_METRICS: DerivedMetric[] = [
     label: "Urgency",
     dir: "sym",
     sec: "Bowel",
-    value: ({ bowel, date }) =>
+    value: ({ bowel = [], date }) =>
       avg(bowelOn(bowel, date).map((b) => b.urgency).filter((n): n is number => typeof n === "number")),
   },
   {
@@ -668,7 +684,7 @@ export const BOWEL_METRICS: DerivedMetric[] = [
     label: "Straining",
     dir: "sym",
     sec: "Bowel",
-    value: ({ bowel, date }) =>
+    value: ({ bowel = [], date }) =>
       avg(bowelOn(bowel, date).map((b) => b.straining).filter((n): n is number => typeof n === "number")),
   },
   {
@@ -676,40 +692,14 @@ export const BOWEL_METRICS: DerivedMetric[] = [
     label: "Discomfort",
     dir: "sym",
     sec: "Bowel",
-    value: ({ bowel, date }) =>
+    value: ({ bowel = [], date }) =>
       avg(bowelOn(bowel, date).map((b) => b.discomfort).filter((n): n is number => typeof n === "number")),
   },
 ];
 
-export const DERIVED_METRICS: DerivedMetric[] = [...FOOD_METRICS, ...BOWEL_METRICS];
-
-export const derivedMetric = (k: string): DerivedMetric | undefined =>
-  DERIVED_METRICS.find((m) => m.k === k);
-
-export const isDerivedKey = (k: string): boolean => DERIVED_METRICS.some((m) => m.k === k);
-
-/** Which derived metrics have enough data to be worth offering. A picker full
-    of always-empty options is worse than a short one. */
-export function availableDerivedMetrics(
-  food: FoodLog[], bowel: BowelLog[], dates: string[], minDays = 2
-): DerivedMetric[] {
-  return DERIVED_METRICS.filter((m) => {
-    let n = 0;
-    for (const date of dates) {
-      if (m.value({ food, bowel, date }) != null) n += 1;
-      if (n >= minDays) return true;
-    }
-    return false;
-  });
-}
-
-/** One derived metric across a run of dates, in the shape the chart already
-    understands ({ date, value }). */
-export function derivedSeries(
-  m: DerivedMetric, food: FoodLog[], bowel: BowelLog[], dates: string[]
-): { date: string; value: number | null }[] {
-  return dates.map((date) => ({ date, value: m.value({ food, bowel, date }) }));
-}
+/* The combined registry — every derived metric, plus the helpers that read
+   them — lives in ./metrics, because the routine's metrics are defined in
+   ./routine and this module cannot import that without a cycle. */
 
 /* ---------- summaries for the timeline ---------- */
 

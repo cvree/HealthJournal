@@ -29,7 +29,10 @@
     they travel on their own path (see engine.syncPhotos). Reports are absent
     for the opposite reason — they are derived from entries, so syncing them
     would be syncing the same facts twice. */
-export type RecordKind = "entry" | "food" | "bowel" | "foodItem" | "profile";
+export type RecordKind =
+  | "entry" | "food" | "bowel" | "foodItem"
+  | "routine" | "routineItem"
+  | "profile";
 
 /** One syncable thing, in the form both sides agree on. `payload` is the
     plaintext record; it is encrypted before it ever reaches the network. */

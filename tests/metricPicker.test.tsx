@@ -13,6 +13,7 @@ import React from "react";
 import { render, screen, fireEvent, within, cleanup, waitFor } from "@testing-library/react";
 import MetricPicker from "../src/components/MetricPicker";
 import App, { __internals as I } from "../src/App";
+import { availableDerivedMetrics } from "../src/lib/metrics";
 
 beforeEach(() => cleanup());
 
@@ -152,14 +153,32 @@ describe("the Insights screen offers every chartable metric", () => {
     const db = JSON.parse(kv.get("fhj_v1")!);
     const tpl = I.getProfileTemplate(db.profile);
     const expected = tpl.chartMetrics.filter((k: string) => tpl.fields.some((f: any) => f.k === k));
+    /* Meals, bowel movements and routine doses reach the chart as derived
+       daily metrics, so whichever of those the demo journal has data for are
+       chips too. Counted from the same source the screen counts them from,
+       rather than hard-coded, so adding a metric doesn't fail this test for
+       the wrong reason. */
+    const dates: string[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      );
+    }
+    const derived = availableDerivedMetrics(
+      { food: db.food, bowel: db.bowel, routine: db.routine, routineItems: db.routineItems },
+      dates
+    );
+    const total = expected.length + derived.length;
 
     // The old markup rendered these too — what it didn't do was make anything
     // past the visible few reachable. This asserts the count so a future
     // "just show the first N" shortcut fails loudly.
     expect(expected.length).toBeGreaterThan(4);
-    expect(within(group).getAllByRole("button")).toHaveLength(expected.length);
+    expect(within(group).getAllByRole("button")).toHaveLength(total);
     await waitFor(() =>
-      expect(document.body.textContent).toContain(`of ${expected.length} selected`)
+      expect(document.body.textContent).toContain(`of ${total} selected`)
     );
   });
 });

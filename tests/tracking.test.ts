@@ -10,7 +10,6 @@ import {
   resolveNutrient, effectiveNutrition, hasAiValues, hasUserEdits,
   acceptEstimate, discardEstimate, dayTotals, foodOn, bowelOn,
   formatNutrient, foodSummary, bowelSummary, severityLabel, bristolLabel,
-  DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, derivedSeries,
   sanitizeFoodLogs, sanitizeBowelLogs, NUTRIENT_KEYS,
   newFoodItem, rememberFood, logFromFoodItem, scaleNutrition, foodKey,
   browseFoods, searchScore, toggleFavorite, goalProgress, hasGoals,
@@ -18,6 +17,9 @@ import {
   matchBowelColor, matchBowelConsistency, bowelSuggestion, applyBowelSuggestion,
   aiFilledBowelFields, BOWEL_COLORS, BOWEL_CONSISTENCY,
 } from "../src/lib/tracking";
+import {
+  DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, derivedSeries,
+} from "../src/lib/metrics";
 import { buildFoodTable, buildBowelTable, buildWideTable, logsInRange } from "../src/lib/exports";
 import type { FoodLog } from "../src/types/models";
 
@@ -247,14 +249,14 @@ describe("derived trend metrics", () => {
   });
 
   it("only offers metrics that actually have data behind them", () => {
-    const available = availableDerivedMetrics(F, B, dates).map((m) => m.k);
+    const available = availableDerivedMetrics({ food: F, bowel: B }, dates).map((m) => m.k);
     expect(available).toContain("food_calories");
     expect(available).toContain("bm_count");
     expect(available).not.toContain("food_sodium"); // never recorded
   });
 
   it("builds a series the chart can read directly", () => {
-    const s = derivedSeries(derivedMetric("food_protein")!, F, B, [...dates, "2026-08-10"]);
+    const s = derivedSeries(derivedMetric("food_protein")!, { food: F, bowel: B }, [...dates, "2026-08-10"]);
     expect(s).toEqual([
       { date: "2026-08-08", value: 90 },
       { date: "2026-08-09", value: 110 },

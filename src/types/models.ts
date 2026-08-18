@@ -366,6 +366,89 @@ export interface BowelLog {
   updatedAt: string;
 }
 
+/* ---------- the routine: medications, supplements, creams, products ----------
+
+   The third shape that doesn't fit the daily survey, and the one people ask
+   for first. A survey question can record *that* you moisturised; it cannot
+   record that you used 2 pumps of the CeraVe in the morning, skipped the
+   evening one, and have been on 10 mg of the antihistamine since Tuesday.
+
+   Two objects, and the split is the whole design:
+
+   - `RoutineItem` is the *thing* — a medication, a supplement, a cream, a
+     shampoo, a shake. It carries the usual dose and when in the day it
+     belongs. Editing it changes what today's checklist asks for.
+   - `RoutineLog` is one *use* of that thing at one moment. It carries its own
+     copy of the name, kind and dose, so renaming an item or deleting it
+     outright can never rewrite what a past day says happened. That is the same
+     rule the food diary follows, for the same reason: history is a record, not
+     a view.
+
+   The dose is a string on purpose. "500 mg", "2 pumps", "a pea-sized amount"
+   and "1 scoop" are all things people actually take, and forcing them through
+   a number and a unit picker would make the common case slower to serve a
+   tidiness nobody asked for. */
+
+export type RoutineKind =
+  | "med" // prescription or over-the-counter medication
+  | "supplement" // vitamins, minerals, powders
+  | "topical" // creams, moisturisers, ointments, balms
+  | "product" // shampoo, soap, sunscreen — anything applied that isn't a treatment
+  | "food" // a daily driver you eat or drink: shake, kefir, electrolytes
+  | "other";
+
+/** Which part of the day an item belongs to. An item with no times is simply
+    "anytime today" and appears in its own group. */
+export type RoutineTime = "morning" | "midday" | "evening" | "bed";
+
+export interface RoutineItem {
+  id: string;
+  name: string;
+  kind: RoutineKind;
+  /** Brand, strength, or whatever distinguishes this tub from the other one. */
+  brand?: string;
+  /** One dose, in the user's own words: "500 mg", "2 pumps", "1 scoop". */
+  dose?: string;
+  /** Which slots this belongs to. Empty means anytime. Ignored when
+      `daily` is false — an as-needed item has no schedule to miss. */
+  times: RoutineTime[];
+  /** True for a daily driver (the checklist asks for it every day); false for
+      something taken only when needed, which is offered but never chased. */
+  daily: boolean;
+  notes?: string;
+  /** Off the checklist without losing its history. Deleting is also offered;
+      this is for the course that finished. */
+  archived?: boolean;
+  /** How many times it has been logged, and when last — drives ordering in the
+      as-needed row. */
+  useCount: number;
+  lastUsedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoutineLog {
+  id: string;
+  date: string; // YYYY-MM-DD (local)
+  time: string; // HH:MM (local, 24h)
+  /** The item this came from. Kept even after the item is deleted, so an undo
+      or a re-import can still line them back up. */
+  itemId: string;
+  /** Snapshots, written at log time. See the note above: these are what make
+      a past day immune to an edit made today. */
+  name: string;
+  kind: RoutineKind;
+  dose?: string;
+  /** Which slot this use satisfies, when the item has any. */
+  slot?: RoutineTime;
+  /** A deliberate miss, recorded as one. Distinct from an absent log, which
+      only ever means "nothing was said". */
+  skipped?: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /* ---------- onboarding & database root ---------- */
 
 export interface OnboardingState {
@@ -383,5 +466,9 @@ export interface AppDatabase extends OnboardingState {
   foods?: FoodItem[];
   /** Bowel movements, newest-last. Many per day. */
   bowel?: BowelLog[];
+  /** The routine: what the person takes, applies or uses. */
+  routineItems?: RoutineItem[];
+  /** One row per use of a routine item. Many per day. */
+  routine?: RoutineLog[];
   schemaVersion?: number;
 }

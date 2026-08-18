@@ -1,5 +1,87 @@
 # Changelog
 
+## 1.12.0
+
+### Your routine: meds, supplements, creams, products
+
+The journal could tell you how bad your skin was on the 4th. It could not tell
+you what you had been putting on it. Treatment questions existed — *treatment
+used: yes*, *treatment detail: "CeraVe cream"* — but a survey question answers
+once a day, and a routine is not once a day: it is two pumps in the morning and
+two at night, a supplement with breakfast, a shampoo on the days you wash your
+hair, and a steroid cream only when things flare.
+
+So the routine is its own system now, and it is built around exactly one
+interaction:
+
+**One tap says "took it". The same tap undoes it.**
+
+No dose picker in the way, no confirmation, no form. Add an item once — a name,
+a kind (medication, supplement, cream, product, food or drink), a dose in your
+own words, and which parts of the day it belongs to — and it becomes a row on
+the dashboard, grouped into Morning / Midday / Evening / Bedtime, with **3 of 5
+done** across the top. Anything you only take when you need it sits in a
+separate **As needed** row: offered on one tap, never counted as missed, and
+showing how many times you have already had it today.
+
+**Doses are free text, deliberately.** "500 mg", "2 pumps", "pea-sized", "1
+scoop", "one wash". Those are the things people actually say, and a number field
+with a unit dropdown would have made the common case slower to serve a tidiness
+nobody asked for.
+
+### Adjusting today without rewriting the plan
+
+The second tap — the small control beside each row — is where everything else
+lives: the dose you actually took, the clock time, a note. **Changing today's
+dose does not change tomorrow's**, and the sheet says so on screen when the two
+differ. Editing the item itself is what changes the plan.
+
+**A skip is recorded as a skip.** A box you never ticked and a dose you decided
+against are different facts, and the app refuses to conflate them: an untouched
+row means *nothing was said*, and only a skip means *I chose not to*. Both are
+visible in the day's count and in the export.
+
+### History is a record, not a view
+
+Every entry keeps its own copy of the name, kind and dose **as they were the day
+it was logged**. Rename an item, halve its dose, archive it, delete it outright
+— last Tuesday still says exactly what it said. This is the same rule the food
+diary already follows, and it is the reason the routine can be edited freely
+without anyone having to think about what an edit costs.
+
+### It shows up everywhere the rest of the journal does
+
+- **Today's Logs** carries each dose in the timeline, in the order it happened,
+  next to your meals and check-ins.
+- **Trends** gains two chartable metrics — *doses taken* and *routine completed
+  (%)* — so a new cream and a symptom score can be looked at on one chart. Both
+  are drawn as neutral quantities: an adherence number the app colours red would
+  be advice, and this app doesn't give any.
+- **Export** gains two sheets. **Routine** is one row per dose (name, kind, dose,
+  when, taken or skipped, and the plan's usual dose alongside it); **Routine
+  items** is the plan itself, which is the sheet you print for an appointment.
+  The daily table gains `routine_taken`, `routine_skipped` and `routine_items`
+  beside the survey answers.
+- **Reminders** gain a routine kind, and stay quiet once the day's checklist has
+  been cleared.
+- **Sync and backups** carry both the items and the doses, on the same
+  tombstoned, last-write-wins terms as everything else.
+
+It is a written record and nothing more. It does not know what interacts with
+what, does not check doses, and will not tell you whether something is working —
+and the screen says so, in those words.
+
+### Under it
+
+New `src/lib/routine.ts` (items, doses, the checklist, progress, summaries,
+sanitisers, metrics) and new `src/lib/metrics.ts`, which is now the one registry
+of chartable derived metrics across food, bowel and routine — `tracking.ts` kept
+its own metric definitions but no longer owns the register, because `routine.ts`
+imports it and the registry has to sit above both.
+
+Tests: **704 across 28 suites** (was 658/26), including a suite that drives the
+whole thing through the UI.
+
 ## 1.11.0
 
 ### The Detailed Log gets the screen it was standing on

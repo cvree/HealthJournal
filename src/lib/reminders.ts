@@ -78,7 +78,7 @@ export function msUntilNext(time: string, now: Date = new Date()): number | null
    The old single `reminder` field is still read, and migrated on first load,
    so nobody loses the time they set. */
 
-export type ReminderKind = "checkin" | "food" | "bowel" | "custom";
+export type ReminderKind = "checkin" | "food" | "bowel" | "routine" | "custom";
 
 export interface NamedReminder {
   id: string;
@@ -94,6 +94,8 @@ export const REMINDER_PRESETS: { label: string; time: TimeOfDay; kind: ReminderK
   { label: "Breakfast", time: "08:00", kind: "food" },
   { label: "Lunch", time: "12:30", kind: "food" },
   { label: "Dinner", time: "18:30", kind: "food" },
+  { label: "Morning routine", time: "08:00", kind: "routine" },
+  { label: "Evening routine", time: "21:00", kind: "routine" },
   { label: "Evening check-in", time: "20:00", kind: "checkin" },
 ];
 
@@ -126,7 +128,7 @@ export function readReminders(profile: any): NamedReminder[] {
         label: String(r.label || "Reminder").slice(0, 60).trim() || "Reminder",
         time: r.time,
         enabled: r.enabled !== false,
-        kind: (["checkin", "food", "bowel", "custom"].includes(r.kind) ? r.kind : "custom") as ReminderKind,
+        kind: (["checkin", "food", "bowel", "routine", "custom"].includes(r.kind) ? r.kind : "custom") as ReminderKind,
       }));
   }
   const legacy = profile?.reminder;
@@ -166,6 +168,10 @@ export function nextReminderDue(
 export function reminderMessage(r: NamedReminder): string {
   if (r.kind === "food") return `${r.label} — log what you ate while it's in front of you.`;
   if (r.kind === "bowel") return `${r.label} — anything to log?`;
+  /* Deliberately "still to tick", not "you missed your medication". This app
+     does not know whether a dose was taken and the phone left in another room,
+     and a notification that assumes the worst is one that gets switched off. */
+  if (r.kind === "routine") return `${r.label} — anything on your routine still to tick off?`;
   if (r.kind === "checkin") return `${r.label} — today's check-in takes about a minute.`;
   return `${r.label} — time to log.`;
 }

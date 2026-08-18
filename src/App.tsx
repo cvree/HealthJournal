@@ -17,7 +17,7 @@ import { sanitizeCustomField } from "./lib/questions";
 import { validateDatabase } from "./lib/validate";
 import {
   serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped,
-  buildFoodTable, buildBowelTable, logsInRange,
+  buildFoodTable, buildBowelTable, buildRoutineTable, buildRoutineItemsTable, logsInRange,
 } from "./lib/exports";
 import { playSound, setSoundEnabled, suspendSound, resumeSound } from "./lib/sound";
 import {
@@ -52,14 +52,23 @@ import {
   NUTRIENTS, NUTRIENT_KEYS, nutrientDef, formatNutrient,
   newFoodLog, newBowelLog, resolveNutrient, effectiveNutrition, hasAiValues,
   hasUserEdits, acceptEstimate, discardEstimate,
-  foodOn, bowelOn, dayTotals, DERIVED_METRICS, derivedMetric, isDerivedKey,
-  availableDerivedMetrics, foodSummary, bowelSummary,
+  foodOn, bowelOn, dayTotals, foodSummary, bowelSummary,
   sanitizeFoodLogs, sanitizeBowelLogs, sanitizeFoodItems, sanitizeGoals,
   localTime, prettyTime, localDate,
   newFoodItem, rememberFood, logFromFoodItem, scaleNutrition,
   browseFoods, toggleFavorite, goalProgress, hasGoals,
   bowelSuggestion, applyBowelSuggestion, aiFilledBowelFields,
 } from "./lib/tracking";
+import {
+  DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, metricCtx,
+} from "./lib/metrics";
+import {
+  ROUTINE_KINDS, ROUTINE_TIMES, kindDef, kindLabel, timeLabel, slotForTime,
+  newRoutineItem, logFromItem, bumpItemUse,
+  routineOn, routineChecklist, routineProgress, asNeededItems, scheduledItems,
+  routineSummary, itemSummary, logLine, searchItems,
+  sanitizeRoutineItems, sanitizeRoutineLogs,
+} from "./lib/routine";
 import {
   hasStoredKey, loadConnection, saveConnection, clearKey, maskKey, testConnection,
   buildAnalysisInput, summariseInput, runPatternAnalysis, strengthLabel, looksLikeKey,
@@ -77,7 +86,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.11.0";
+export const APP_VERSION = "1.12.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -648,7 +657,7 @@ const CATEGORY_META = {
   bowel:    { label: "Bowel movements", icon: "bowel", color: "#8A7A5E" },
   hydration:{ label: "Hydration", icon: "drink", color: "#3FA8C2" },
   activity: { label: "Activity", icon: "trends", color: "#5B9E4F" },
-  meds:     { label: "Medications & supplements", icon: "star", color: "#7A6FD0" },
+  meds:     { label: "Medications & supplements", icon: "pill", color: "#7A6FD0" },
   vitals:   { label: "Vitals & body", icon: "device", color: "#C25B7A" },
   skincare: { label: "Skin care & products", icon: "sun", color: "#0E8578" },
   triggers: { label: "Triggers & environment", icon: "search", color: "#9A7B4F" },
@@ -900,7 +909,38 @@ function genSampleData() {
     push(date, a, rng() < 0.18 ? noteBank[Math.floor(rng() * noteBank.length)] : "", detailed);
   }
 
-  return { profile, entries, ack: false };
+  /* A routine Connor would plausibly have: the cream he is tracking, the
+     steroid he only uses on a flare, and two supplements. The logs run over
+     the last fortnight with the odd gap, because a demo where every box is
+     ticked every day teaches the wrong thing about what this is for. */
+  const routineItems = [
+    newRoutineItem({ id: "ri_demo_cerave", name: "CeraVe moisturising cream", kind: "topical",
+      dose: "2 pumps", times: ["morning", "bed"], daily: true, useCount: 22 }),
+    newRoutineItem({ id: "ri_demo_vitd", name: "Vitamin D3", kind: "supplement",
+      dose: "2000 IU", times: ["morning"], daily: true, useCount: 12 }),
+    newRoutineItem({ id: "ri_demo_omega", name: "Fish oil", kind: "supplement",
+      dose: "2 capsules", times: ["evening"], daily: true, useCount: 9 }),
+    newRoutineItem({ id: "ri_demo_hc", name: "Hydrocortisone 1%", kind: "med",
+      dose: "thin layer", times: [], daily: false, useCount: 4 }),
+  ];
+  const routine = [];
+  /* Stops at yesterday, like the entries above: the demo journal opens with
+     today still to do, which is the state the app is actually for. */
+  for (let i = 14; i >= 1; i--) {
+    const date = addDays(t0, -i);
+    const at = (time, item, slot, extra) => routine.push({
+      id: `rl_demo_${date}_${slot}_${item.id}`, date, time,
+      itemId: item.id, name: item.name, kind: item.kind, dose: item.dose, slot,
+      createdAt: iso(date), updatedAt: iso(date), ...extra,
+    });
+    if (rng() < 0.92) at("07:40", routineItems[0], "morning");
+    if (rng() < 0.85) at("07:41", routineItems[1], "morning");
+    if (rng() < 0.7) at("19:20", routineItems[2], "evening");
+    if (rng() < 0.8) at("22:30", routineItems[0], "bed", rng() < 0.12 ? { skipped: true } : undefined);
+    if (rng() < 0.2) at("21:00", routineItems[3], undefined);
+  }
+
+  return { profile, entries, routineItems, routine, ack: false };
 }
 
 /* ---------- persistence (window.storage with in-memory fallback) ---------- */
@@ -1179,6 +1219,13 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     /* Bowel: the app's own mark rather than the obvious one — a rounded form
        with a motion arc. Sits in a health journal without being a joke. */
     bowel: <g><path {...p} d="M8.5 20h7a3 3 0 0 0 .6-5.9 3.4 3.4 0 0 0-2.6-4.4A3.2 3.2 0 0 0 8 8.6a3 3 0 0 0-.8 5.6A3 3 0 0 0 8.5 20z" /><path {...p} d="M12 3v2.6" /></g>,
+    /* The routine set. A capsule, a supplement bottle, a drop for anything
+       spread on skin, and a squeezed tube for the rest — four silhouettes that
+       are told apart at 13px in a list, which is the only size that matters. */
+    pill: <g><path {...p} d="M8.2 4.6a4.5 4.5 0 0 1 6.4 6.4l-3.6 3.6a4.5 4.5 0 0 1-6.4-6.4z" /><path {...p} d="M6.6 6.2 12.4 12" /></g>,
+    bottle: <g><path {...p} d="M9.5 3h5v3l1.6 1.8a3 3 0 0 1 .9 2.1V19a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9.9a3 3 0 0 1 .9-2.1L8.5 6V3z" /><path {...p} d="M7 12h10" /></g>,
+    drop: <g><path {...p} d="M12 3.5s5.5 6 5.5 9.6a5.5 5.5 0 0 1-11 0C6.5 9.5 12 3.5 12 3.5z" /><path {...p} d="M9.6 14.4a2.6 2.6 0 0 0 2.6 2.4" /></g>,
+    tube: <g><path {...p} d="M10 3h4v2.5h-4z" /><path {...p} d="M8.6 5.5h6.8L17 19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2z" /><path {...p} d="M9.4 10h5.2" /></g>,
     sunrise: <g><path {...p} d="M12 4v3M5.6 9.6 7 11M18.4 9.6 17 11M3 17h18M6.5 17a5.5 5.5 0 0 1 11 0" /><path {...p} d="M9.5 6.5 12 4l2.5 2.5" /></g>,
     snack: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M9 10.5v.4M15 10.5v.4M8.8 15a4.2 4.2 0 0 0 6.4 0" /></g>,
     drink: <g><path {...p} d="M6 4h12l-1.4 15.2a2 2 0 0 1-2 1.8H9.4a2 2 0 0 1-2-1.8z" /><path {...p} d="M6.6 10h10.8" /></g>,
@@ -4286,7 +4333,7 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
    happening", instead of one 4.7-screen scroll trying to do both and leading
    with a stat that is blank until you have logged. */
 
-function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [] }) {
+function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [] }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [metrics, setMetrics] = useState(() => [tpl.chartMetrics[0]]);
@@ -4307,17 +4354,22 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
       : (prev.length >= 4 ? [...prev.slice(0, 3), k] : [...prev, k])); // compare up to 4
   /* Every chartable metric is offered, not just the first few that happen to
      fit — the picker scrolls, and says so. */
-  /* Food and bowel logs are many-per-day, so they reach the chart as derived
-     daily metrics. Only the ones with real data behind them are offered — a
-     picker full of permanently flat lines is worse than a short picker. */
+  /* Meals, bowel movements and routine doses are many-per-day, so they reach
+     the chart as derived daily metrics. Only the ones with real data behind
+     them are offered — a picker full of permanently flat lines is worse than a
+     short picker. */
   const chartDates = useMemo(() => {
     const out = [];
     for (let i = 29; i >= 0; i--) out.push(addDays(todayStr(), -i));
     return out;
   }, []);
+  const metricSource = useMemo(
+    () => ({ food, bowel, routine, routineItems }),
+    [food, bowel, routine, routineItems]
+  );
   const derived = useMemo(
-    () => availableDerivedMetrics(food, bowel, chartDates),
-    [food, bowel, chartDates]
+    () => availableDerivedMetrics(metricSource, chartDates),
+    [metricSource, chartDates]
   );
 
   const metricOptions = useMemo(
@@ -4337,7 +4389,8 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
   );
 
   /* Entries as the charts should see them: every logged day, plus any day that
-     has food or bowel data, with derived metrics folded in as answers. Kept
+     has food, bowel or routine data, with derived metrics folded in as
+     answers. Kept
      separate from `entries` so streaks, the calendar and exports are unchanged
      by a day that only has a meal on it. */
   const chartEntries = useMemo(() => {
@@ -4350,13 +4403,13 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
       const answers = { ...(base?.answers || {}) };
       let any = !!base;
       for (const m of derived) {
-        const v = m.value({ food, bowel, date });
+        const v = m.value(metricCtx(metricSource, date));
         if (v != null) { answers[m.k] = v; any = true; }
       }
       if (any) out.push({ ...(base || { id: `d_${date}`, date }), date, answers });
     }
     return out;
-  }, [entries, derived, food, bowel, chartDates]);
+  }, [entries, derived, metricSource, chartDates]);
 
   const today = entryOn(entries, todayStr());
   const streak = calcStreak(entries);
@@ -4738,8 +4791,8 @@ function download(blob, filename) {
 function metaCols(profile, e) {
   return metaColsTyped(profile, getProfileTemplate(profile), e);
 }
-function wideTable(profile, entries, food = []) {
-  return buildWideTable(getProfileTemplate(profile), profile, entries, food);
+function wideTable(profile, entries, food = [], routine = []) {
+  return buildWideTable(getProfileTemplate(profile), profile, entries, food, routine);
 }
 
 function ExportScreen({ db, setDb }) {
@@ -4758,11 +4811,13 @@ function ExportScreen({ db, setDb }) {
   const inRange = entriesFor(db).filter((e) => e.date >= bounds.start && e.date <= bounds.end);
   const foodInRange = logsInRange(db.food || [], bounds.start, bounds.end);
   const bowelInRange = logsInRange(db.bowel || [], bounds.start, bounds.end);
+  const routineInRange = logsInRange(db.routine || [], bounds.start, bounds.end);
+  const routineItems = db.routineItems || [];
   const count = inRange.length;
   const stamp = `${bounds.start === "0000-01-01" ? "all-time" : bounds.start + "_to_" + bounds.end}`;
 
   const exportCSV = () => {
-    const { header, rows } = wideTable(profile, inRange, foodInRange);
+    const { header, rows } = wideTable(profile, inRange, foodInRange, routineInRange);
     const csv = toCSV([header, ...rows]);
     download(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }),
       `health-journal_${stamp}.csv`);
@@ -4787,6 +4842,8 @@ function ExportScreen({ db, setDb }) {
       ["Photos", "Photo legend — date, question, body part, and linked rating for each photo (images stay in the app / full backup)"],
       ["Food", "One row per meal. Every nutrient has a value column and a _source column: \"user\" is a number you entered, \"ai\" is an estimate"],
       ["Bowel", "One row per bowel movement. ai_* columns are what a model suggested from a photo, kept separate from what you recorded"],
+      ["Routine", "One row per dose taken or skipped — medications, supplements, creams, products. Names and doses are what you wrote at the time"],
+      ["Routine items", "What you track and how often it is asked for — the plan behind the Routine sheet"],
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(readme), "README");
 
@@ -4798,7 +4855,7 @@ function ExportScreen({ db, setDb }) {
     }];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(profRows), "Profile");
 
-    const { header, rows } = wideTable(profile, inRange, foodInRange);
+    const { header, rows } = wideTable(profile, inRange, foodInRange, routineInRange);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), "Entries");
 
     const tpl = getProfileTemplate(profile);
@@ -4833,6 +4890,18 @@ function ExportScreen({ db, setDb }) {
         : XLSX.utils.aoa_to_sheet([["No bowel movements logged in this date range."]]),
       "Bowel");
 
+    const routineTbl = buildRoutineTable(routineInRange, routineItems);
+    XLSX.utils.book_append_sheet(wb,
+      routineTbl.rows.length ? XLSX.utils.aoa_to_sheet([routineTbl.header, ...routineTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["Nothing from your routine logged in this date range."]]),
+      "Routine");
+
+    const routineItemsTbl = buildRoutineItemsTable(routineItems);
+    XLSX.utils.book_append_sheet(wb,
+      routineItemsTbl.rows.length ? XLSX.utils.aoa_to_sheet([routineItemsTbl.header, ...routineItemsTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["Nothing in your routine yet."]]),
+      "Routine items");
+
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     download(new Blob([out], { type: "application/octet-stream" }),
       `health-journal_${stamp}.xlsx`);
@@ -4844,6 +4913,7 @@ function ExportScreen({ db, setDb }) {
       dateRange: bounds.label, disclaimer: DISCLAIMER,
       profile, entries: inRange,
       food: foodInRange, bowel: bowelInRange,
+      routine: routineInRange, routineItems,
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
     };
     download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
@@ -5438,6 +5508,7 @@ async function buildFullBackup(db) {
     exportedAt: new Date().toISOString(), disclaimer: DISCLAIMER,
     profile: db.profile, entries: db.entries, reports: db.reports || [],
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
+    routine: db.routine || [], routineItems: db.routineItems || [],
     // Past AI observations travel with the journal, but the opt-in does not:
     // turning on a feature that talks to an external service is a decision
     // made per device, by the person holding it, not inherited from a file.
@@ -5481,6 +5552,7 @@ function validateBackup(obj) {
       reports: Array.isArray(obj.reports) ? obj.reports.length : 0,
       food: Array.isArray(obj.food) ? obj.food.length : 0,
       bowel: Array.isArray(obj.bowel) ? obj.bowel.length : 0,
+      routine: Array.isArray(obj.routine) ? obj.routine.length : 0,
       from: dates[0] || null, to: dates[dates.length - 1] || null,
       name: (obj.profile.name || "").trim(),
       exportedAt: obj.exportedAt || null,
@@ -5505,6 +5577,7 @@ async function restoreBackup(obj, setDb) {
   const next = migrateDb({
     profile: obj.profile, entries: obj.entries, reports: Array.isArray(obj.reports) ? obj.reports : [],
     food: obj.food, bowel: obj.bowel, foods: obj.foods,
+    routine: obj.routine, routineItems: obj.routineItems,
     // `enabled` is deliberately not restored — see buildFullBackup.
     ai: { ...DEFAULT_AI, analysis: obj.ai?.analysis ?? null, dismissed: Array.isArray(obj.ai?.dismissed) ? obj.ai.dismissed : [] },
     ack: true, onboarded: true,
@@ -10631,6 +10704,612 @@ function FoodScreen({
   );
 }
 
+/* =====================================================================
+   The routine — medications, supplements, creams, products
+   =====================================================================
+
+   The daily survey answers "how was today". The food diary answers "what did
+   I eat". Neither could answer the question people asked for most: *what am I
+   actually taking, and did I take it?*
+
+   Everything below is built around one interaction and defends it:
+
+       one tap says "took it", the same tap again undoes it.
+
+   No dose picker in the way, no confirmation, no "are you sure". A dose is
+   free text because "2 pumps" and "pea-sized" are what people say. Adjusting
+   today's dose without changing the plan is one more tap, and it is the only
+   thing hiding behind a sheet — because on the vast majority of days there is
+   nothing to adjust, and a form that asks anyway is a form that gets skipped
+   until the whole feature is abandoned.
+
+   The app has no opinion about any of it. It does not know interactions, does
+   not know maximum doses, will not warn, rate or advise. It writes down what
+   the person tells it and gives it back to them in a spreadsheet. */
+
+/** The tick box on a checklist row. Not an <input type=checkbox>: the row is
+    the control, and a real checkbox inside a button is two targets fighting
+    over one tap. */
+function CheckMark({ done, skipped }) {
+  return (
+    <span className="fhj-check-box" aria-hidden="true">
+      <Icon name={skipped ? "minus" : "check"} size={15}
+        color={done ? C.onAccent : skipped ? C.sub : "transparent"} />
+    </span>
+  );
+}
+
+/** One line of the checklist.
+
+    The whole row toggles. The small button on the right is the only way to
+    reach anything else — today's dose, the time, a note, a deliberate skip —
+    and it is deliberately the *second* control, not the first. */
+function RoutineCheckRow({ row, onToggle, onAdjust, disabled }) {
+  const { item, log, done, skipped } = row;
+  /* No kind icon on this row, deliberately. The name is what somebody reads,
+     and a 28px glyph on the right was costing "CeraVe moisturising cream" its
+     last two words to say something the dose line already said. The icons live
+     where they earn their space: the manage list and the timeline. */
+  const meta = done || skipped
+    ? [skipped ? "Skipped" : "Taken", logLine(log)].filter(Boolean).join(" · ")
+    : [item.dose?.trim(), item.brand?.trim()].filter(Boolean).join(" · ");
+
+  /* An item scheduled twice a day draws two identical rows, so the slot has to
+     be part of the name a screen reader reads out — otherwise the morning and
+     the bedtime dose are two buttons called the same thing. */
+  const label = row.slot ? `${item.name}, ${timeLabel(row.slot)}` : item.name;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button type="button" disabled={disabled}
+        onClick={() => { feedback(done || skipped ? "tap" : "save"); onToggle(row); }}
+        aria-pressed={done}
+        aria-label={`${done ? "Undo" : "Mark taken"}: ${label}`}
+        className={"fhj-check-row fhj-pop flex-1 min-w-0" + (done ? " is-done" : "") + (skipped ? " is-skipped" : "")}>
+        <CheckMark done={done} skipped={skipped} />
+        <span className="flex-1 min-w-0">
+          <span className="fhj-check-name">{item.name}</span>
+          {meta && <span className="fhj-check-meta">{meta}</span>}
+        </span>
+      </button>
+      {!disabled && (
+        <button type="button" onClick={() => { feedback("tap"); onAdjust(row); }}
+          aria-label={`Adjust ${label}`} className="fhj-icon-btn shrink-0"
+          style={{ width: "2.5rem", height: "2.5rem" }}>
+          <Icon name="sliders" size={16} color={C.sub} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The day's checklist: every scheduled item, grouped by the part of the day
+    it belongs to, with the as-needed row underneath.
+
+    Used by both the dashboard and the Routine screen, because "what does today
+    ask for" has exactly one right answer and two components drawing it their
+    own way is how the two drift apart. */
+function RoutineChecklist({ items = [], logs = [], date, onToggle, onAdjust, onLogAsNeeded, viewer }) {
+  const groups = useMemo(() => routineChecklist(items, logs, date), [items, logs, date]);
+  const asNeeded = useMemo(() => asNeededItems(items), [items]);
+  const extras = useMemo(
+    /* Uses of an item that isn't on today's plan — an as-needed painkiller, or
+       something logged before it was archived. They belong on the day even
+       though nothing asked for them. */
+    () => routineOn(logs, date).filter((l) => !groups.some((g) => g.rows.some((r) => r.log?.id === l.id))),
+    [logs, date, groups]
+  );
+
+  if (!groups.length && !asNeeded.length && !extras.length) return null;
+
+  return (
+    <div className="fhj-cat-routine">
+      {groups.map((g) => (
+        <div key={g.slot || "anytime"} className="mb-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Icon name={g.icon} size={12} color={C.subtle} />
+            <span className="fhj-eyebrow">{g.label}</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {g.rows.map((row) => (
+              <RoutineCheckRow key={`${row.item.id}_${row.slot || "any"}`} row={row}
+                onToggle={onToggle} onAdjust={onAdjust} disabled={viewer} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {extras.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Icon name="plus" size={12} color={C.subtle} />
+            <span className="fhj-eyebrow">Also logged</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {extras.map((log) => (
+              <button key={log.id} type="button" disabled={viewer}
+                onClick={() => { feedback("tap"); onAdjust({ item: { id: log.itemId, name: log.name, kind: log.kind }, log, done: !log.skipped, skipped: !!log.skipped }); }}
+                className={"fhj-check-row" + (log.skipped ? " is-skipped" : " is-done")}>
+                <CheckMark done={!log.skipped} skipped={!!log.skipped} />
+                <span className="flex-1 min-w-0">
+                  <span className="fhj-check-name">{log.name}</span>
+                  <span className="fhj-check-meta">{routineSummary(log) || logLine(log)}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* As needed: offered, never chased. A row of one-tap chips rather than
+          checklist lines, because an antihistamine you might not take today is
+          not an unfinished task and should not read as one. */}
+      {!viewer && asNeeded.length > 0 && (
+        <>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Icon name="clock" size={12} color={C.subtle} />
+            <span className="fhj-eyebrow">As needed</span>
+          </div>
+          <div className="fhj-scroller" role="list" aria-label="Log an as-needed item">
+            {asNeeded.map((item) => (
+              <button key={item.id} type="button" role="listitem"
+                onClick={() => { feedback("save"); onLogAsNeeded(item); }}
+                aria-label={`Log ${item.name}`}
+                className="fhj-repeat fhj-pop">
+                <span className="fhj-repeat-name">{item.name}</span>
+                <span className="fhj-repeat-meta">
+                  {[item.dose?.trim(), countToday(logs, date, item.id)].filter(Boolean).join(" · ") || kindLabel(item.kind)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** "2 today" — how many times an as-needed item has already been logged, so a
+    second dose is a decision rather than a surprise. */
+function countToday(logs, date, itemId) {
+  const n = routineOn(logs, date).filter((l) => l.itemId === itemId && !l.skipped).length;
+  return n ? `${n} today` : "";
+}
+
+/** The dashboard section. Header, one progress line, the checklist.
+
+    It renders even when the routine is empty — as a single dashed row, the
+    same shape the Quick Add editor uses for "nothing selected". That row is
+    the entire discovery path for this feature, and one line on the first
+    screen is a price worth paying for it; anyone who never wants it can hide
+    the section from the same screen it points at. */
+function RoutineCard({ items = [], logs = [], date, onToggle, onAdjust, onLogAsNeeded, onManage, viewer }) {
+  const progress = routineProgress(items, logs, date);
+  const active = scheduledItems(items).length + asNeededItems(items).length;
+
+  return (
+    <>
+      <button type="button" onClick={() => { feedback("nav"); onManage(); }}
+        aria-label="Manage your routine"
+        className="fhj-section mt-6 fhj-cat-routine w-full text-left">
+        <h2 className="fhj-section-title">Routine</h2>
+        <span className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+          {active ? "Manage" : "Set up"}
+          <Icon name="right" size={12} color={C.accentText} />
+        </span>
+      </button>
+
+      {active === 0 ? (
+        <button type="button" onClick={() => { feedback("nav"); onManage(); }}
+          className="w-full text-[12px] leading-relaxed px-3 py-3 rounded-xl text-left"
+          style={{ background: C.faint, border: `1px dashed ${C.lineStrong}`, color: C.subtle }}>
+          Meds, supplements, creams, products — add what you take or use and it becomes a one-tap
+          checklist here.
+        </button>
+      ) : (
+        <Card className="!p-3.5 fhj-cat-routine" style={{ padding: "0.875rem" }}>
+          {progress.total > 0 && (
+            <div className="mb-3">
+              <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                <span className="text-[12.5px] font-semibold" style={{ color: C.ink }}>
+                  {progress.done} of {progress.total} done
+                  {progress.skipped > 0 && (
+                    <span className="font-normal" style={{ color: C.subtle }}> · {progress.skipped} skipped</span>
+                  )}
+                </span>
+                {progress.done === progress.total && (
+                  <span className="fhj-badge fhj-badge-good">All done</span>
+                )}
+              </div>
+              <div className="fhj-check-bar">
+                <span style={{ width: `${Math.round((progress.ratio || 0) * 100)}%` }} />
+              </div>
+            </div>
+          )}
+          <RoutineChecklist items={items} logs={logs} date={date} viewer={viewer}
+            onToggle={onToggle} onAdjust={onAdjust} onLogAsNeeded={onLogAsNeeded} />
+        </Card>
+      )}
+    </>
+  );
+}
+
+/* ---------- the item sheet: what a thing is, and when it is asked for ---------- */
+
+/** Add or edit one routine item. Four questions, and only the first is
+    required: what is it, what kind, how much, when. Everything else is behind
+    a disclosure, because a supplement someone takes every morning should cost
+    a name and two taps to set up. */
+function RoutineItemSheet({ initial, onSave, onDelete, onClose }) {
+  const [item, setItem] = useState(() => initial || newRoutineItem({ name: "" }));
+  const patch = (p) => setItem((prev) => ({ ...prev, ...p, updatedAt: new Date().toISOString() }));
+  const def = kindDef(item.kind);
+  const name = (item.name || "").trim();
+
+  const toggleTime = (t) => {
+    feedback("tap");
+    setItem((prev) => {
+      const times = prev.times || [];
+      return {
+        ...prev,
+        times: times.includes(t) ? times.filter((x) => x !== t) : [...times, t],
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
+  return (
+    <Modal title={initial ? "Edit item" : "Add to your routine"} onClose={onClose}
+      footer={
+        <Button block disabled={!name}
+          onClick={() => { feedback("save"); onSave({ ...item, name, dose: item.dose?.trim() || undefined }); }}>
+          {initial ? "Save changes" : "Add it"}
+        </Button>
+      }>
+      <div className="fhj-cat-routine">
+        <label className="block mb-3">
+          <span className="fhj-eyebrow block mb-1">Name</span>
+          <input className="fhj-input" autoFocus={!initial} value={item.name}
+            placeholder="Vitamin D, CeraVe, hydrocortisone…"
+            onChange={(e) => patch({ name: e.target.value })} />
+        </label>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">Kind</span>
+          <div className="flex flex-wrap gap-1.5">
+            {ROUTINE_KINDS.map((k) => (
+              <button key={k.id} type="button"
+                onClick={() => { feedback("tap"); patch({ kind: k.id }); }}
+                aria-pressed={item.kind === k.id}
+                className={"fhj-chip" + (item.kind === k.id ? " is-active" : "")}>
+                <Icon name={k.icon} size={13} color="currentColor" />
+                {k.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Free text, and the placeholder follows the kind — a cream asked for
+            "e.g. 10 mg" is a form telling somebody it wasn't built for them. */}
+        <label className="block mb-3">
+          <span className="fhj-eyebrow block mb-1">Dose or amount</span>
+          <input className="fhj-input" value={item.dose || ""} placeholder={def.dosePlaceholder}
+            onChange={(e) => patch({ dose: e.target.value })} />
+          <span className="text-[11px] leading-relaxed block mt-1" style={{ color: C.subtle }}>
+            Whatever you'd say out loud. It's shown on the checklist and can be changed for a single
+            day without touching this.
+          </span>
+        </label>
+
+        <div className="mb-3">
+          <span className="fhj-eyebrow block mb-1.5">When</span>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {ROUTINE_TIMES.map((t) => {
+              const on = item.daily && (item.times || []).includes(t.id);
+              return (
+                <button key={t.id} type="button" disabled={!item.daily}
+                  onClick={() => toggleTime(t.id)} aria-pressed={on}
+                  className={"fhj-chip" + (on ? " is-active" : "")}
+                  style={!item.daily ? { opacity: 0.45 } : undefined}>
+                  <Icon name={t.icon} size={13} color="currentColor" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+          <SwitchRow
+            label="Every day"
+            desc={item.daily
+              ? ((item.times || []).length
+                ? "On the checklist at the times above."
+                : "On the checklist under Anytime — no particular time of day.")
+              : "Offered as a one-tap chip, never counted as missed."}
+            on={item.daily}
+            onChange={(v) => { feedback("tap"); patch({ daily: v }); }} />
+        </div>
+
+        <Disclosure className="mb-3" label="Notes" summary={item.notes?.trim() || "Optional"}>
+          <textarea className="fhj-input" rows={2}
+            placeholder="Prescribed by…, take with food, the shelf it lives on"
+            value={item.notes || ""} onChange={(e) => patch({ notes: e.target.value })} />
+        </Disclosure>
+
+        {initial && (
+          <>
+            <SwitchRow
+              label="Archived"
+              desc="Off the checklist, history kept. For the course that finished."
+              on={!!item.archived}
+              onChange={(v) => { feedback("tap"); patch({ archived: v || undefined }); }} />
+            {onDelete && (
+              <Button variant="danger" block icon="trash" className="mt-4" onClick={() => onDelete(item)}>
+                Delete this item
+              </Button>
+            )}
+            <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+              Deleting removes it from the list. Days you already logged keep saying what they said —
+              every entry carries its own copy of the name and dose.
+            </p>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- the adjust sheet: one use, on one day ---------- */
+
+/** Everything about a single use that isn't "did it happen": the dose actually
+    taken, the clock time, a deliberate skip, a note.
+
+    Opened from the small button on a checklist row, and from a timeline row.
+    It never edits the item behind it — changing today's dose here does not
+    change tomorrow's plan, which is the distinction that makes both safe. */
+function RoutineLogAdjustSheet({ row, date, onSave, onSkip, onUnlog, onClose }) {
+  const { item } = row;
+  const existing = row.log;
+  const [log, setLog] = useState(
+    () => existing || logFromItem(item, { date, slot: row.slot, time: localTime() })
+  );
+  const patch = (p) => setLog((prev) => ({ ...prev, ...p, updatedAt: new Date().toISOString() }));
+
+  return (
+    <Modal title={item.name} eyebrow={existing ? "Adjust this entry" : "Log this"} onClose={onClose}
+      footer={
+        <Button block onClick={() => { feedback("save"); onSave(log); }}>
+          {existing ? "Save changes" : "Log it"}
+        </Button>
+      }>
+      <div className="fhj-cat-routine">
+        <label className="block mb-3">
+          <span className="fhj-eyebrow block mb-1">Dose taken</span>
+          <input className="fhj-input" value={log.dose || ""}
+            placeholder={kindDef(log.kind).dosePlaceholder}
+            onChange={(e) => patch({ dose: e.target.value })} />
+          {item.dose && log.dose?.trim() && log.dose.trim() !== item.dose.trim() && (
+            <span className="text-[11px] leading-relaxed block mt-1" style={{ color: C.subtle }}>
+              Usually {item.dose}. This changes {fmtNice(log.date)} only — edit the item itself to
+              change it from now on.
+            </span>
+          )}
+        </label>
+
+        <div className="flex gap-2 mb-3">
+          <label className="flex-1">
+            <span className="fhj-eyebrow block mb-1">Time</span>
+            <input type="time" className="fhj-input" value={log.time}
+              onChange={(e) => patch({ time: e.target.value })} />
+          </label>
+          <label className="flex-1">
+            <span className="fhj-eyebrow block mb-1">Date</span>
+            <input type="date" className="fhj-input" value={log.date}
+              onChange={(e) => patch({ date: e.target.value })} />
+          </label>
+        </div>
+
+        <label className="block mb-3">
+          <span className="fhj-eyebrow block mb-1">Note</span>
+          <input className="fhj-input" value={log.notes || ""}
+            placeholder="Anything worth remembering"
+            onChange={(e) => patch({ notes: e.target.value })} />
+        </label>
+
+        {/* A skip is a recorded decision, not an empty box. Kept next to the
+            delete so the two readings of "it isn't ticked" — I chose not to,
+            and I never said — are chosen between deliberately. */}
+        <div className="flex flex-col gap-2 mt-4">
+          <Button variant={log.skipped ? "primary" : "secondary"} block icon="minus"
+            onClick={() => { feedback("tap"); onSkip({ ...log, skipped: !log.skipped }); }}>
+            {log.skipped ? "Not skipped after all" : "Mark as skipped"}
+          </Button>
+          {existing && (
+            <Button variant="ghost" block icon="trash" onClick={() => { feedback("tap"); onUnlog(existing); }}>
+              Remove this entry
+            </Button>
+          )}
+        </div>
+        <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+          A skipped dose is recorded as a skip. An entry you remove goes back to saying nothing at
+          all, which is not the same thing.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- the Routine screen: the day, then the list ---------- */
+
+/** One row of the manage list. */
+function RoutineItemRow({ item, onEdit, first }) {
+  const def = kindDef(item.kind);
+  return (
+    <button type="button" onClick={() => { feedback("tap"); onEdit(item); }}
+      aria-label={`Edit ${item.name}`}
+      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left fhj-row"
+      style={{ borderTop: first ? "none" : `1px solid ${C.line}`, minHeight: "var(--fhj-tap)" }}>
+      <span className="fhj-tl-dot shrink-0"><Icon name={def.icon} size={13} color="currentColor" /></span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13.5px] font-semibold truncate" style={{ color: C.ink }}>
+          {item.name}
+        </span>
+        <span className="block text-[11px] truncate" style={{ color: C.subtle }}>{itemSummary(item)}</span>
+      </span>
+      {item.archived && <span className="fhj-badge fhj-badge-neutral shrink-0">Archived</span>}
+      <Icon name="right" size={14} color={C.subtle} />
+    </button>
+  );
+}
+
+function RoutineScreen({ items = [], logs = [], viewer, onSaveItem, onDeleteItem, onSaveLog, onDeleteLog }) {
+  const [date, setDate] = useState(todayStr());
+  const [sheet, setSheet] = useState(null);   // { item } / { item, log } being adjusted
+  const [editor, setEditor] = useState(null); // item being edited, or {} for a new one
+  const [query, setQuery] = useState("");
+  const isToday = date === todayStr();
+
+  const active = useMemo(() => items.filter((i) => !i.archived), [items]);
+  const archived = useMemo(() => items.filter((i) => i.archived), [items]);
+  const shown = useMemo(() => searchItems(active, query), [active, query]);
+
+  const toggle = (row) => {
+    if (row.log) onDeleteLog(row.log);
+    else onSaveLog(logFromItem(row.item, { date, slot: row.slot }));
+  };
+
+  return (
+    <div className="px-4 pb-8 pt-3 fhj-cat-routine">
+      {/* date pager — the same one the food diary uses, for the same reason:
+          a dose missed yesterday is logged today or not at all. */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <button className="fhj-icon-btn" onClick={() => { feedback("nav"); setDate(addDays(date, -1)); }}
+          aria-label="previous day">
+          <Icon name="left" size={16} color={C.sub} />
+        </button>
+        <div className="text-center min-w-0">
+          <div className="text-sm font-bold truncate" style={{ color: C.ink }}>
+            {isToday ? "Today" : fmtNice(date)}
+          </div>
+          {isToday && <div className="text-[10.5px]" style={{ color: C.subtle }}>{fmtNice(date)}</div>}
+        </div>
+        <button className="fhj-icon-btn" onClick={() => { feedback("nav"); setDate(addDays(date, 1)); }}
+          disabled={date >= todayStr()} aria-label="next day">
+          <Icon name="right" size={16} color={C.sub} />
+        </button>
+      </div>
+
+      {items.length === 0 ? (
+        <EmptyState icon="pill" title="Nothing in your routine yet"
+          text="Medications, supplements, creams, shampoos, a daily shake — anything you take or use. Add one and it becomes a one-tap checklist on your dashboard, and a column in your export."
+          actionLabel={viewer ? null : "Add your first item"}
+          onAction={viewer ? null : () => { feedback("tap"); setEditor({}); }} />
+      ) : (
+        <>
+          <RoutineProgressCard items={items} logs={logs} date={date} />
+          <RoutineChecklist items={items} logs={logs} date={date} viewer={viewer}
+            onToggle={toggle}
+            onAdjust={(row) => !viewer && setSheet(row)}
+            onLogAsNeeded={(item) => onSaveLog(logFromItem(item, { date, slot: slotForTime(localTime()) }))} />
+        </>
+      )}
+
+      {!viewer && (
+        <Button block icon="plus" className="mt-3" onClick={() => { feedback("tap"); setEditor({}); }}>
+          Add an item
+        </Button>
+      )}
+
+      {items.length > 0 && (
+        <>
+          <SectionTitle cat="fhj-cat-routine">Everything you track</SectionTitle>
+          {active.length > 6 && (
+            <input className="fhj-input mb-2" value={query} placeholder="Search your routine"
+              onChange={(e) => setQuery(e.target.value)} aria-label="Search your routine" />
+          )}
+          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
+            {shown.map((item, i) => (
+              <RoutineItemRow key={item.id} item={item} first={i === 0}
+                onEdit={(it) => !viewer && setEditor(it)} />
+            ))}
+            {shown.length === 0 && (
+              <div className="px-3 py-4 text-[12px]" style={{ color: C.subtle }}>
+                Nothing matches “{query}”.
+              </div>
+            )}
+          </div>
+
+          {archived.length > 0 && (
+            <Disclosure className="mt-3" label="Archived"
+              summary={`${archived.length} item${archived.length === 1 ? "" : "s"} off the checklist`}>
+              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
+                {archived.map((item, i) => (
+                  <RoutineItemRow key={item.id} item={item} first={i === 0}
+                    onEdit={(it) => !viewer && setEditor(it)} />
+                ))}
+              </div>
+            </Disclosure>
+          )}
+        </>
+      )}
+
+      <p className="text-[11px] leading-relaxed mt-5" style={{ color: C.subtle }}>
+        This is a written record, not advice. Health Journal doesn't know what anything interacts
+        with, doesn't check doses, and won't tell you whether something is working — it keeps what
+        you enter, on this device, and hands it back whole when you export it.
+      </p>
+
+      {sheet && (
+        <RoutineLogAdjustSheet row={sheet} date={date}
+          onSave={(log) => { onSaveLog(log); setSheet(null); }}
+          onSkip={(log) => { onSaveLog(log); setSheet(null); }}
+          onUnlog={(log) => { onDeleteLog(log); setSheet(null); }}
+          onClose={() => setSheet(null)} />
+      )}
+      {editor && (
+        <RoutineItemSheet
+          initial={editor.id ? editor : null}
+          onSave={(it) => { onSaveItem(it); setEditor(null); }}
+          onDelete={editor.id ? (it) => { onDeleteItem(it); setEditor(null); } : null}
+          onClose={() => setEditor(null)} />
+      )}
+    </div>
+  );
+}
+
+/** The day's headline: how much of the plan has been answered. Same sentence
+    as the dashboard card, drawn once here so the screen opens with an answer
+    rather than a list. */
+function RoutineProgressCard({ items = [], logs = [], date }) {
+  const progress = routineProgress(items, logs, date);
+  const taken = routineOn(logs, date).filter((l) => !l.skipped).length;
+  if (!progress.total && !taken) {
+    return (
+      <Card className="!p-3.5 mb-4" style={{ padding: "0.875rem" }}>
+        <div className="text-[12.5px] leading-snug" style={{ color: C.subtle }}>
+          Nothing scheduled for this day. Anything you log below still counts.
+        </div>
+      </Card>
+    );
+  }
+  return (
+    <Card className="!p-3.5 mb-4" style={{ padding: "0.875rem" }}>
+      <div className="flex items-baseline gap-3">
+        <div className="font-display text-3xl leading-none tabular-nums" style={{ color: C.ink }}>
+          {progress.total ? `${progress.done}/${progress.total}` : taken}
+        </div>
+        <div className="text-[11.5px] leading-snug" style={{ color: C.subtle }}>
+          {progress.total ? "of the day's routine done" : `logged this day`}
+          {progress.skipped > 0 && ` · ${progress.skipped} skipped`}
+        </div>
+      </div>
+      {progress.total > 0 && (
+        <div className="fhj-check-bar mt-2.5">
+          <span style={{ width: `${Math.round((progress.ratio || 0) * 100)}%` }} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /* ---------- Quick Add ----------
    Tactile tiles, one per thing worth logging. This is the most-pressed control
    in the app and the reason the chunky-button treatment exists.
@@ -10659,6 +11338,10 @@ const QUICK_ADD_TILES = [
   {
     id: "bowel", cat: "fhj-cat-bowel", icon: "bowel", label: "Bowel",
     sub: "Quick log", desc: "Bristol type, amount, colour — or just a photo",
+  },
+  {
+    id: "routine", cat: "fhj-cat-routine", icon: "pill", label: "Routine",
+    sub: "Meds, creams, more", desc: "Opens your routine for the day",
   },
   {
     id: "photo", cat: "fhj-cat-photo", icon: "camera", label: "Photo",
@@ -10883,7 +11566,7 @@ function TimelineRow({ cat, icon, time, title, meta, badge, thumbId, onClick }) 
   );
 }
 
-function TodayTimeline({ entry, tpl, food, bowel, date, onOpenEntry, onOpenFood, onOpenBowel }) {
+function TodayTimeline({ entry, tpl, food, bowel, routine = [], date, onOpenEntry, onOpenFood, onOpenBowel, onOpenRoutine }) {
   const rows = [];
 
   if (entry) {
@@ -10924,6 +11607,15 @@ function TodayTimeline({ entry, tpl, food, bowel, date, onOpenEntry, onOpenFood,
         : null,
       thumbId: b.photoId,
       onClick: () => onOpenBowel(b),
+    });
+  }
+
+  for (const r of routineOn(routine, date)) {
+    rows.push({
+      key: r.id, time: r.time, cat: "fhj-cat-routine", icon: kindDef(r.kind).icon,
+      title: r.name,
+      meta: routineSummary(r) || kindLabel(r.kind),
+      onClick: () => onOpenRoutine(r),
     });
   }
 
@@ -11119,7 +11811,7 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, syncStatus }) {
+function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -11131,6 +11823,7 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
   const [foodSheet, setFoodSheet] = useState(null);
   const [foodPicker, setFoodPicker] = useState(null); // meal id
   const [bowelSheet, setBowelSheet] = useState(null);
+  const [routineSheet, setRoutineSheet] = useState(null); // { item, slot, log } being adjusted
   const [quickAddEditor, setQuickAddEditor] = useState(false);
   const aiEnabled = !!ai?.enabled && !viewer;
   const aiAuto = aiEnabled && ai?.auto === true;
@@ -11145,8 +11838,17 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
     food: () => setFoodPicker(mealForTime(localTime())),
     drink: () => setFoodPicker("drink"),
     bowel: () => setBowelSheet({}),
+    routine: goRoutine || null,
     photo: photoFields.length > 0 ? () => openLog(todayStr(), { photos: true }) : null,
     diary: goFood || null,
+  };
+
+  /* One tap on a checklist row. Ticking writes a log; un-ticking removes the
+     one it wrote. Both are undoable from the toast, like every other write on
+     this screen. */
+  const toggleRoutine = (row) => {
+    if (row.log) onDeleteRoutine(row.log);
+    else onSaveRoutine(logFromItem(row.item, { date: todayStr(), slot: row.slot }));
   };
 
   return (
@@ -11212,6 +11914,17 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
               const time = localTime();
               onSaveFood(logFromFoodItem(item, { date: todayStr(), time, meal: mealForTime(time), servings: 1 }));
             }} />
+
+          {/* The routine sits directly under Quick Add because it is the other
+              thing this screen is for: Quick Add is what happened, this is
+              what was planned. Both are answered by tapping, and neither
+              opens a form to do it. */}
+          <RoutineCard
+            items={routineItems} logs={routine} date={todayStr()} viewer={viewer}
+            onToggle={toggleRoutine}
+            onAdjust={(row) => setRoutineSheet(row)}
+            onLogAsNeeded={(item) => onSaveRoutine(logFromItem(item, { date: todayStr(), slot: slotForTime(localTime()) }))}
+            onManage={goRoutine} />
         </>
       )}
 
@@ -11234,10 +11947,17 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
         )}
       </button>
       <TodayTimeline
-        entry={today} tpl={tpl} food={food} bowel={bowel} date={todayStr()}
+        entry={today} tpl={tpl} food={food} bowel={bowel} routine={routine} date={todayStr()}
         onOpenEntry={openLog}
         onOpenFood={(f) => !viewer && setFoodSheet(f)}
-        onOpenBowel={(b) => !viewer && setBowelSheet(b)} />
+        onOpenBowel={(b) => !viewer && setBowelSheet(b)}
+        onOpenRoutine={(log) => !viewer && setRoutineSheet({
+          /* A timeline row knows its log, not the item behind it — which may
+             have been renamed or deleted since. The log's own snapshot is the
+             honest stand-in, and the sheet edits the log either way. */
+          item: routineItems.find((i) => i.id === log.itemId) || { id: log.itemId, name: log.name, kind: log.kind },
+          slot: log.slot, log, done: !log.skipped, skipped: !!log.skipped,
+        })} />
 
       <GlanceCard tpl={tpl} keyField={keyField} entry={today} food={food}
         streak={streak} onOpen={goInsights} />
@@ -11268,6 +11988,13 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
           onSave={(log) => { onSaveBowel(log); setBowelSheet(null); }}
           onDelete={bowelSheet.id ? (log) => { onDeleteBowel(log); setBowelSheet(null); } : null}
           onClose={() => setBowelSheet(null)} />
+      )}
+      {routineSheet && (
+        <RoutineLogAdjustSheet row={routineSheet} date={todayStr()}
+          onSave={(log) => { onSaveRoutine(log); setRoutineSheet(null); }}
+          onSkip={(log) => { onSaveRoutine(log); setRoutineSheet(null); }}
+          onUnlog={(log) => { onDeleteRoutine(log); setRoutineSheet(null); }}
+          onClose={() => setRoutineSheet(null)} />
       )}
       {quickAddEditor && (
         <QuickAddEditor
@@ -12039,6 +12766,9 @@ function migrateDb(data) {
   d.food = sanitizeFoodLogs(d.food);
   d.bowel = sanitizeBowelLogs(d.bowel);
   d.foods = sanitizeFoodItems(d.foods);
+  /* The routine, for the same reason and on the same terms. */
+  d.routineItems = sanitizeRoutineItems(d.routineItems);
+  d.routine = sanitizeRoutineLogs(d.routine);
   if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
@@ -12070,6 +12800,13 @@ function alreadyDone(db, reminder) {
     });
   }
   if (reminder.kind === "bowel") return (db.bowel || []).some((b) => b.date === today);
+  /* Everything the day asked for has been answered — ticked or deliberately
+     skipped. Nudging somebody about a checklist they have already cleared is
+     the fastest way to have the whole feature muted. */
+  if (reminder.kind === "routine") {
+    const p = routineProgress(db.routineItems || [], db.routine || [], today);
+    return p.total > 0 && p.done + p.skipped >= p.total;
+  }
   const entry = entryOn(entriesFor(db), today);
   return !!entry?.quickLogCompleted || !!entry?.detailedLogCompleted;
 }
@@ -12596,7 +13333,14 @@ export default function App({ viewer = false }) {
      Undo restores the whole slice as it was, including the food library:
      saving a meal teaches the library, so un-saving it has to un-teach exactly
      that much and nothing more. */
-  const LOG_CAT = { food: "fhj-cat-food", bowel: "fhj-cat-bowel" };
+  const LOG_CAT = { food: "fhj-cat-food", bowel: "fhj-cat-bowel", routine: "fhj-cat-routine" };
+  const SAVED_TEXT = {
+    food: (log, isEdit) => (isEdit ? "Meal updated" : `Added to ${mealLabel(log.meal).toLowerCase()}`),
+    bowel: (log, isEdit) => (isEdit ? "Entry updated" : "Bowel movement logged"),
+    routine: (log, isEdit) =>
+      log.skipped ? `${log.name} — skipped` : isEdit ? `${log.name} updated` : `${log.name} logged`,
+  };
+  const DELETED_TEXT = { food: "Meal deleted", bowel: "Entry deleted", routine: "Entry removed" };
   const upsertLog = (slice) => (log) => {
     let before = null;
     setDb((prev) => {
@@ -12608,16 +13352,22 @@ export default function App({ viewer = false }) {
          un-teach it: a meal you logged and removed is still a food you might
          eat again. */
       const foods = slice === "food" ? rememberFood(prev.foods || [], log) : prev.foods;
-      before = { rows, foods: prev.foods };
-      return { ...prev, [slice]: next, foods };
+      /* Logging a routine item counts against the item it came from, the same
+         way saving a meal teaches the food library. Only on a first write —
+         editing yesterday's dose is not another dose. */
+      const routineItems = slice === "routine" && i < 0
+        ? bumpItemUse(prev.routineItems || [], log.itemId)
+        : prev.routineItems;
+      before = { rows, foods: prev.foods, routineItems: prev.routineItems };
+      return { ...prev, [slice]: next, foods, routineItems };
     });
     const isEdit = (db[slice] || []).some((r) => r.id === log.id);
     toast({
-      text: slice === "food"
-        ? (isEdit ? "Meal updated" : `Added to ${mealLabel(log.meal).toLowerCase()}`)
-        : (isEdit ? "Entry updated" : "Bowel movement logged"),
+      text: SAVED_TEXT[slice](log, isEdit),
       cat: LOG_CAT[slice],
-      undo: () => setDb((prev) => (before ? { ...prev, [slice]: before.rows, foods: before.foods } : prev)),
+      undo: () => setDb((prev) => (before
+        ? { ...prev, [slice]: before.rows, foods: before.foods, routineItems: before.routineItems }
+        : prev)),
     });
   };
   const removeLog = (slice) => (log) => {
@@ -12633,7 +13383,7 @@ export default function App({ viewer = false }) {
     engineRef.current?.noteDeleted?.(slice, log.id);
     let undone = false;
     toast({
-      text: slice === "food" ? "Meal deleted" : "Entry deleted",
+      text: DELETED_TEXT[slice],
       icon: "trash",
       cat: LOG_CAT[slice],
       undo: () => {
@@ -12658,6 +13408,41 @@ export default function App({ viewer = false }) {
 
   const setLibrary = (foods) => setDb((prev) => ({ ...prev, foods }));
 
+  /* Routine items are the *plan*, not the history, so they are edited rather
+     than logged: no toast-and-undo, because the sheet the user just pressed
+     Save in is the receipt. Deleting one leaves every log it produced exactly
+     as it was — each carries its own copy of the name and dose. */
+  const saveRoutineItem = (item) => setDb((prev) => {
+    const rows = prev.routineItems || [];
+    const i = rows.findIndex((r) => r.id === item.id);
+    return {
+      ...prev,
+      routineItems: i >= 0 ? rows.map((r) => (r.id === item.id ? item : r)) : [...rows, item],
+    };
+  });
+
+  const deleteRoutineItem = (item) => {
+    const deviceId = engineRef.current?.getDeviceId?.() || "local";
+    setDb((prev) => addTombstone(
+      { ...prev, routineItems: (prev.routineItems || []).filter((r) => r.id !== item.id) },
+      "routineItem", item.id, deviceId
+    ));
+    engineRef.current?.noteDeleted?.("routineItem", item.id);
+    toast({
+      text: `${item.name} removed`,
+      icon: "trash",
+      cat: "fhj-cat-routine",
+      undo: () => {
+        setDb((prev) => ({
+          ...prev,
+          routineItems: [...(prev.routineItems || []), item],
+          tombstones: (prev.tombstones || []).filter((t) => !(t.kind === "routineItem" && t.id === item.id)),
+        }));
+        engineRef.current?.noteDeleted?.("routineItem", item.id);
+      },
+    });
+  };
+
   const setQuickAdd = (ids) => setDb((prev) => ({
     ...prev,
     profile: {
@@ -12670,17 +13455,21 @@ export default function App({ viewer = false }) {
   const todayProps = {
     profile, entries, openLog: goToLog, viewer,
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
+    routine: db.routine || [], routineItems: db.routineItems || [],
     onUpdateLibrary: setLibrary,
     onSaveFood: upsertLog("food"), onDeleteFood: removeLog("food"),
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
+    onSaveRoutine: upsertLog("routine"), onDeleteRoutine: removeLog("routine"),
     goSettings: () => setScreen("settings"), goSetup: () => setScreen("setup"),
-    goFood: () => setScreen("food"), goInsights: () => setScreen("insights"),
+    goFood: () => setScreen("food"), goRoutine: () => setScreen("routine"),
+    goInsights: () => setScreen("insights"),
     onUpdateQuickAdd: setQuickAdd, ai: db.ai, syncStatus,
   };
 
   const insightsProps = {
     profile, entries, openLog: goToLog, viewer,
     food: db.food || [], bowel: db.bowel || [],
+    routine: db.routine || [], routineItems: db.routineItems || [],
     goExport: () => setScreen("export"), goSettings: () => setScreen("settings"),
     goSetup: () => setScreen("setup"), goGallery: () => setScreen("gallery"),
     goReport, reports: db.reports, openSavedReport, deleteSavedReport,
@@ -12722,6 +13511,13 @@ export default function App({ viewer = false }) {
         onUpdateLibrary={setLibrary}
         onEditGoals={() => setScreen("settings")} />
     );
+  } else if (screen === "routine") {
+    content = (
+      <RoutineScreen
+        items={db.routineItems || []} logs={db.routine || []} viewer={viewer}
+        onSaveItem={saveRoutineItem} onDeleteItem={deleteRoutineItem}
+        onSaveLog={upsertLog("routine")} onDeleteLog={removeLog("routine")} />
+    );
   } else if (screen === "calendar") {
     content = <CalendarScreen profile={profile} entries={entries} openLog={goToLog} />;
   } else if (screen === "fitbit") {
@@ -12744,6 +13540,7 @@ export default function App({ viewer = false }) {
   const screenTitle = {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Food Diary",
+    routine: "Your Routine",
     fitbit: "Import Health Data",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
   }[screen] || APP_NAME;

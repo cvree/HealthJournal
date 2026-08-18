@@ -73,6 +73,25 @@ that isn't exactly one portion, quick-add calories for when you can't be bothere
 copy-yesterday for the days that repeat. Set daily targets if you want them; leave them blank and
 the diary just shows what you ate. Fixing a food's figures once fixes them everywhere after.
 
+**Your routine — meds, supplements, creams, products.** The things you take and use every day,
+as a checklist that answers in one tap. Add an item with a name, a kind (medication, supplement,
+cream, product, food or drink), a dose in your own words — *500 mg*, *2 pumps*, *pea-sized*, *1
+scoop* — and the parts of the day it belongs to. It then sits on the dashboard grouped into
+Morning / Midday / Evening / Bedtime, and **ticking it off is one tap, with no form in the way**.
+The same tap unticks it. Anything you only take when you need it lives in a separate **As needed**
+row, offered but never counted as missed.
+
+Adjusting is one more tap: today's dose can differ from the usual one without editing the plan,
+and a dose you deliberately decided against is recorded as a **skip** — which is a different fact
+from a box you simply never ticked, and the app never conflates them. Every entry keeps its own
+copy of the name, kind and dose as they were the day you logged it, so renaming an item, changing
+its dose, or deleting it outright never rewrites what a past day says happened. Doses taken and
+"routine completed" can be charted next to your symptoms, and both the per-dose log and the plan
+behind it come out in the export.
+
+It is a written record and nothing more. It does not know what interacts with what, does not
+check doses, and will not tell you whether something is working.
+
 **Bowel movements.** A quick log with Bristol type, amount, colour, consistency, urgency,
 straining, discomfort, notes, and an optional photo. If you ask it to, AI can suggest the
 observable attributes from a photo — Bristol type, colour, consistency, form, and nothing else.
@@ -83,8 +102,8 @@ explicitly choose that analysis.
 it fits on one phone screen. **Quick Add** is the first thing under the date: four tiles that
 open a check-in, a meal, a bowel movement or the camera. **Again** is the row under it, and it
 is the shortest path in the app: your most-logged foods, one tap each, straight onto today.
-**Today's Logs** is one timeline carrying check-ins, meals, bowel movements and photos in the
-order they happened.
+**Today's Logs** is one timeline carrying check-ins, meals, bowel movements, doses and photos in
+the order they happened.
 
 Logging is optimistic and reversible. Sheets close on the tap, the row is on the timeline
 before the next frame, and the receipt arrives as a toast with an **Undo** in it — which beats a
@@ -437,7 +456,9 @@ health-journal/
 │   │   ├── ai.ts               # optional AI analysis (credential, payload, parsing)
 │   │   ├── aiProviders.ts      # provider catalogue, model discovery + scoring
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
-│   │   ├── tracking.ts         # food + bowel logs, food library, goals, derived metrics
+│   │   ├── tracking.ts         # food + bowel logs, food library, goals, daily metrics
+│   │   ├── routine.ts          # meds/supplements/creams/products: items, doses, checklist
+│   │   ├── metrics.ts          # the one registry of chartable derived metrics
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
 │   │   ├── answers.ts          # type-safe answer read/write
@@ -466,7 +487,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 641 tests across 25 suites
+└── tests/                      # 704 tests across 28 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

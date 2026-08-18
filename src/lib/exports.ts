@@ -9,10 +9,13 @@ import type {
   ExportCell,
   ExportTable,
   FoodLog,
+  RoutineItem,
+  RoutineLog,
   SurveyQuestion,
   TrackingSetup,
 } from "../types/models";
 import { NUTRIENT_KEYS, dayTotals, mealLabel, resolveNutrient } from "./tracking";
+import { kindLabel, routineOn, timeLabel } from "./routine";
 
 /** Minimal view of the merged template this module needs. */
 export interface TemplateLike {
@@ -57,7 +60,8 @@ export function metaCols(profile: TrackingSetup, tpl: TemplateLike, e: DailyEntr
     `buildFoodTable` instead — this is the daily summary that belongs beside
     the survey answers. */
 export function buildWideTable(
-  tpl: TemplateLike, profile: TrackingSetup, entries: DailyEntry[], food: FoodLog[] = []
+  tpl: TemplateLike, profile: TrackingSetup, entries: DailyEntry[],
+  food: FoodLog[] = [], routine: RoutineLog[] = []
 ): ExportTable {
   const efields = tpl.fields.filter((f) => f.exportable !== false);
   const header: string[] = [...META_HEADERS];
@@ -69,6 +73,12 @@ export function buildWideTable(
   if (withFood) {
     header.push("food_meals", ...NUTRIENT_KEYS.map((k) => `food_${k}`), "food_partly_estimated");
   }
+  /* The routine's daily summary. Per-dose detail doesn't fit one row per day
+     and lives in `buildRoutineTable`; what belongs beside the survey answers is
+     "how many, which ones" — the two columns somebody correlating a symptom
+     against a cream actually sorts by. */
+  const withRoutine = routine.length > 0;
+  if (withRoutine) header.push("routine_taken", "routine_skipped", "routine_items");
   header.push("imported_fields", "notes");
 
   const rows: ExportCell[][] = entries.map((e) => {
@@ -88,6 +98,12 @@ export function buildWideTable(
       row.push(t.meals || "");
       for (const k of NUTRIENT_KEYS) row.push(t[k] == null ? "" : t[k]);
       row.push(t.partlyEstimated ? "y" : "");
+    }
+    if (withRoutine) {
+      const doses = routineOn(routine, e.date);
+      const taken = doses.filter((r) => !r.skipped);
+      row.push(taken.length || "", doses.filter((r) => r.skipped).length || "");
+      row.push(taken.map((r) => (r.dose ? `${r.name} (${r.dose})` : r.name)).join("; "));
     }
     row.push(Object.entries(e.sources || {}).filter(([, v]) => v === "fitbit").map(([k]) => k).join("|"));
     row.push(e.notes || "");
@@ -158,3 +174,57 @@ export function buildBowelTable(bowel: BowelLog[]): ExportTable {
 /** Rows inside a date range, for the export screen's range filter. */
 export const logsInRange = <T extends { date: string }>(rows: T[], start: string, end: string): T[] =>
   (rows || []).filter((r) => r.date >= start && r.date <= end);
+
+/* ---------- the routine ----------
+
+   One row per dose, not per day, and every row carries the name, kind and dose
+   *as they were written at the time* — the same snapshot the log holds. An
+   export that resolved names through the item list would quietly rewrite six
+   months of history the first time somebody corrected a spelling, which is
+   exactly what a record is not allowed to do.
+
+   `items` is optional and only supplies the columns describing the plan
+   (what the item usually is, when it is asked for) for rows whose item still
+   exists. Nothing is filled in from it that the log already answers. */
+
+export function buildRoutineTable(routine: RoutineLog[], items: RoutineItem[] = []): ExportTable {
+  const header = [
+    "date", "time", "item", "kind", "dose", "when", "status", "notes",
+    "usual_dose", "brand", "item_id", "log_id", "created_at", "updated_at",
+  ];
+  const byId = new Map(items.map((i) => [i.id, i]));
+
+  const rows: ExportCell[][] = [...routine]
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .map((r) => {
+      const item = byId.get(r.itemId);
+      return [
+        r.date, r.time, r.name, kindLabel(r.kind), r.dose || "",
+        r.slot ? timeLabel(r.slot) : "", r.skipped ? "skipped" : "taken", r.notes || "",
+        item?.dose || "", item?.brand || "",
+        r.itemId, r.id, r.createdAt, r.updatedAt,
+      ];
+    });
+
+  return { header, rows };
+}
+
+/** The plan itself: what is tracked, how much, and when it is asked for. A
+    small sheet, and the one somebody prints to take to an appointment. */
+export function buildRoutineItemsTable(items: RoutineItem[]): ExportTable {
+  const header = [
+    "item", "kind", "brand", "dose", "schedule", "when", "archived",
+    "times_logged", "last_used", "notes", "item_id", "created_at", "updated_at",
+  ];
+  const rows: ExportCell[][] = [...items]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((i) => [
+      i.name, kindLabel(i.kind), i.brand || "", i.dose || "",
+      i.daily ? "daily" : "as needed",
+      (i.times || []).map((t) => timeLabel(t)).join("; "),
+      i.archived ? "y" : "",
+      i.useCount ?? 0, i.lastUsedAt || "", i.notes || "",
+      i.id, i.createdAt, i.updatedAt,
+    ]);
+  return { header, rows };
+}

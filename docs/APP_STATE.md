@@ -281,6 +281,51 @@
 > screen-reader pass not done.
 
 
+> **2026-08-18 addendum 14 — 1.12: the routine (meds, supplements, creams, products).**
+> **Two objects, and the split is the design.** `RoutineItem` is the *plan* (name, kind, dose as
+> free text, `times: RoutineTime[]`, `daily`, archived); `RoutineLog` is one *use* and carries its
+> own snapshot of name/kind/dose. Editing or deleting an item can therefore never rewrite a past
+> day — the same rule the food diary follows, and the reason items are safe to edit freely.
+> Stored as `db.routineItems` / `db.routine`, sanitised on every load in `migrateDb`.
+>
+> **The interaction the whole feature defends: one tap ticks, the same tap unticks.** No form, no
+> confirmation. `RoutineCheckRow`'s whole row is the target; the small `sliders` button beside it
+> is the *second* control and the only route to a sheet. `routineChecklist()` produces one row per
+> (item, slot), so a twice-daily cream is two independent rows — which is why the row's aria-label
+> carries the slot, or morning and bedtime are two buttons with the same name.
+>
+> **An absent log is silence, not a miss.** `skipped: true` is the only thing that means "I chose
+> not to". `routineProgress` counts skips as *answered* but not *done*, and the reminder kind
+> `routine` goes quiet only when done + skipped covers the day's rows.
+>
+> **A slotless log answers any row for its item** (`rowFor`), so a dose logged from the as-needed
+> chip or by an older build still ticks the checklist rather than being asked for twice.
+>
+> **`src/lib/metrics.ts` is new and is now the single registry** of derived daily metrics
+> (`DERIVED_METRICS`, `derivedMetric`, `isDerivedKey`, `availableDerivedMetrics`, `derivedSeries`,
+> `metricCtx`). It had to move out of `tracking.ts`: `routine.ts` imports `tracking.ts` for the
+> clock helpers, so the register that knows about both has to sit above both. `MetricCtx` widened
+> to `{food?, bowel?, routine?, routineItems?, date}` and the two callers now pass a source object
+> instead of positional arrays. Routine metrics are `rt_taken` and `rt_done`, both `dir: neutral`
+> **on purpose** — a red adherence number is advice.
+>
+> **Everywhere else:** `RoutineScreen` (`screen === "routine"`, reached from the dashboard section
+> header and an optional Quick Add tile) pairs a date pager + the shared `RoutineChecklist` with a
+> manage list; timeline rows; `buildRoutineTable`/`buildRoutineItemsTable` + three columns on the
+> wide table; full backup/restore; sync kinds `routine`/`routineItem` in `types.ts`, `project.ts`
+> (`COLLECTIONS`, `FIELD_OF`); `.fhj-cat-routine` (gold, `--fhj-chart2`) and `.fhj-check-*` in
+> index.css; four new icons (pill/bottle/drop/tube); demo data gets four items and a fortnight of
+> doses that **stops at yesterday**, so the demo always opens with today still to do.
+>
+> **Gotcha:** the checklist row originally drew a kind icon on its right; at phone width it cost
+> "CeraVe moisturising cream" its last two words to repeat what the dose line said. Verified in a
+> real browser, in both themes, and removed.
+>
+> Tests: **704 across 28 suites** (was 658/26) — `tests/routine.test.ts` + `tests/routineUi.test.tsx`.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

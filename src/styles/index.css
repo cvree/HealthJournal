@@ -1009,6 +1009,14 @@ button.fhj-section:disabled {
   --fhj-tint-soft: rgba(123, 194, 182, 0.15);
   --fhj-tint-text: var(--fhj-chart3, #7bc2b6);
 }
+/* The routine — meds, supplements, creams, products. Gold, so a dose sitting
+   between a meal and a bowel entry on the timeline is told apart at a glance
+   without reading either. */
+.fhj-cat-routine {
+  --fhj-mark: var(--fhj-chart2, #dcbb78);
+  --fhj-tint-soft: rgba(220, 187, 120, 0.16);
+  --fhj-tint-text: var(--fhj-chart2, #dcbb78);
+}
 
 /* ---------- Quick Add tiles ----------
    The most-pressed control in the app. Chunky, drawn, and pressable — this is
@@ -1601,6 +1609,96 @@ button.fhj-section:disabled {
   white-space: nowrap;
   font-size: 0.6875rem;
   color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* ---------- routine checklist ----------
+   The one control the routine system is built around: a row that says what to
+   take, and a box that says whether it has been. The whole row is the target
+   — a 24px checkbox is a thing you aim at, and this is a thing people tap
+   half-awake with one hand — and the "done" state is carried by fill, border
+   and a tick together, so it survives both a colour-blind eye and a phone in
+   sunlight. */
+
+.fhj-check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line, #31343d);
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-check-row:hover {
+    border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  }
+}
+.fhj-check-row.is-done {
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
+}
+/* A skip is answered, not achieved: it loses the tint and says so in words,
+   so a glance down the list never reads a skipped dose as a taken one. */
+.fhj-check-row.is-skipped {
+  border-style: dashed;
+  opacity: 0.8;
+}
+.fhj-check-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  border: 2px solid var(--fhj-line-strong, #3d4049);
+  color: transparent;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.fhj-check-row.is-done .fhj-check-box {
+  background: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  color: var(--fhj-on-accent, #14161a);
+}
+.fhj-check-name {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--fhj-ink, #ecebe7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fhj-check-meta {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  color: var(--fhj-subtle, #9a9ca6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The progress bar over the checklist. Deliberately not a ring or a
+   percentage: this is a list of five things, and "3 of 5" is the sentence
+   somebody actually wants back. */
+.fhj-check-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.05));
+  overflow: hidden;
+}
+.fhj-check-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  transition: width 280ms var(--fhj-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 /* ---------- motion ----------
