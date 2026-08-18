@@ -387,7 +387,7 @@ describe("daily nutrition targets", () => {
     await screen.findByText("Daily nutrition targets");
     fireEvent.change(screen.getByLabelText(/daily Calories target/), { target: { value: "2000" } });
 
-    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Food" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Diary" }));
     await screen.findByRole("button", { name: "previous day" });
     expect(document.body.textContent).toContain("kcal left");
     expect(screen.queryByText("Set daily targets")).toBeNull();

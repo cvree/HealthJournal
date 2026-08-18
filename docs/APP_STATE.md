@@ -326,6 +326,43 @@
 > screen-reader pass not done.
 
 
+
+> **2026-08-18 addendum 15 — 1.13: the Diary (meals + routine on one page).**
+> **`FoodScreen` → `DiaryScreen`.** Screen id stays `"food"` (deep links, nav, tests); the nav
+> label is **Diary**. It is now a tab-level screen — added to the `showHeader` exclusion list —
+> because its own sticky `DayBar` *is* the header and the shared one was stacking a second title
+> above it. `DaySummary` draws the food half always (it carries the way in to daily targets) and
+> the routine half only when there is a routine. One `date` state drives meals and doses both.
+>
+> **Density work, and why each piece.** `RoutineCheckRow` gained `compact` — one line, dose while
+> pending, clock once done — used on the Diary *and* the dashboard, so there is one row style in
+> the app. `MealSection` lost its empty branch entirely; `MealChips` renders every empty meal as
+> one row of add buttons (aria-label `Add food to X`, unchanged, which is what kept the existing
+> tests honest). A filled meal's add button moved into its header. A slot whose rows are all
+> answered folds to one summary row (`opened` state in `RoutineChecklist`, groups of one never
+> fold — nothing to save and it would cost a tap to undo).
+>
+> **`onLogRows` / `saveRoutineRows`.** The "All N" button on a slot header logs every pending row
+> in that slot in **one** `setDb`, with one toast and one Undo that restores `routine` *and*
+> `routineItems` (the use-counts move with it). Only shows at ≥2 pending.
+>
+> **`RoutineScreen` is the plan only.** Its pager, progress card and checklist are gone — they
+> were a second copy of the day, one tab away, that could drift out of step with the Diary's.
+> `RoutineProgressCard` was deleted with them. It keeps add/edit/archive/search plus a
+> "Tick things off" link back.
+>
+> **The dashboard routine lost its `Card` wrapper.** 28px of card padding was truncating
+> "CeraVe moisturising cream" there while the identical component fitted it on the Diary.
+>
+> **Gotcha:** the progress sentence was briefly split across two elements for `tabular-nums`
+> (`<span>3 of 5</span> done`), which broke every `getByText(/\d+ of \d+ done/)` and would have
+> read as three fragments to a screen reader. It is one text node with the class on the parent.
+>
+> Tests: **713 across 29 suites** (was 704/28) — new `tests/diaryUi.test.tsx`.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

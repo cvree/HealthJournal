@@ -1674,6 +1674,39 @@ button.fhj-section:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Compact: the same row, one line, for the day page — where the routine
+   shares a screen with five meals and every row it doesn't spend is a row of
+   food the user can still see without scrolling. The name keeps the space it
+   needs and the dose gives way first, because "Vitamin D3" identifies the row
+   and "2000 IU" only describes it. */
+.fhj-check-row.is-compact {
+  min-height: 2.75rem;
+  padding: 0.3125rem 0.625rem;
+  gap: 0.5625rem;
+}
+.fhj-check-row.is-compact .fhj-check-box {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.fhj-check-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4375rem;
+  min-width: 0;
+  flex: 1;
+}
+.fhj-check-line .fhj-check-name {
+  flex: 0 1 auto;
+}
+.fhj-check-sub {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .fhj-check-meta {
   display: block;
   margin-top: 0.125rem;

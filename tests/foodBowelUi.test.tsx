@@ -523,29 +523,34 @@ describe("the one-tap loop", () => {
 
 describe("the food diary", () => {
   const goToDiary = async () => {
-    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Food" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Diary" }));
     await screen.findByRole("button", { name: "previous day" });
   };
 
-  it("groups the day into meals, each with its own add button", async () => {
+  it("keeps a one-tap path into every meal, whether or not it has anything in it", async () => {
     await mountApp();
     await goToDiary();
+    // Empty meals are chips rather than five empty cards — the labels and the
+    // add path are unchanged, which is the whole point of the compression.
     for (const meal of ["Breakfast", "Lunch", "Dinner", "Snack", "Drink"]) {
-      expect(screen.getByText(meal), meal).toBeTruthy();
+      expect(screen.getByRole("button", { name: `Add food to ${meal}` }), meal).toBeTruthy();
     }
-    expect(screen.getAllByRole("button", { name: /Add food/ })).toHaveLength(5);
+    expect(screen.getAllByRole("button", { name: /Add food to/ })).toHaveLength(5);
   });
 
   it("files a meal under the section it was added from", async () => {
     await mountApp();
     await goToDiary();
-    const dinnerCard = screen.getByText("Dinner").closest(".fhj-card")!;
-    fireEvent.click(within(dinnerCard as HTMLElement).getByRole("button", { name: /Add food/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add food to Dinner" }));
     fireEvent.change(await screen.findByPlaceholderText("e.g. 250"), { target: { value: "700" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
-    expect(within(screen.getByText("Dinner").closest(".fhj-card") as HTMLElement).getByText("Quick add")).toBeTruthy();
+    // Dinner now has something in it, so it is a card — with its own add button
+    // still in reach, in the header this time.
+    const dinnerCard = screen.getByText("Dinner").closest(".fhj-card")!;
+    expect(within(dinnerCard as HTMLElement).getByText("Quick add")).toBeTruthy();
+    expect(within(dinnerCard as HTMLElement).getByRole("button", { name: "Add food to Dinner" })).toBeTruthy();
   });
 
   it("pages back to a previous day", async () => {
@@ -592,7 +597,7 @@ describe("editing Quick Add", () => {
     const dialog = await openEditor();
     // Everything on offer is listed, including the ones not currently shown.
     expect(within(dialog).getByText("Drink")).toBeTruthy();
-    expect(within(dialog).getByText("Food diary")).toBeTruthy();
+    expect(within(dialog).getByText("Diary")).toBeTruthy();
   });
 
   it("adds a tile, and it appears on the dashboard", async () => {

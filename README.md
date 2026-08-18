@@ -56,7 +56,14 @@ only one that is a form rather than a list. Any past day stays editable from the
 reading size, a nudge row, ten keys. It takes one decimal for a weight and none for a step count,
 and digits, Backspace, Enter and the arrow keys all drive it from a physical keyboard.
 
-**Food.** A proper food diary: a date pager, a calorie ring, macro bars, and the day grouped
+**The Diary — one page for the whole day.** Meals and the routine share a screen, over one date,
+because "what did I have" and "did I take the morning lot" are asked in the same breath. A sticky
+day pager moves both, so filling in yesterday evening — the food *and* the doses — never means
+changing tabs. At the top, the day's two headline numbers: what you ate, and how much of the
+routine you have answered. Everything is on the page at once; nothing is behind a tab, a toggle
+or a sideways scroller.
+
+**Food.** A calorie ring, macro bars, and the day grouped
 into Breakfast / Lunch / Dinner / Snack / Drink with per-meal subtotals. Log a meal with the
 category, time, description, serving, weight or quantity, notes, and a photo. Calories and macros
 can be typed, or estimated by AI if you've set that up — from a photo, from your description, or
@@ -76,10 +83,16 @@ the diary just shows what you ate. Fixing a food's figures once fixes them every
 **Your routine — meds, supplements, creams, products.** The things you take and use every day,
 as a checklist that answers in one tap. Add an item with a name, a kind (medication, supplement,
 cream, product, food or drink), a dose in your own words — *500 mg*, *2 pumps*, *pea-sized*, *1
-scoop* — and the parts of the day it belongs to. It then sits on the dashboard grouped into
-Morning / Midday / Evening / Bedtime, and **ticking it off is one tap, with no form in the way**.
-The same tap unticks it. Anything you only take when you need it lives in a separate **As needed**
-row, offered but never counted as missed.
+scoop* — and the parts of the day it belongs to. It then sits on the Diary and on the dashboard,
+grouped into Morning / Midday / Evening / Bedtime, and **ticking it off is one tap, with no form
+in the way**. The same tap unticks it. Anything you only take when you need it lives in a separate
+**As needed** row, offered but never counted as missed.
+
+Two things keep a long routine short. A slot with more than one thing left to take offers
+**All 4** — one tap for the handful you swallow in one go, one Undo behind all of it. And a slot
+you have finished **folds into a single line**, so a nine-item routine is four rows by bedtime
+and the day still fits on one screen. Opening it again is one tap; nothing is ever hidden that
+you cannot get back.
 
 Adjusting is one more tap: today's dose can differ from the usual one without editing the plan,
 and a dose you deliberately decided against is recorded as a **skip** — which is a different fact
@@ -100,7 +113,8 @@ explicitly choose that analysis.
 
 **Open it, log it, close it.** The first screen answers one question — what do I do now — and
 it fits on one phone screen. **Quick Add** is the first thing under the date: four tiles that
-open a check-in, a meal, a bowel movement or the camera. **Again** is the row under it, and it
+open a check-in, a meal, a bowel movement or the camera, with the day's routine directly under
+them. **Again** is the row under it, and it
 is the shortest path in the app: your most-logged foods, one tap each, straight onto today.
 **Today's Logs** is one timeline carrying check-ins, meals, bowel movements, doses and photos in
 the order they happened.
@@ -487,7 +501,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 704 tests across 28 suites
+└── tests/                      # 713 tests across 29 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

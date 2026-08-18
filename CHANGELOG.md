@@ -1,5 +1,74 @@
 # Changelog
 
+## 1.13.0
+
+### The Diary: one page for the whole day
+
+Meals lived on the Food tab. The routine lived on the dashboard and a screen of
+its own. That was three places for one question, and the question people
+actually ask is one sentence long: *what went in and on me today?*
+
+The Food tab is now the **Diary**, and it holds the day whole — a sticky pager
+at the top, the day's two headline numbers under it, the routine, then the
+meals. One date drives both systems, so filling in yesterday evening means one
+trip: last night's dinner and last night's doses, on the same page, without
+changing tabs.
+
+Nothing is behind a tab, a toggle, or a sideways scroller. On a page whose only
+job is one day, "is it all there" has to be answerable by looking.
+
+### Making it fit
+
+Putting two systems on one page is only an improvement if the page still fits.
+Four changes, each of which stands on its own:
+
+- **Checklist rows are one line.** Name and dose while it is waiting, name and
+  the time once it is done — the row answers a different question before and
+  after the tap, so it never needs to print both.
+- **Empty meals are chips, not cards.** Five empty meal cards spent 300px
+  saying nothing five times, on the exact screen you open *before* you have
+  eaten. They are now one row of add buttons, with the same labels and the same
+  one-tap path into each meal, and they disappear one at a time as the day fills
+  in. A meal with food in it is still a card.
+- **A filled meal's add button moved into its header**, next to the subtotal —
+  a 44px target in place of a full-width row repeated once per meal.
+- **A finished slot folds into one line.** "Morning · all 5 done", tap to open.
+  The list gets *shorter* as the day goes on instead of staying the same size in
+  a different colour.
+
+A nine-item routine and three meals now fit in about one and a half screens, and
+about one once the routine is done.
+
+### Two taps that were four
+
+**All 4.** A slot with more than one thing still to take offers to log the lot —
+because four morning pills are swallowed in one handful and then confessed to in
+four taps. One write, one toast, one Undo that takes all of them back out.
+
+**Add to routine, from the day.** The heading carries **+ Add**, so "I've just
+started taking this" no longer means a trip to another screen and back. It is
+the moment people actually add things — standing in front of the thing.
+
+### The manage screen does one job again
+
+It had a date pager, a progress card and a full checklist, which was a second
+copy of the day one tab away from the first — two lists that could drift out of
+step. It is now the plan and only the plan: add, edit, archive, and see
+everything you track in one list, with a link back to the Diary to tick things
+off.
+
+### Elsewhere
+
+- The dashboard's routine keeps the same one-line rows and the same folding, and
+  lost the card that used to box it in — which is where "CeraVe moisturising
+  cream" was losing its last two words while fitting perfectly on the Diary.
+- The Diary draws its own sticky header, so the shared one no longer stacks a
+  second title above it.
+
+Tests: **713 across 29 suites** (was 704/28), with a new suite driving the day
+page end to end — the pager writing doses to the day it is showing, All-N and
+its single Undo, and the fold never being a dead end.
+
 ## 1.12.0
 
 ### Your routine: meds, supplements, creams, products

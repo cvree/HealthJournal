@@ -86,7 +86,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.12.0";
+export const APP_VERSION = "1.13.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -10483,43 +10483,38 @@ function MealSection({ meal, logs, onAdd, onOpenLog, viewer }) {
     const c = resolveNutrient(l, "calories");
     if (c.value != null) kcal = (kcal ?? 0) + c.value;
   }
-  /* An empty meal is one row, not a card with a header, a dash and an add
-     button under it. Five of those took 425px to say nothing five times —
-     more than half a phone screen, on the screen you open when you have not
-     eaten yet. The whole row is the add target when there is nothing in it. */
-  if (!logs.length) {
-    const Row = viewer ? "div" : "button";
-    return (
-      <Card className="!p-0 mb-2" style={{ padding: 0 }}>
-        <Row
-          {...(viewer ? {} : { type: "button", onClick: onAdd, "aria-label": `Add food to ${def?.label || "meal"}` })}
-          className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left">
-          <span className="fhj-tl-dot shrink-0" style={{ width: "1.5rem", height: "1.5rem" }}>
-            <Icon name={def?.icon || "food"} size={12} color="currentColor" />
-          </span>
-          <span className="flex-1 text-sm font-bold" style={{ color: C.ink }}>{def?.label || "Meal"}</span>
-          {!viewer && (
-            <span className="flex items-center gap-1 text-[12.5px] font-semibold shrink-0" style={{ color: C.accentText }}>
-              <Icon name="plus" size={13} color={C.accentText} /> Add food
-            </span>
-          )}
-        </Row>
-      </Card>
-    );
-  }
+  /* An empty meal draws nothing at all here — `MealChips` collects every empty
+     one into a single row of add buttons. Five empty cards cost 300px to say
+     nothing five times, on the exact screen you open *before* you have eaten,
+     and that 300px is the difference between the day fitting on one screen and
+     not. See MealChips for the other half of this decision. */
+  if (!logs.length) return null;
 
   return (
-    <Card className="!p-0 mb-2.5" style={{ padding: 0 }}>
-      <div className="flex items-center justify-between gap-2 px-3.5 pt-3 pb-2">
+    <Card className="!p-0 mb-2" style={{ padding: 0 }}>
+      {/* Add lives in the header, beside the subtotal. As its own row under the
+          items it was a full-width control repeated once per meal — three
+          filled meals spent 120px on a button that is one 44px target up
+          here, next to the name of the meal it adds to. */}
+      <div className="flex items-center justify-between gap-2 pl-3.5 pr-1.5 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="fhj-tl-dot" style={{ width: "1.5rem", height: "1.5rem" }}>
             <Icon name={def?.icon || "food"} size={12} color="currentColor" />
           </span>
           <span className="text-sm font-bold" style={{ color: C.ink }}>{def?.label || "Meal"}</span>
         </div>
-        <span className="text-[11px] tabular-nums shrink-0" style={{ color: C.subtle }}>
-          {kcal == null ? "—" : `${formatNutrient("calories", kcal)} kcal`}
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-[11px] tabular-nums" style={{ color: C.subtle }}>
+            {kcal == null ? "—" : `${formatNutrient("calories", kcal)} kcal`}
+          </span>
+          {!viewer && (
+            <button type="button" onClick={onAdd}
+              aria-label={`Add food to ${def?.label || "meal"}`}
+              className="fhj-icon-btn" style={{ width: "2.5rem", height: "2.5rem" }}>
+              <Icon name="plus" size={16} color={C.accentText} />
+            </button>
+          )}
+        </div>
       </div>
 
       {logs.map((l) => {
@@ -10544,29 +10539,198 @@ function MealSection({ meal, logs, onAdd, onOpenLog, viewer }) {
         );
       })}
 
-      {!viewer && (
-        <button type="button" onClick={onAdd}
-          className="w-full flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold"
-          style={{ borderTop: `1px solid ${C.line}`, color: C.accentText }}>
-          <Icon name="plus" size={14} color={C.accentText} /> Add food
-        </button>
+    </Card>
+  );
+}
+
+/* =====================================================================
+   The Diary — one day, everything that went in or on you
+   =====================================================================
+
+   Meals and the routine used to live on two screens. That was two screens for
+   one question. "What did I have today" and "did I take the morning lot" are
+   asked in the same breath, usually while standing in the same kitchen, and a
+   person filling in yesterday evening has to answer both — so they belong on
+   one page, over one date, with one pager moving both.
+
+   The layout is ordered by how long each thing takes:
+
+     1. the day, and the two numbers that summarise it
+     2. the routine — a checklist, answered in taps
+     3. the meals — a diary, answered in sentences
+
+   Everything is on the page at once. Nothing is behind a tab, a toggle or a
+   horizontal scroller: on a day page, "is it all there" has to be answerable
+   by looking, and anything scrolled sideways is a thing people stop finding.
+   The routine's rows are the compact single-line variant precisely so that
+   holds — a five-item routine costs about 200px here, not 350. */
+
+/** The day's two headline numbers, side by side under one hairline: what you
+    ate, and how much of the routine you have answered. Each half only draws
+    when it has something to say, so a journal that tracks food and no meds —
+    or meds and no food — gets a card about that, not a card with a hole. */
+function DaySummary({ food, goals, items, logs, date, onEditGoals, viewer }) {
+  const totals = dayTotals(food, date);
+  const progress = routineProgress(items, logs, date);
+  const taken = routineOn(logs, date).filter((l) => !l.skipped).length;
+  const calGoal = goals?.calories;
+  const goalRows = goalProgress(goals, totals).filter((p) => p.k !== "calories");
+  /* The food half always draws. It is the half that carries the way *in* to
+     daily targets, and hiding it on a day with nothing eaten yet hid that door
+     on precisely the days somebody opens this screen to start using it. The
+     routine half is conditional, because a journal with no routine has no
+     use for a row about one. */
+  const hasRoutine = progress.total > 0 || taken > 0;
+
+  return (
+    <Card className="!p-3.5 mb-3" style={{ padding: "0.875rem" }}>
+      <div className={`flex gap-3.5 ${calGoal ? "items-center" : "items-start"} fhj-cat-food`}>
+        {calGoal ? (
+          <CalorieRing eaten={totals.calories} goal={calGoal} />
+        ) : (
+          <div className="shrink-0">
+            <div className="font-display text-3xl leading-none tabular-nums"
+              style={{ color: totals.calories != null ? C.ink : C.muted }}>
+              {totals.calories != null ? formatNutrient("calories", totals.calories) : "0"}
+            </div>
+            <div className="text-[10.5px] mt-1" style={{ color: C.subtle }}>kcal</div>
+          </div>
+        )}
+        <div className="flex-1 min-w-0 flex flex-col gap-2">
+          {goalRows.length > 0 ? (
+            goalRows.slice(0, 3).map((p) => <GoalBar key={p.k} progress={p} />)
+          ) : (
+            <div className="flex flex-wrap gap-x-3.5 gap-y-1">
+              {NUTRIENTS.filter((n) => n.primary && n.k !== "calories" && totals[n.k] != null).map((n) => (
+                <div key={n.k} className="flex items-baseline gap-1">
+                  <span className="text-sm font-bold tabular-nums" style={{ color: C.ink }}>
+                    {formatNutrient(n.k, totals[n.k])}
+                  </span>
+                  <span className="text-[10px]" style={{ color: C.subtle }}>{n.label.toLowerCase()}</span>
+                </div>
+              ))}
+              {totals.meals === 0 && (
+                <span className="text-[11.5px]" style={{ color: C.subtle }}>Nothing eaten yet</span>
+              )}
+            </div>
+          )}
+          {!goalRows.length && !calGoal && !viewer && (
+            <button onClick={() => { feedback("nav"); onEditGoals(); }}
+              className="text-[11.5px] font-semibold text-left" style={{ color: C.accentText }}>
+              Set daily targets
+            </button>
+          )}
+        </div>
+      </div>
+
+      {hasRoutine && <div className="my-3" style={{ borderTop: `1px solid ${C.line}` }} />}
+
+      {hasRoutine && (
+        <div className="fhj-cat-routine">
+          <div className="flex items-baseline justify-between gap-2 mb-1.5">
+            <span className="text-[12.5px] font-semibold tabular-nums" style={{ color: C.ink }}>
+              {progress.total ? `Routine ${progress.done} of ${progress.total}` : `${taken} logged`}
+              {progress.skipped > 0 && (
+                <span className="font-normal" style={{ color: C.subtle }}> · {progress.skipped} skipped</span>
+              )}
+            </span>
+            {progress.total > 0 && progress.done === progress.total && (
+              <span className="fhj-badge fhj-badge-good">All done</span>
+            )}
+          </div>
+          {progress.total > 0 && (
+            <div className="fhj-check-bar">
+              <span style={{ width: `${Math.round((progress.ratio || 0) * 100)}%` }} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {totals.partlyEstimated && (
+        <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap" style={{ borderTop: `1px solid ${C.line}` }}>
+          <span className="fhj-ai-badge">Partly estimated</span>
+          <span className="text-[10.5px]" style={{ color: C.subtle }}>
+            Some of today's figures came from AI, not a label.
+          </span>
+        </div>
       )}
     </Card>
   );
 }
 
-function FoodScreen({
+/** The pager. Sticky, because a day page is long by design and "which day am I
+    editing" is the one thing you must never have to scroll back up to check —
+    on a screen whose entire job is writing to a particular date, that question
+    getting lost is a wrong entry. */
+function DayBar({ date, setDate }) {
+  const isToday = date === todayStr();
+  return (
+    <div className="sticky top-0 z-20 -mx-4 px-4 py-2"
+      style={{ background: C.bg, backdropFilter: "saturate(140%) blur(8px)" }}>
+      <div className="flex items-center justify-between gap-2">
+        <button className="fhj-icon-btn shrink-0" onClick={() => { feedback("nav"); setDate(addDays(date, -1)); }}
+          aria-label="previous day">
+          <Icon name="left" size={16} color={C.sub} />
+        </button>
+        <div className="text-center min-w-0">
+          <div className="font-display text-[1.05rem] leading-tight truncate" style={{ color: C.ink }}>
+            {isToday ? "Today" : fmtNice(date)}
+          </div>
+          {isToday ? (
+            <div className="text-[10.5px] leading-tight" style={{ color: C.subtle }}>{fmtNice(date)}</div>
+          ) : (
+            <button type="button" onClick={() => { feedback("nav"); setDate(todayStr()); }}
+              className="text-[10.5px] font-semibold leading-tight" style={{ color: C.accentText }}>
+              Jump to today
+            </button>
+          )}
+        </div>
+        <button className="fhj-icon-btn shrink-0" onClick={() => { feedback("nav"); setDate(addDays(date, 1)); }}
+          disabled={date >= todayStr()} aria-label="next day">
+          <Icon name="right" size={16} color={C.sub} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Every meal with nothing in it yet, as one row of add buttons.
+
+    The five empty meal cards this replaces were the single biggest block of
+    dead space in the app: 300px of headings and dashes, on the screen you open
+    when you have not eaten. As chips they cost one row, they keep the exact
+    same one-tap path into each meal — the labels are unchanged, so is the
+    picker they open — and they disappear one by one as the day fills in. */
+function MealChips({ meals, onAdd }) {
+  if (!meals.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-2 fhj-cat-food">
+      {meals.map((m) => (
+        <button key={m.id} type="button"
+          onClick={() => { feedback("tap"); onAdd(m.id); }}
+          aria-label={`Add food to ${m.label}`}
+          className="fhj-chip fhj-pop">
+          <Icon name="plus" size={12} color="currentColor" />
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DiaryScreen({
   food, foods, goals, onLog, onSaveLog, onDeleteLog, onUpdateLibrary,
+  routine = [], routineItems = [], onSaveRoutine, onDeleteRoutine, onLogRoutineRows,
+  onSaveRoutineItem, goRoutine,
   onEditGoals, aiEnabled, aiAuto, viewer,
 }) {
   const [date, setDate] = useState(todayStr());
-  const [picker, setPicker] = useState(null); // meal id
-  const [sheet, setSheet] = useState(null);   // log being edited, or { meal } for new
+  const [picker, setPicker] = useState(null);        // meal id
+  const [sheet, setSheet] = useState(null);          // food log being edited, or { meal } for new
+  const [routineSheet, setRoutineSheet] = useState(null); // { item, slot, log }
+  const [itemEditor, setItemEditor] = useState(false);    // add-an-item sheet
   const rows = foodOn(food, date);
-  const totals = dayTotals(food, date);
-  const progress = goalProgress(goals, totals);
-  const calGoal = goals?.calories;
-  const isToday = date === todayStr();
+  const hasRoutine = routineItems.length > 0;
 
   const yesterday = addDays(date, -1);
   const yesterdayRows = foodOn(food, yesterday);
@@ -10583,84 +10747,75 @@ function FoodScreen({
     }
   };
 
+  /* One tap ticks, the same tap unticks — on whichever date the pager is on,
+     which is the entire reason the routine moved onto this page. */
+  const toggleRoutine = (row) => {
+    if (row.log) onDeleteRoutine(row.log);
+    else onSaveRoutine(logFromItem(row.item, { date, slot: row.slot }));
+  };
+
   return (
-    <div className="px-4 pb-8 pt-3 fhj-cat-food">
-      {/* date pager */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <button className="fhj-icon-btn" onClick={() => setDate(addDays(date, -1))} aria-label="previous day">
-          <Icon name="left" size={16} color={C.sub} />
-        </button>
-        <div className="text-center min-w-0">
-          <div className="text-sm font-bold truncate" style={{ color: C.ink }}>
-            {isToday ? "Today" : fmtNice(date)}
-          </div>
-          {isToday && <div className="text-[10.5px]" style={{ color: C.subtle }}>{fmtNice(date)}</div>}
-        </div>
-        <button className="fhj-icon-btn" onClick={() => setDate(addDays(date, 1))}
-          disabled={date >= todayStr()} aria-label="next day">
-          <Icon name="right" size={16} color={C.sub} />
-        </button>
+    <div className="px-4 pb-8">
+      <DayBar date={date} setDate={setDate} />
+
+      <DaySummary food={food} goals={goals} items={routineItems} logs={routine} date={date}
+        onEditGoals={onEditGoals} viewer={viewer} />
+
+      {/* ---------- the routine ----------
+          Above the meals because it is the shorter task and the one with a
+          right answer: a checklist you can clear in four taps should not be
+          under five meal cards you might add nothing to. */}
+      {/* Both actions live in the heading rather than as rows under the list:
+          a full-width dashed "Add" button under five checklist rows is 48px
+          spent on the thing people do twice a year, directly beneath the thing
+          they do every morning. */}
+      <div className="fhj-section mt-4 fhj-cat-routine">
+        <h2 className="fhj-section-title">Routine</h2>
+        {!viewer && (
+          <span className="flex items-center gap-3 shrink-0">
+            {hasRoutine && (
+              <button onClick={() => { feedback("tap"); setItemEditor(true); }}
+                aria-label="Add an item to your routine"
+                className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+                <Icon name="plus" size={12} color={C.accentText} /> Add
+              </button>
+            )}
+            <button onClick={() => { feedback("nav"); goRoutine(); }}
+              className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+              {hasRoutine ? "Manage" : "Set up"}
+              <Icon name="right" size={12} color={C.accentText} />
+            </button>
+          </span>
+        )}
       </div>
 
-      {/* the day's totals */}
-      <Card className="mb-4">
-        <div className={`flex gap-4 ${calGoal ? "items-center" : "items-start"}`}>
-          {calGoal ? (
-            <CalorieRing eaten={totals.calories} goal={calGoal} />
-          ) : (
-            <div className="shrink-0">
-              {/* A 4xl em-dash beside a "Set daily targets" link read as a
-                  broken layout rather than as an empty day. */}
-              <div className="font-display text-4xl leading-none tabular-nums"
-                style={{ color: totals.calories != null ? C.ink : C.muted }}>
-                {totals.calories != null ? formatNutrient("calories", totals.calories) : "0"}
-              </div>
-              <div className="text-[11px] mt-1" style={{ color: C.subtle }}>
-                kcal {isToday ? "today" : "this day"}
-              </div>
-            </div>
-          )}
-          <div className="flex-1 min-w-0 flex flex-col gap-2">
-            {progress.filter((p) => p.k !== "calories").length > 0 ? (
-              progress.filter((p) => p.k !== "calories").slice(0, 3).map((p) => (
-                <GoalBar key={p.k} progress={p} />
-              ))
-            ) : (
-              <div className="flex flex-wrap gap-x-3.5 gap-y-1">
-                {NUTRIENTS.filter((n) => n.primary && n.k !== "calories" && totals[n.k] != null).map((n) => (
-                  <div key={n.k} className="flex items-baseline gap-1">
-                    <span className="text-sm font-bold tabular-nums" style={{ color: C.ink }}>
-                      {formatNutrient(n.k, totals[n.k])}
-                    </span>
-                    <span className="text-[10px]" style={{ color: C.subtle }}>{n.label.toLowerCase()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        {/* Its own row under the numbers, not a small link floating beside a
-            4xl digit — beside it, the two never shared a baseline and the card
-            read as three things that had come loose. */}
-        {progress.length === 0 && !viewer && (
-          <button onClick={() => { feedback("nav"); onEditGoals(); }}
-            className="w-full mt-3 pt-3 flex items-center justify-between gap-2 text-left"
-            style={{ borderTop: `1px solid ${C.line}`, minHeight: "var(--fhj-tap)" }}>
-            <span className="text-[12.5px] font-semibold" style={{ color: C.accentText }}>
-              Set daily targets
-            </span>
-            <Icon name="right" size={13} color={C.accentText} />
+      {hasRoutine ? (
+        <RoutineChecklist
+          items={routineItems} logs={routine} date={date} viewer={viewer} compact
+          onToggle={toggleRoutine}
+          onAdjust={(row) => !viewer && setRoutineSheet({ ...row, date })}
+          onLogRows={(pending, label) => onLogRoutineRows(pending.map((r) => ({ ...r, date })), label)}
+          onLogAsNeeded={(item) => onSaveRoutine(logFromItem(item, { date, slot: slotForTime(localTime()) }))} />
+      ) : (
+        !viewer && (
+          <button type="button" onClick={() => { feedback("tap"); setItemEditor(true); }}
+            className="w-full text-[12px] leading-relaxed px-3 py-3 rounded-xl text-left"
+            style={{ background: C.faint, border: `1px dashed ${C.lineStrong}`, color: C.subtle }}>
+            Meds, supplements, creams, products — add what you take or use and it becomes a
+            one-tap checklist right here, on whichever day you're looking at.
           </button>
+        )
+      )}
+
+      {/* ---------- the meals ---------- */}
+      <div className="fhj-section mt-5 fhj-cat-food">
+        <h2 className="fhj-section-title">Meals</h2>
+        {rows.length > 0 && (
+          <span className="text-[11px] tabular-nums" style={{ color: C.subtle }}>
+            {rows.length} item{rows.length === 1 ? "" : "s"}
+          </span>
         )}
-        {totals.partlyEstimated && (
-          <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap" style={{ borderTop: `1px solid ${C.line}` }}>
-            <span className="fhj-ai-badge">Partly estimated</span>
-            <span className="text-[10.5px]" style={{ color: C.subtle }}>
-              Some of today's figures came from AI, not a label.
-            </span>
-          </div>
-        )}
-      </Card>
+      </div>
 
       {MEALS.map((m) => (
         <MealSection key={m.id} meal={m.id} viewer={viewer}
@@ -10669,6 +10824,12 @@ function FoodScreen({
           onOpenLog={(l) => !viewer && setSheet(l)} />
       ))}
 
+      {!viewer && (
+        <MealChips
+          meals={MEALS.filter((m) => !rows.some((r) => r.meal === m.id))}
+          onAdd={(id) => setPicker(id)} />
+      )}
+
       {!viewer && yesterdayRows.length > 0 && rows.length === 0 && (
         <Button variant="secondary" block icon="refresh" className="mt-3" onClick={copyYesterday}>
           Copy {yesterdayRows.length} item{yesterdayRows.length === 1 ? "" : "s"} from yesterday
@@ -10676,9 +10837,11 @@ function FoodScreen({
       )}
 
       {rows.length === 0 && (
-        <p className="text-[11.5px] leading-relaxed mt-4 text-center" style={{ color: C.subtle }}>
-          Nothing logged for this day yet. Foods you save build up as you go — after a week or so,
-          most meals are one tap.
+        /* One line. The long version of this sentence was the only thing left
+           pushing a typical day past the fold, and it was explaining a feature
+           the user meets on their second meal anyway. */
+        <p className="text-[11px] mt-3 text-center" style={{ color: C.subtle }}>
+          Foods you save build up as you go — most meals become one tap.
         </p>
       )}
 
@@ -10700,9 +10863,28 @@ function FoodScreen({
           onDelete={sheet.id ? (log) => { onDeleteLog(log); setSheet(null); } : null}
           onClose={() => setSheet(null)} />
       )}
+      {routineSheet && (
+        <RoutineLogAdjustSheet row={routineSheet} date={date}
+          onSave={(log) => { onSaveRoutine(log); setRoutineSheet(null); }}
+          onSkip={(log) => { onSaveRoutine(log); setRoutineSheet(null); }}
+          onUnlog={(log) => { onDeleteRoutine(log); setRoutineSheet(null); }}
+          onClose={() => setRoutineSheet(null)} />
+      )}
+      {itemEditor && (
+        /* Adding an item without leaving the day. The manage screen still
+           exists for editing, archiving and the history; this is the path for
+           "I've just started taking this", which is when people actually add
+           things — standing in front of the thing. */
+        <RoutineItemSheet
+          initial={null}
+          onSave={(item) => { onSaveRoutineItem(item); setItemEditor(false); }}
+          onDelete={null}
+          onClose={() => setItemEditor(false)} />
+      )}
     </div>
   );
 }
+
 
 /* =====================================================================
    The routine — medications, supplements, creams, products
@@ -10744,15 +10926,26 @@ function CheckMark({ done, skipped }) {
     The whole row toggles. The small button on the right is the only way to
     reach anything else — today's dose, the time, a note, a deliberate skip —
     and it is deliberately the *second* control, not the first. */
-function RoutineCheckRow({ row, onToggle, onAdjust, disabled }) {
+function RoutineCheckRow({ row, onToggle, onAdjust, disabled, compact = false }) {
   const { item, log, done, skipped } = row;
   /* No kind icon on this row, deliberately. The name is what somebody reads,
      and a 28px glyph on the right was costing "CeraVe moisturising cream" its
      last two words to say something the dose line already said. The icons live
      where they earn their space: the manage list and the timeline. */
+
+  /* The second line answers a different question before and after the tap.
+     Before: *what am I meant to take* — the dose. After: *when did I* — the
+     clock. Printing both at once would be the row explaining itself twice. */
   const meta = done || skipped
     ? [skipped ? "Skipped" : "Taken", logLine(log)].filter(Boolean).join(" · ")
     : [item.dose?.trim(), item.brand?.trim()].filter(Boolean).join(" · ");
+
+  /* Compact says the same thing on one line. It exists for the day page, where
+     the routine shares the screen with five meals and every row it doesn't
+     spend is a row of food the user can still see without scrolling. */
+  const inline = done || skipped
+    ? [skipped ? "Skipped" : null, prettyTime(log?.time)].filter(Boolean).join(" · ")
+    : item.dose?.trim() || "";
 
   /* An item scheduled twice a day draws two identical rows, so the slot has to
      be part of the name a screen reader reads out — otherwise the morning and
@@ -10760,23 +10953,31 @@ function RoutineCheckRow({ row, onToggle, onAdjust, disabled }) {
   const label = row.slot ? `${item.name}, ${timeLabel(row.slot)}` : item.name;
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1">
       <button type="button" disabled={disabled}
         onClick={() => { feedback(done || skipped ? "tap" : "save"); onToggle(row); }}
         aria-pressed={done}
         aria-label={`${done ? "Undo" : "Mark taken"}: ${label}`}
-        className={"fhj-check-row fhj-pop flex-1 min-w-0" + (done ? " is-done" : "") + (skipped ? " is-skipped" : "")}>
+        className={"fhj-check-row fhj-pop flex-1 min-w-0" + (compact ? " is-compact" : "")
+          + (done ? " is-done" : "") + (skipped ? " is-skipped" : "")}>
         <CheckMark done={done} skipped={skipped} />
-        <span className="flex-1 min-w-0">
-          <span className="fhj-check-name">{item.name}</span>
-          {meta && <span className="fhj-check-meta">{meta}</span>}
-        </span>
+        {compact ? (
+          <span className="fhj-check-line">
+            <span className="fhj-check-name">{item.name}</span>
+            {inline && <span className="fhj-check-sub">{inline}</span>}
+          </span>
+        ) : (
+          <span className="flex-1 min-w-0">
+            <span className="fhj-check-name">{item.name}</span>
+            {meta && <span className="fhj-check-meta">{meta}</span>}
+          </span>
+        )}
       </button>
       {!disabled && (
         <button type="button" onClick={() => { feedback("tap"); onAdjust(row); }}
           aria-label={`Adjust ${label}`} className="fhj-icon-btn shrink-0"
-          style={{ width: "2.5rem", height: "2.5rem" }}>
-          <Icon name="sliders" size={16} color={C.sub} />
+          style={{ width: compact ? "2.25rem" : "2.5rem", height: compact ? "2.25rem" : "2.5rem" }}>
+          <Icon name="sliders" size={compact ? 14 : 16} color={C.sub} />
         </button>
       )}
     </div>
@@ -10789,7 +10990,9 @@ function RoutineCheckRow({ row, onToggle, onAdjust, disabled }) {
     Used by both the dashboard and the Routine screen, because "what does today
     ask for" has exactly one right answer and two components drawing it their
     own way is how the two drift apart. */
-function RoutineChecklist({ items = [], logs = [], date, onToggle, onAdjust, onLogAsNeeded, viewer }) {
+function RoutineChecklist({
+  items = [], logs = [], date, onToggle, onAdjust, onLogAsNeeded, onLogRows, viewer, compact = false,
+}) {
   const groups = useMemo(() => routineChecklist(items, logs, date), [items, logs, date]);
   const asNeeded = useMemo(() => asNeededItems(items), [items]);
   const extras = useMemo(
@@ -10800,68 +11003,141 @@ function RoutineChecklist({ items = [], logs = [], date, onToggle, onAdjust, onL
     [logs, date, groups]
   );
 
+  /* Which finished groups the user has re-opened. Collapsing is the default
+     for a group that is entirely answered — see the summary row below. */
+  const [opened, setOpened] = useState({});
+
   if (!groups.length && !asNeeded.length && !extras.length) return null;
 
   return (
     <div className="fhj-cat-routine">
-      {groups.map((g) => (
-        <div key={g.slot || "anytime"} className="mb-3">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <Icon name={g.icon} size={12} color={C.subtle} />
-            <span className="fhj-eyebrow">{g.label}</span>
+      {groups.map((g) => {
+        /* "All" is the one shortcut worth having here. Somebody with four
+           morning pills takes them in one handful and then taps four times to
+           say so; this is that handful, as one tap, with a single Undo behind
+           it. It only appears when there are at least two left to take, so it
+           never sits there offering to do something already done. */
+        const key = g.slot || "anytime";
+        const pending = g.rows.filter((r) => !r.done && !r.skipped);
+        /* A finished group folds into one line. This is what makes the list
+           get *shorter* as the day goes on rather than staying the same size
+           in a different colour — by bedtime a nine-item routine is four rows,
+           and the day still fits on one screen. Groups of one never fold:
+           there is nothing to save, and it would cost a tap to undo them.
+
+           Skipped counts as answered here for the same reason it does in the
+           progress bar: the question was dealt with. */
+        const foldable = g.rows.length > 1 && !pending.length;
+        const folded = foldable && !opened[key];
+        const doneCount = g.rows.filter((r) => r.done).length;
+
+        return (
+          <div key={key} className={compact ? "mb-2" : "mb-3"}>
+            {!folded && (
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Icon name={g.icon} size={12} color={C.subtle} />
+                <span className="fhj-eyebrow">{g.label}</span>
+                <span className="flex-1" />
+                {/* "All" is the one shortcut worth having here. Somebody with
+                    four morning pills takes them in one handful and then taps
+                    four times to say so; this is that handful, as one tap, with
+                    a single Undo behind it. */}
+                {!viewer && onLogRows && pending.length > 1 && (
+                  <button type="button"
+                    onClick={() => { feedback("save"); onLogRows(pending, g.label); }}
+                    aria-label={`Mark all ${pending.length} ${g.label.toLowerCase()} items taken`}
+                    className="text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-full"
+                    style={{ color: C.accentText, background: C.faint }}>
+                    All {pending.length}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {folded ? (
+              <button type="button"
+                onClick={() => { feedback("tap"); setOpened((o) => ({ ...o, [key]: true })); }}
+                aria-label={`${g.label} done — show all ${g.rows.length} items`}
+                className="fhj-check-row is-compact is-done w-full">
+                <CheckMark done />
+                <span className="fhj-check-line">
+                  <span className="fhj-check-name">{g.label}</span>
+                  <span className="fhj-check-sub">
+                    {doneCount === g.rows.length
+                      ? `all ${g.rows.length} done`
+                      : `${doneCount} done · ${g.rows.length - doneCount} skipped`}
+                  </span>
+                </span>
+                <Icon name="down" size={14} color={C.sub} />
+              </button>
+            ) : (
+              <div className={"flex flex-col " + (compact ? "gap-1" : "gap-1.5")}>
+                {g.rows.map((row) => (
+                  <RoutineCheckRow key={`${row.item.id}_${row.slot || "any"}`} row={row} compact={compact}
+                    onToggle={onToggle} onAdjust={onAdjust} disabled={viewer} />
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            {g.rows.map((row) => (
-              <RoutineCheckRow key={`${row.item.id}_${row.slot || "any"}`} row={row}
-                onToggle={onToggle} onAdjust={onAdjust} disabled={viewer} />
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {extras.length > 0 && (
-        <div className="mb-3">
+        <div className={compact ? "mb-2" : "mb-3"}>
           <div className="flex items-center gap-1.5 mb-1.5">
             <Icon name="plus" size={12} color={C.subtle} />
             <span className="fhj-eyebrow">Also logged</span>
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className={"flex flex-col " + (compact ? "gap-1" : "gap-1.5")}>
             {extras.map((log) => (
               <button key={log.id} type="button" disabled={viewer}
                 onClick={() => { feedback("tap"); onAdjust({ item: { id: log.itemId, name: log.name, kind: log.kind }, log, done: !log.skipped, skipped: !!log.skipped }); }}
-                className={"fhj-check-row" + (log.skipped ? " is-skipped" : " is-done")}>
+                aria-label={`Adjust ${log.name}`}
+                className={"fhj-check-row" + (compact ? " is-compact" : "") + (log.skipped ? " is-skipped" : " is-done")}>
                 <CheckMark done={!log.skipped} skipped={!!log.skipped} />
-                <span className="flex-1 min-w-0">
-                  <span className="fhj-check-name">{log.name}</span>
-                  <span className="fhj-check-meta">{routineSummary(log) || logLine(log)}</span>
-                </span>
+                {compact ? (
+                  <span className="fhj-check-line">
+                    <span className="fhj-check-name">{log.name}</span>
+                    <span className="fhj-check-sub">{[log.skipped ? "Skipped" : null, prettyTime(log.time)].filter(Boolean).join(" · ")}</span>
+                  </span>
+                ) : (
+                  <span className="flex-1 min-w-0">
+                    <span className="fhj-check-name">{log.name}</span>
+                    <span className="fhj-check-meta">{routineSummary(log) || logLine(log)}</span>
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* As needed: offered, never chased. A row of one-tap chips rather than
-          checklist lines, because an antihistamine you might not take today is
-          not an unfinished task and should not read as one. */}
+      {/* As needed: offered, never chased. Chips rather than checklist lines,
+          because an antihistamine you might not take today is not an unfinished
+          task and should not read as one — and they *wrap* rather than scroll
+          sideways, so nothing about the day is hidden past an edge. */}
       {!viewer && asNeeded.length > 0 && (
         <>
           <div className="flex items-center gap-1.5 mb-1.5">
             <Icon name="clock" size={12} color={C.subtle} />
             <span className="fhj-eyebrow">As needed</span>
           </div>
-          <div className="fhj-scroller" role="list" aria-label="Log an as-needed item">
-            {asNeeded.map((item) => (
-              <button key={item.id} type="button" role="listitem"
-                onClick={() => { feedback("save"); onLogAsNeeded(item); }}
-                aria-label={`Log ${item.name}`}
-                className="fhj-repeat fhj-pop">
-                <span className="fhj-repeat-name">{item.name}</span>
-                <span className="fhj-repeat-meta">
-                  {[item.dose?.trim(), countToday(logs, date, item.id)].filter(Boolean).join(" · ") || kindLabel(item.kind)}
-                </span>
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-1.5" role="list" aria-label="Log an as-needed item">
+            {asNeeded.map((item) => {
+              const count = countToday(logs, date, item.id);
+              return (
+                <button key={item.id} type="button" role="listitem"
+                  onClick={() => { feedback("save"); onLogAsNeeded(item); }}
+                  aria-label={`Log ${item.name}`}
+                  className={"fhj-chip fhj-pop" + (count ? " is-active" : "")}>
+                  <Icon name={count ? "check" : "plus"} size={12} color="currentColor" />
+                  {item.name}
+                  {(count || item.dose?.trim()) && (
+                    <span className="fhj-check-sub">{count || item.dose?.trim()}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </>
       )}
@@ -10883,7 +11159,7 @@ function countToday(logs, date, itemId) {
     the entire discovery path for this feature, and one line on the first
     screen is a price worth paying for it; anyone who never wants it can hide
     the section from the same screen it points at. */
-function RoutineCard({ items = [], logs = [], date, onToggle, onAdjust, onLogAsNeeded, onManage, viewer }) {
+function RoutineCard({ items = [], logs = [], date, onToggle, onAdjust, onLogAsNeeded, onLogRows, onManage, viewer }) {
   const progress = routineProgress(items, logs, date);
   const active = scheduledItems(items).length + asNeededItems(items).length;
 
@@ -10907,12 +11183,16 @@ function RoutineCard({ items = [], logs = [], date, onToggle, onAdjust, onLogAsN
           checklist here.
         </button>
       ) : (
-        <Card className="!p-3.5 fhj-cat-routine" style={{ padding: "0.875rem" }}>
+        /* No card around this. The rows *are* cards, and wrapping them in
+           another one cost 28px of width — enough to truncate "CeraVe
+           moisturising cream" here while it fitted perfectly on the Diary,
+           which is the same list in the same component. One list, one width. */
+        <div className="fhj-cat-routine">
           {progress.total > 0 && (
-            <div className="mb-3">
-              <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                <span className="text-[12.5px] font-semibold" style={{ color: C.ink }}>
-                  {progress.done} of {progress.total} done
+            <div className="mb-2">
+              <div className="flex items-baseline justify-between gap-2 mb-1">
+                <span className="text-[12px] font-semibold tabular-nums" style={{ color: C.sub }}>
+                  {`${progress.done} of ${progress.total} done`}
                   {progress.skipped > 0 && (
                     <span className="font-normal" style={{ color: C.subtle }}> · {progress.skipped} skipped</span>
                   )}
@@ -10926,9 +11206,10 @@ function RoutineCard({ items = [], logs = [], date, onToggle, onAdjust, onLogAsN
               </div>
             </div>
           )}
-          <RoutineChecklist items={items} logs={logs} date={date} viewer={viewer}
-            onToggle={onToggle} onAdjust={onAdjust} onLogAsNeeded={onLogAsNeeded} />
-        </Card>
+          <RoutineChecklist items={items} logs={logs} date={date} viewer={viewer} compact
+            onToggle={onToggle} onAdjust={onAdjust} onLogRows={onLogRows}
+            onLogAsNeeded={onLogAsNeeded} />
+        </div>
       )}
     </>
   );
@@ -11160,67 +11441,49 @@ function RoutineItemRow({ item, onEdit, first }) {
   );
 }
 
-function RoutineScreen({ items = [], logs = [], viewer, onSaveItem, onDeleteItem, onSaveLog, onDeleteLog }) {
-  const [date, setDate] = useState(todayStr());
-  const [sheet, setSheet] = useState(null);   // { item } / { item, log } being adjusted
+/** Managing the routine: the *plan*, and only the plan.
+
+    Ticking things off happens on the Diary, over whichever date its pager is
+    on — including yesterday's missed dose. So this screen deliberately has no
+    checklist, no progress and no day pager of its own: it had all three until
+    the two systems shared a page, at which point they were a second copy of
+    the day, one tab away, that could drift out of step with the first. What is
+    left is what only this screen can do — add, edit, archive, and see
+    everything you track in one list. */
+function RoutineScreen({ items = [], viewer, onSaveItem, onDeleteItem, goDiary }) {
   const [editor, setEditor] = useState(null); // item being edited, or {} for a new one
   const [query, setQuery] = useState("");
-  const isToday = date === todayStr();
 
   const active = useMemo(() => items.filter((i) => !i.archived), [items]);
   const archived = useMemo(() => items.filter((i) => i.archived), [items]);
   const shown = useMemo(() => searchItems(active, query), [active, query]);
 
-  const toggle = (row) => {
-    if (row.log) onDeleteLog(row.log);
-    else onSaveLog(logFromItem(row.item, { date, slot: row.slot }));
-  };
-
   return (
     <div className="px-4 pb-8 pt-3 fhj-cat-routine">
-      {/* date pager — the same one the food diary uses, for the same reason:
-          a dose missed yesterday is logged today or not at all. */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <button className="fhj-icon-btn" onClick={() => { feedback("nav"); setDate(addDays(date, -1)); }}
-          aria-label="previous day">
-          <Icon name="left" size={16} color={C.sub} />
-        </button>
-        <div className="text-center min-w-0">
-          <div className="text-sm font-bold truncate" style={{ color: C.ink }}>
-            {isToday ? "Today" : fmtNice(date)}
-          </div>
-          {isToday && <div className="text-[10.5px]" style={{ color: C.subtle }}>{fmtNice(date)}</div>}
-        </div>
-        <button className="fhj-icon-btn" onClick={() => { feedback("nav"); setDate(addDays(date, 1)); }}
-          disabled={date >= todayStr()} aria-label="next day">
-          <Icon name="right" size={16} color={C.sub} />
-        </button>
-      </div>
-
       {items.length === 0 ? (
         <EmptyState icon="pill" title="Nothing in your routine yet"
-          text="Medications, supplements, creams, shampoos, a daily shake — anything you take or use. Add one and it becomes a one-tap checklist on your dashboard, and a column in your export."
+          text="Medications, supplements, creams, shampoos, a daily shake — anything you take or use. Add one and it becomes a one-tap checklist on your Diary and your dashboard, and a column in your export."
           actionLabel={viewer ? null : "Add your first item"}
           onAction={viewer ? null : () => { feedback("tap"); setEditor({}); }} />
       ) : (
         <>
-          <RoutineProgressCard items={items} logs={logs} date={date} />
-          <RoutineChecklist items={items} logs={logs} date={date} viewer={viewer}
-            onToggle={toggle}
-            onAdjust={(row) => !viewer && setSheet(row)}
-            onLogAsNeeded={(item) => onSaveLog(logFromItem(item, { date, slot: slotForTime(localTime()) }))} />
-        </>
-      )}
+          {!viewer && (
+            <Button block icon="plus" onClick={() => { feedback("tap"); setEditor({}); }}>
+              Add an item
+            </Button>
+          )}
 
-      {!viewer && (
-        <Button block icon="plus" className="mt-3" onClick={() => { feedback("tap"); setEditor({}); }}>
-          Add an item
-        </Button>
-      )}
+          <SectionTitle cat="fhj-cat-routine"
+            action={
+              <button type="button" onClick={() => { feedback("nav"); goDiary(); }}
+                className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+                Tick things off
+                <Icon name="right" size={12} color={C.accentText} />
+              </button>
+            }>
+            Everything you track
+          </SectionTitle>
 
-      {items.length > 0 && (
-        <>
-          <SectionTitle cat="fhj-cat-routine">Everything you track</SectionTitle>
           {active.length > 6 && (
             <input className="fhj-input mb-2" value={query} placeholder="Search your routine"
               onChange={(e) => setQuery(e.target.value)} aria-label="Search your routine" />
@@ -11257,13 +11520,6 @@ function RoutineScreen({ items = [], logs = [], viewer, onSaveItem, onDeleteItem
         you enter, on this device, and hands it back whole when you export it.
       </p>
 
-      {sheet && (
-        <RoutineLogAdjustSheet row={sheet} date={date}
-          onSave={(log) => { onSaveLog(log); setSheet(null); }}
-          onSkip={(log) => { onSaveLog(log); setSheet(null); }}
-          onUnlog={(log) => { onDeleteLog(log); setSheet(null); }}
-          onClose={() => setSheet(null)} />
-      )}
       {editor && (
         <RoutineItemSheet
           initial={editor.id ? editor : null}
@@ -11275,40 +11531,6 @@ function RoutineScreen({ items = [], logs = [], viewer, onSaveItem, onDeleteItem
   );
 }
 
-/** The day's headline: how much of the plan has been answered. Same sentence
-    as the dashboard card, drawn once here so the screen opens with an answer
-    rather than a list. */
-function RoutineProgressCard({ items = [], logs = [], date }) {
-  const progress = routineProgress(items, logs, date);
-  const taken = routineOn(logs, date).filter((l) => !l.skipped).length;
-  if (!progress.total && !taken) {
-    return (
-      <Card className="!p-3.5 mb-4" style={{ padding: "0.875rem" }}>
-        <div className="text-[12.5px] leading-snug" style={{ color: C.subtle }}>
-          Nothing scheduled for this day. Anything you log below still counts.
-        </div>
-      </Card>
-    );
-  }
-  return (
-    <Card className="!p-3.5 mb-4" style={{ padding: "0.875rem" }}>
-      <div className="flex items-baseline gap-3">
-        <div className="font-display text-3xl leading-none tabular-nums" style={{ color: C.ink }}>
-          {progress.total ? `${progress.done}/${progress.total}` : taken}
-        </div>
-        <div className="text-[11.5px] leading-snug" style={{ color: C.subtle }}>
-          {progress.total ? "of the day's routine done" : `logged this day`}
-          {progress.skipped > 0 && ` · ${progress.skipped} skipped`}
-        </div>
-      </div>
-      {progress.total > 0 && (
-        <div className="fhj-check-bar mt-2.5">
-          <span style={{ width: `${Math.round((progress.ratio || 0) * 100)}%` }} />
-        </div>
-      )}
-    </Card>
-  );
-}
 
 /* ---------- Quick Add ----------
    Tactile tiles, one per thing worth logging. This is the most-pressed control
@@ -11348,8 +11570,8 @@ const QUICK_ADD_TILES = [
     sub: "Progress shot", desc: "Needs at least one photo question in your setup",
   },
   {
-    id: "diary", cat: "fhj-cat-food", icon: "target", label: "Food diary",
-    sub: "The whole day", desc: "Jumps to the day's meals and totals",
+    id: "diary", cat: "fhj-cat-food", icon: "target", label: "Diary",
+    sub: "The whole day", desc: "The day's meals, totals and routine on one page",
   },
 ];
 
@@ -11811,7 +12033,7 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, syncStatus }) {
+function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -11923,6 +12145,7 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
             items={routineItems} logs={routine} date={todayStr()} viewer={viewer}
             onToggle={toggleRoutine}
             onAdjust={(row) => setRoutineSheet(row)}
+            onLogRows={onLogRoutineRows}
             onLogAsNeeded={(item) => onSaveRoutine(logFromItem(item, { date: todayStr(), slot: slotForTime(localTime()) }))}
             onManage={goRoutine} />
         </>
@@ -12704,7 +12927,10 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
 const NAV = [
   { id: "dashboard", label: "Today", icon: "home" },
   { id: "log", label: "Log", icon: "log" },
-  { id: "food", label: "Food", icon: "food" },
+  /* One tab for the whole day — meals *and* the routine. "Food" stopped being
+     true the moment the checklist moved in, and a tab whose label undersells
+     what is behind it is a tab people stop opening. */
+  { id: "food", label: "Diary", icon: "food" },
   { id: "insights", label: "Insights", icon: "trends" },
   { id: "calendar", label: "Calendar", icon: "calendar" },
 ];
@@ -13406,6 +13632,26 @@ export default function App({ viewer = false }) {
     }
   };
 
+  /* A handful of pills, logged as a handful. Every row lands in one write, so
+     the whole thing is one toast and one Undo rather than four of each — and
+     the item use-counts move with them, exactly as if each had been tapped. */
+  const saveRoutineRows = (rows, label) => {
+    if (!rows?.length) return;
+    const logs = rows.map((r) => logFromItem(r.item, { date: r.date || todayStr(), slot: r.slot }));
+    let before = null;
+    setDb((prev) => {
+      before = { routine: prev.routine || [], routineItems: prev.routineItems || [] };
+      let routineItems = prev.routineItems || [];
+      for (const log of logs) routineItems = bumpItemUse(routineItems, log.itemId);
+      return { ...prev, routine: [...(prev.routine || []), ...logs], routineItems };
+    });
+    toast({
+      text: `${logs.length} logged${label ? ` · ${label.toLowerCase()}` : ""}`,
+      cat: "fhj-cat-routine",
+      undo: () => setDb((prev) => (before ? { ...prev, ...before } : prev)),
+    });
+  };
+
   const setLibrary = (foods) => setDb((prev) => ({ ...prev, foods }));
 
   /* Routine items are the *plan*, not the history, so they are edited rather
@@ -13460,6 +13706,7 @@ export default function App({ viewer = false }) {
     onSaveFood: upsertLog("food"), onDeleteFood: removeLog("food"),
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     onSaveRoutine: upsertLog("routine"), onDeleteRoutine: removeLog("routine"),
+    onLogRoutineRows: saveRoutineRows,
     goSettings: () => setScreen("settings"), goSetup: () => setScreen("setup"),
     goFood: () => setScreen("food"), goRoutine: () => setScreen("routine"),
     goInsights: () => setScreen("insights"),
@@ -13502,21 +13749,25 @@ export default function App({ viewer = false }) {
     );
   } else if (screen === "food") {
     content = (
-      <FoodScreen
+      <DiaryScreen
         food={db.food || []} foods={db.foods || []} goals={db.profile.goals}
+        routine={db.routine || []} routineItems={db.routineItems || []}
         aiEnabled={!!db.ai?.enabled && !viewer}
         aiAuto={!!db.ai?.enabled && db.ai?.auto === true && !viewer}
         viewer={viewer}
         onLog={upsertLog("food")} onSaveLog={upsertLog("food")} onDeleteLog={removeLog("food")}
         onUpdateLibrary={setLibrary}
+        onSaveRoutine={upsertLog("routine")} onDeleteRoutine={removeLog("routine")}
+        onLogRoutineRows={saveRoutineRows} onSaveRoutineItem={saveRoutineItem}
+        goRoutine={() => setScreen("routine")}
         onEditGoals={() => setScreen("settings")} />
     );
   } else if (screen === "routine") {
     content = (
       <RoutineScreen
-        items={db.routineItems || []} logs={db.routine || []} viewer={viewer}
+        items={db.routineItems || []} viewer={viewer}
         onSaveItem={saveRoutineItem} onDeleteItem={deleteRoutineItem}
-        onSaveLog={upsertLog("routine")} onDeleteLog={removeLog("routine")} />
+        goDiary={() => setScreen("food")} />
     );
   } else if (screen === "calendar") {
     content = <CalendarScreen profile={profile} entries={entries} openLog={goToLog} />;
@@ -13530,16 +13781,19 @@ export default function App({ viewer = false }) {
     content = <DashboardScreen {...todayProps} />;
   }
 
-  /* Both tab-level screens draw their own heading, so the shared header would
-     only repeat it. Every other screen is somewhere you navigated *into* and
-     wants the title and the way back. */
-  const showHeader = screen !== "dashboard" && screen !== "insights";
+  /* The tab-level screens draw their own heading, so the shared header would
+     only repeat it. The Diary earns its place on that list the same way: its
+     sticky day bar *is* the header, and stacking a second one above it cost
+     56px on the longest page in the app to say "Diary" twice. Every other
+     screen is somewhere you navigated *into* and wants the title and the way
+     back. */
+  const showHeader = screen !== "dashboard" && screen !== "insights" && screen !== "food";
   /* Every screen id that can reach here needs an entry. "food" and "fitbit"
      were missing, which rendered the header with an empty <h1> and the survey
      name orphaned underneath it. */
   const screenTitle = {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
-    setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Food Diary",
+    setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
     routine: "Your Routine",
     fitbit: "Import Health Data",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
