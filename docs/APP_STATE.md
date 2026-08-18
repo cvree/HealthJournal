@@ -362,6 +362,53 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-18 addendum 16 — the analytics foundation (`src/lib/analytics.ts`).**
+> The first piece of the Insights rebuild, and deliberately the piece with no UI in it. Every
+> figure Insights will show — a range average, a change against the period before, a rolling
+> line, a distribution bar, a monthly summary — is now computed by a pure typed function that
+> takes plain values and returns plain values. Nothing in the module reads the clock (callers
+> pass "today"), touches storage, or imports React, so each number is testable on its own and
+> `App.tsx` never grows a third statistics implementation.
+>
+> **Three rules the module exists to enforce**, each of which was previously re-decided at every
+> call site: (1) *a missing day is missing, not zero* — an unlogged day carries `null` through
+> series building, is excluded from means/medians/distributions, leaves a visible hole in a
+> rolling average, and makes coverage smaller instead of dragging the average down; (2) *not
+> enough data returns `null`, never a plausible-looking zero* — empty means, shares of an empty
+> set and percentage changes against a zero baseline are all `null`, and the caller decides how
+> to say "not enough yet"; (3) *direction is explicit* — anything that ranks (best, worst, hard
+> days, whether a change is an improvement) takes the field's `FieldDirection` and converts to a
+> single internal "badness" scale, the same 11-minus-value flip the severity colour ramp uses, so
+> a 9 is terrible for itch and excellent for sleep without either call site special-casing it.
+>
+> **What's in it.** Dates: `isIsoDate`/`toDate`/`toIso`/`todayIso`/`addDays`/`dayDiff`/
+> `rangeLength`/`inRange`/`eachDay`/`rangeEndingOn`, `rangeFor` (`7D`/`30D`/`90D`/`1Y`/`All`,
+> where `All` needs the journal's earliest day and returns `null` without one), `priorRange`
+> (equal-length, immediately preceding), `monthRange`/`monthOf`/`monthKey`/`previousMonth`,
+> `clampRange`/`boundsOf`/`journalBounds`/`entryDates`. All date maths goes through the Y/M/D
+> constructor, never millisecond arithmetic, so DST cannot land a day on itself twice a year.
+> Series: `buildSeries`/`buildScaleSeries`/`seriesFromMap`/`loggedValues`/`pointsInRange` — one
+> slot per calendar day, out-of-scale values read as *missing* rather than clamped (a 14 in a
+> 1–10 column is corrupt, and clamping it to 10 would launder it into the average), duplicate
+> dates resolve last-write-wins. Statistics: `mean`/`median`/`minimum`/`maximum`/
+> `standardDeviation` (population — these *are* all the days there are)/`mostCommon` (ties break
+> toward the lower score so a card doesn't flicker between two equally common values)/`round`
+> (half away from zero, binary-fringe corrected: 4.365 → 4.37)/`formatAverage`/`formatDelta`/
+> `percent`. Coverage: `coverage` (total days, logged days, ratio, longest streak, last logged),
+> `hasEnoughData`. Summaries: `summarize`/`summarizeMetric` → `SeriesSummary`. Distribution:
+> `distribution` — always all ten bins in order, shares taken over *logged* days and `null` when
+> nothing was logged. Rolling: `rollingAverage` (calendar-day window, `minPoints` gate so a lone
+> reading never draws as a trend), `trendSeries` (daily + 7-day + 30-day on one row). Comparison:
+> `comparePoints`/`compareWithPriorPeriod`/`compareRanges` → `PeriodComparison` with `delta`,
+> `percentChange`, a `ChangeVerdict` (`improving`/`worsening`/`steady`/`changed`/`insufficient`)
+> and a `reliable` flag. Grouping: `monthlyBreakdown`, which keeps months with nothing in them so
+> a gap in the year stays visible rather than closing up.
+>
+> Tests: **779 across 30 suites** (was 713/29) — new `tests/analytics.test.ts`, 66 deterministic
+> tests, the last three of which run the module over the live Connor demo journal so `DailyEntry`
+> can never drift from what `buildSeries` expects without a test failing before a chart does.
+> No user-facing change yet; PR 2 (the universal time-range control) is what puts it on screen.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
