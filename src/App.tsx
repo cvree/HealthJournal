@@ -46,6 +46,16 @@ import { sweepTombstones } from "./lib/sync/merge";
 import { IDLE_STATUS } from "./lib/sync/types";
 import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
+import RangeControl from "./components/RangeControl";
+import RangeSummary, { MetricChangeGrid } from "./components/RangeSummary";
+import MonthlySummary from "./components/MonthlySummary";
+import MetricTrendChart from "./components/MetricTrendChart";
+import { buildSeries, eachDay, monthKey } from "./lib/analytics";
+import {
+  readRangePreference, saveRangePreference, resolveRange, severityStep,
+  buildRangeInsights, buildMetricChanges, buildTrendRows, describeTrend,
+  buildBuckets, bucketModeFor, buildMonthSummary, monthOptions,
+} from "./lib/insights";
 import {
   MEALS, mealLabel, mealForTime, UNITS, BRISTOL, bristolLabel, BOWEL_COLORS,
   BOWEL_CONSISTENCY, BOWEL_AMOUNTS, SEVERITY_0_3, severityLabel,
@@ -1114,35 +1124,6 @@ function trendFor(entries, key, dir) {
   const improving = dir === "pos" ? delta > 0 : delta < 0;
   return { a, b, delta, status: improving ? "improving" : "worsening" };
 }
-function seriesFor(entries, key, days) {
-  const t0 = todayStr();
-  const byDate = new Map(entries.map((e) => [e.date, e]));
-  const out = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = addDays(t0, -i);
-    const e = byDate.get(d);
-    const v = e && typeof e.answers[key] === "number" ? e.answers[key] : null;
-    out.push({ d, v, avg: null });
-  }
-  for (let i = 0; i < out.length; i++) {
-    const win = out.slice(Math.max(0, i - 6), i + 1).map((p) => p.v).filter((v) => v != null);
-    out[i].avg = win.length >= 2 ? Math.round((win.reduce((a, b) => a + b, 0) / win.length) * 10) / 10 : null;
-  }
-  return out;
-}
-function weeklyAverages(entries, key, weeks = 6) {
-  const t0 = todayStr();
-  const out = [];
-  for (let w = weeks - 1; w >= 0; w--) {
-    const end = addDays(t0, -(w * 7));
-    const start = addDays(end, -6);
-    const vals = entries.filter((e) => e.date >= start && e.date <= end)
-      .map((e) => e.answers[key]).filter((v) => typeof v === "number");
-    out.push({ d: fmtShort(end), v: vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null });
-  }
-  return out;
-}
-
 /* Cautious pattern insights: median-split factor, compare symptom averages. */
 function computeInsights(tpl, entries) {
   const t0 = todayStr();
@@ -3139,20 +3120,22 @@ function ChartEmpty({ title, height = 210 }) {
   );
 }
 
-/* Overlay up to four metrics on one 30-day chart. Scale (1–10) metrics share a
-   fixed axis; mixing in number metrics (steps, weight…) switches to an auto
-   axis with a gentle note that units differ. */
-function MultiMetricChart({ entries, fields, tint }) {
+/* Overlay up to four metrics on one chart, over whatever range Insights is set
+   to. Scale (1–10) metrics share a fixed axis; mixing in number metrics
+   (steps, weight…) switches to an auto axis with a gentle note that units
+   differ. (PR 11 replaces that compromise with small multiples.) */
+function MultiMetricChart({ entries, fields, tint, range }) {
   const palette = CHART_PALETTE(tint);
-  const series = fields.map((f) => seriesFor(entries, f.k, 30));
+  const series = fields.map((f) =>
+    buildSeries(entries, f.k, range, f.type === "scale" ? { min: 1, max: 10 } : {}));
   const data = series[0].map((p, i) => {
-    const row = { d: p.d };
-    fields.forEach((f, j) => { row["m" + j] = series[j][i] ? series[j][i].v : null; });
+    const row = { d: p.date };
+    fields.forEach((f, j) => { row["m" + j] = series[j][i] ? series[j][i].value : null; });
     return row;
   });
-  const anyData = fields.some((_, j) => series[j].some((p) => p.v != null));
+  const anyData = fields.some((_, j) => series[j].some((p) => p.value != null));
   const allScale = fields.every((f) => f.type === "scale");
-  if (!anyData) return <ChartEmpty title="No answers for these metrics in the last 30 days." />;
+  if (!anyData) return <ChartEmpty title="No answers for these metrics in this range." />;
   return (
     <>
       <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 mb-2.5">
@@ -3200,75 +3183,49 @@ function MultiMetricChart({ entries, fields, tint }) {
   );
 }
 
-function MetricChart({ entries, field, color }) {
-  const data = seriesFor(entries, field.k, 30);
-  const isScale = field.type === "scale";
-  const numeric = data.filter((p) => p.v != null).length;
-  if (numeric < 3) {
-    return (
-      <ChartEmpty title={numeric === 0
-        ? `No “${field.label}” answers in the last 30 days.`
-        : `Only ${numeric} day${numeric === 1 ? "" : "s"} logged — the trend line appears at 3.`} />
-    );
-  }
-  /* Gradient ids must be unique per chart or a second chart on the same screen
-     inherits the first one's fill. */
-  const fadeId = `fhjFade_${String(field.k).replace(/\W/g, "_")}`;
-  return (
-    <div style={{ width: "100%", height: 210 }}>
-      <ResponsiveContainer>
-        <ComposedChart data={data} margin={{ top: 10, right: 8, left: -2, bottom: 0 }}>
-          <ChartFade id={fadeId} color={color} />
-          <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 5" />
-          <XAxis dataKey="d" tickFormatter={fmtShort} minTickGap={30}
-            tick={axisTick()} axisLine={false} tickLine={false} tickMargin={8} />
-          <YAxis domain={isScale ? [1, 10] : ["auto", "auto"]}
-            tick={axisTick()} axisLine={false} tickLine={false} width={34} />
-          <Tooltip
-            labelFormatter={(d) => fmtNice(d)}
-            formatter={(v, name) => [
-              field.unit ? `${v} ${field.unit}` : v,
-              name === "v" ? field.label : "7-day avg",
-            ]}
-            {...tooltipProps()} />
-          <Area type="monotone" dataKey="v" stroke="none" fill={`url(#${fadeId})`}
-            connectNulls {...chartAnim()} />
-          <Line type="monotone" dataKey="avg" stroke={C.avgLine} strokeWidth={1.5} strokeOpacity={0.85}
-            strokeDasharray="4 5" dot={false} connectNulls {...chartAnim()} />
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2.5}
-            strokeLinecap="round" strokeLinejoin="round"
-            dot={{ r: 2, fill: color, strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: color, stroke: C.card, strokeWidth: 2.5 }}
-            connectNulls {...chartAnim()} />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
+/* Averages by week (short ranges) or by month (a year and up), bucketed by
+   lib/insights so the bars and the chart above them are the same numbers.
 
-function WeeklyBars({ entries, field, color }) {
-  const data = weeklyAverages(entries, field.k, 6);
+   A bucket nobody logged in carries `null` and therefore draws no bar at all.
+   That is the whole point: a zero-height bar sitting on the axis says "we
+   measured, and it was nothing", which for a health journal is a different and
+   much worse claim than "no days were logged in that week". */
+function PeriodBars({ data, field, color }) {
   const isScale = field.type === "scale";
   const last = data.length - 1;
+  const gaps = data.filter((b) => b.value == null).length;
   return (
-    <div style={{ width: "100%", height: 118 }}>
-      <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 6, right: 8, left: -2, bottom: 0 }}>
-          <XAxis dataKey="d" tick={axisTick()} axisLine={false} tickLine={false} tickMargin={6} />
-          <YAxis domain={isScale ? [0, 10] : ["auto", "auto"]}
-            tick={axisTick()} axisLine={false} tickLine={false} width={34} />
-          <Tooltip formatter={(v) => [field.unit ? `${v} ${field.unit}` : v, "weekly avg"]}
-            cursor={{ fill: C.faint }} {...tooltipProps()} />
-          <Bar dataKey="v" radius={[6, 6, 2, 2]} {...chartAnim()}>
-            {/* The current week is the one being asked about; the ones before
-                it are context, so they sit back a step. */}
-            {data.map((_, i) => (
-              <Cell key={i} fill={color} fillOpacity={i === last ? 1 : 0.42} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <>
+      <div style={{ width: "100%", height: 118 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 6, right: 8, left: -2, bottom: 0 }}>
+            <XAxis dataKey="label" tick={axisTick()} axisLine={false} tickLine={false}
+              tickMargin={6} minTickGap={12} />
+            <YAxis domain={isScale ? [0, 10] : ["auto", "auto"]}
+              tick={axisTick()} axisLine={false} tickLine={false} width={34} />
+            <Tooltip
+              labelFormatter={(_, p) => {
+                const b = p && p[0] && p[0].payload;
+                return b ? `${b.label} — ${b.loggedDays} of ${b.totalDays} days logged` : "";
+              }}
+              formatter={(v) => [fmt1(v) + (field.unit ? ` ${field.unit}` : ""), "average"]}
+              cursor={{ fill: C.faint }} {...tooltipProps()} />
+            <Bar dataKey="value" radius={[6, 6, 2, 2]} {...chartAnim()}>
+              {/* The most recent bucket is the one being asked about; the ones
+                  before it are context, so they sit back a step. */}
+              {data.map((_, i) => (
+                <Cell key={i} fill={color} fillOpacity={i === last ? 1 : 0.42} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {gaps > 0 && (
+        <div className="fhj-caption mt-1">
+          {gaps} {gaps === 1 ? "period has" : "periods have"} nothing logged, so {gaps === 1 ? "it draws" : "they draw"} no bar.
+        </div>
+      )}
+    </>
   );
 }
 
@@ -4027,7 +3984,7 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
   );
 }
 
-function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer, aiAutoRun = 0 }) {
+function PatternsSection({ tpl, entries, insights, rangeLabel, ai, setAi, goSettings, viewer, aiAutoRun = 0 }) {
   const [keyPresent, setKeyPresent] = useState(null); // null = still checking
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -4133,9 +4090,14 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
             <Badge tone="neutral">
               <Icon name="device" size={11} color={C.sub} /> Calculated on this device
             </Badge>
+            {/* Patterns follow the range control like everything else on this
+                screen, so the empty state names the range and offers the lever
+                that actually changes it — a wider window — rather than only
+                "keep logging", which is not the reason on a 7-day view. */}
             <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
-              Nothing stands out yet. These appear once a few weeks of days share enough answers
-              to compare — keep logging and they'll show up on their own.
+              Nothing stands out in {String(rangeLabel || "this range").toLowerCase()}. These
+              appear once enough days in the range share answers to compare — try a longer range,
+              or keep logging and they'll show up on their own.
             </p>
           </Card>
         ) : (
@@ -4358,11 +4320,15 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
      the chart as derived daily metrics. Only the ones with real data behind
      them are offered — a picker full of permanently flat lines is worse than a
      short picker. */
-  const chartDates = useMemo(() => {
-    const out = [];
-    for (let i = 29; i >= 0; i--) out.push(addDays(todayStr(), -i));
-    return out;
-  }, []);
+  /* One control decides what every figure below is about. The choice is
+     remembered across sessions because "how am I doing" is a question people
+     ask the same way every time, and re-picking 90D every morning is a tax on
+     the answer. */
+  const [rangeKey, setRangeKey] = useState(readRangePreference);
+  const chooseRange = (k) => { setRangeKey(k); saveRangePreference(k); feedback("select"); };
+  const selection = useMemo(
+    () => resolveRange(rangeKey, entries, todayStr()), [rangeKey, entries]);
+  const chartDates = useMemo(() => eachDay(selection.range), [selection]);
   const metricSource = useMemo(
     () => ({ food, bowel, routine, routineItems }),
     [food, bowel, routine, routineItems]
@@ -4414,9 +4380,50 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
   const today = entryOn(entries, todayStr());
   const streak = calcStreak(entries);
   const keyToday = today?.answers[tpl.keyMetric];
-  const avg7 = avgWindow(entries, tpl.keyMetric, 7);
-  const avg30 = avgWindow(entries, tpl.keyMetric, 30);
-  const insights = useMemo(() => computeInsights(tpl, entries), [tpl, entries]);
+
+  /* Everything from here down is a view model built in src/lib/insights.ts —
+     the arithmetic and the wording both live where a test can hold them
+     still, and this screen only decides where they sit. */
+  const keyInfo = useMemo(
+    () => ({ k: tpl.keyMetric, label: keyField?.label || "", dir: keyField?.dir || "sym", scale: true }),
+    [tpl.keyMetric, keyField]);
+  const metricInfo = useMemo(() => ({
+    k: metricField.k, label: metricField.label, dir: metricField.dir || "neutral",
+    unit: metricField.unit, scale: metricField.type === "scale",
+  }), [metricField]);
+
+  const hero = useMemo(
+    () => buildRangeInsights(entries, keyInfo, selection), [entries, keyInfo, selection]);
+  const trendRows = useMemo(
+    () => buildTrendRows(chartEntries, metricInfo, selection.range),
+    [chartEntries, metricInfo, selection]);
+  const trendText = useMemo(() => describeTrend(trendRows, metricInfo), [trendRows, metricInfo]);
+  const buckets = useMemo(
+    () => buildBuckets(chartEntries, metricInfo, selection), [chartEntries, metricInfo, selection]);
+  const metricChanges = useMemo(() => buildMetricChanges(
+    entries,
+    tpl.dashboardMetrics.map((k) => getField(tpl, k)).filter(Boolean)
+      .map((f) => ({ k: f.k, label: f.label, dir: f.dir || "neutral", scale: f.type === "scale" })),
+    selection
+  ), [entries, tpl, selection]);
+
+  /* The monthly summary answers a different question from the range control —
+     "how was April", not "how have the last 30 days been" — so it carries its
+     own month state. It opens on the current month and walks back through
+     whatever the journal covers. */
+  const [month, setMonth] = useState(() => monthKey(todayStr()));
+  const months = useMemo(
+    () => monthOptions(entries, tpl.keyMetric, todayStr()), [entries, tpl.keyMetric]);
+  const activeMonth = months.some((o) => o.month === month)
+    ? month
+    : (months.length ? months[months.length - 1].month : month);
+  const monthSummary = useMemo(
+    () => buildMonthSummary(entries, keyInfo, activeMonth, todayStr()),
+    [entries, keyInfo, activeMonth]);
+
+  const insights = useMemo(
+    () => computeInsightsWindow(tpl, entries, selection.range.start, selection.range.end),
+    [tpl, entries, selection]);
   const recent = [...entries].reverse().slice(0, 5);
   const photoFields = useMemo(() => tpl.fields.filter((f) => f.type === "photo"), [tpl]);
   const photoItems = useMemo(() => buildPhotoItems(tpl, entries), [tpl, entries]);
@@ -4457,53 +4464,43 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
         )}
       </div>
 
-      {/* today summary — the one number the whole app is built around */}
-      <Card className="!p-5 mt-3" style={{ padding: "1.25rem" }}>
-        <div className="flex items-start justify-between gap-3">
-          {/* Wraps rather than truncates: a long metric name is the whole
-              point of this line, and "Today · Overall skin sev…" helps nobody. */}
-          <div className="fhj-eyebrow min-w-0 leading-snug pt-0.5">Today · {keyField.label}</div>
-          <Badge tone={streak > 0 ? "accent" : "neutral"}>
-            {streak > 0 ? `${streak}-day streak` : "no streak yet"}
-          </Badge>
-        </div>
-        {/* Until today is logged there is no today number, and a 3.25rem em-dash
-            is a large, confident way of saying nothing. The card falls back to
-            the 7-day average — which is a real answer to "how am I doing" — and
-            offers the tap that would fill the gap in. */}
-        <div className="flex items-end justify-between gap-4 mt-2.5">
-          <div className="min-w-0">
-            <div className="font-display text-[3.25rem] leading-none tabular-nums"
-              style={{ color: keyToday != null ? colorFor(keyToday, keyField.dir) : (avg7 != null ? C.sub : C.muted) }}>
-              {keyToday != null ? <CountUp value={keyToday} /> : (avg7 != null ? fmt1(avg7) : "—")}
+      {/* The range control governs the whole screen, so it sits above
+          everything the way a heading does. */}
+      <div className="mt-3">
+        <RangeControl value={rangeKey} onChange={chooseRange} hint={selection.dates} />
+      </div>
+
+      {/* The key metric over the selected range, next to the period before it.
+          This replaced four fixed windows — a today figure that was blank
+          until you logged, a 7-day average, a 30-day average, and a week-over-
+          week grid — which between them gave one screen four answers to the
+          same question and let you change none of them. */}
+      <div className="mt-3">
+        <RangeSummary insights={hero} step={severityStep(hero.summary.mean, keyField.dir)}>
+          <div className="flex items-center justify-between gap-3 mt-3.5 pt-3.5"
+            style={{ borderTop: `1px solid ${C.line}` }}>
+            <div className="text-[11.5px] min-w-0" style={{ color: C.subtle }}>
+              {keyToday != null ? (
+                <>Today · <b className="tabular-nums" style={{ color: colorFor(keyToday, keyField.dir) }}>{keyToday}</b></>
+              ) : "Today isn't logged yet"}
             </div>
-            <div className="text-[11.5px] mt-2" style={{ color: C.subtle }}>
-              {keyToday != null ? "logged today" : (avg7 != null ? "7-day average" : "nothing logged yet")}
-            </div>
+            <Badge tone={streak > 0 ? "accent" : "neutral"}>
+              {streak > 0 ? `${streak}-day streak` : "no streak yet"}
+            </Badge>
           </div>
-          <div className="text-right shrink-0 flex flex-col gap-1.5">
-            {keyToday != null && (
-              <div className="text-xs" style={{ color: C.subtle }}>
-                7-day avg <b className="tabular-nums ml-0.5" style={{ color: C.ink }}>{fmt1(avg7)}</b>
-              </div>
-            )}
-            <div className="text-xs" style={{ color: C.subtle }}>
-              30-day avg <b className="tabular-nums ml-0.5" style={{ color: C.ink }}>{fmt1(avg30)}</b>
-            </div>
-          </div>
-        </div>
-        {keyToday == null && !viewer && (
-          <Button variant="outline" block className="mt-4" onClick={() => openLog(todayStr())}>
-            Log today
-          </Button>
-        )}
-        <TodayNutritionStrip food={food} date={todayStr()} />
-      </Card>
+          {keyToday == null && !viewer && (
+            <Button variant="outline" block className="mt-3" onClick={() => openLog(todayStr())}>
+              Log today
+            </Button>
+          )}
+          <TodayNutritionStrip food={food} date={todayStr()} />
+        </RangeSummary>
+      </div>
 
       {/* ---------- Trends ---------- */}
       <div className="fhj-section mt-6 fhj-cat-symptom">
         <h2 className="fhj-section-title">Trends</h2>
-        <span className="text-[11px]" style={{ color: C.subtle }}>Last 30 days</span>
+        <span className="text-[11px]" style={{ color: C.subtle }}>{selection.label}</span>
       </div>
       <Card>
         <MetricPicker
@@ -4513,40 +4510,61 @@ function InsightsScreen({ profile, entries, openLog, goExport, goGallery, goRepo
           max={4}
           label="Metrics to chart"
         />
-        {selFields.length > 1
-          ? <MultiMetricChart entries={chartEntries} fields={selFields} tint={tpl.color} />
-          : <MetricChart entries={chartEntries} field={metricField} color={tpl.color} />}
-        <div className="fhj-caption mt-2">
-          {selFields.length > 1
-            ? "One line per metric — touch the chart for a day's values"
-            : "Solid line: daily · dashed line: 7-day average"}
-        </div>
-        <div className="fhj-eyebrow mt-5 mb-1">
-          Weekly averages{selFields.length > 1 ? ` — ${metricField.label}` : ""}
-        </div>
-        <WeeklyBars entries={chartEntries} field={metricField} color={tpl.color} />
+        {selFields.length > 1 ? (
+          <>
+            <MultiMetricChart entries={chartEntries} fields={selFields} tint={tpl.color}
+              range={selection.range} />
+            <div className="fhj-caption mt-2">
+              One line per metric — touch the chart for a day's values
+            </div>
+          </>
+        ) : (
+          <MetricTrendChart
+            rows={trendRows}
+            metric={metricInfo}
+            color={tpl.color}
+            description={trendText}
+            scale={metricField.type === "scale"}
+            show30={selection.days >= 90}
+          />
+        )}
+        {/* Below three buckets there is nothing to compare — a lone bar
+            restates the chart above it at lower resolution. */}
+        {buckets.length >= 3 && (
+          <>
+            <div className="fhj-eyebrow mt-5 mb-1">
+              {bucketModeFor(rangeKey) === "month" ? "Monthly averages" : "Weekly averages"}
+              {selFields.length > 1 ? ` — ${metricField.label}` : ""}
+            </div>
+            <PeriodBars data={buckets} field={metricField} color={tpl.color} />
+          </>
+        )}
       </Card>
 
-      {/* week-over-week comparison cards — the same question as the chart
-          above, asked at a coarser resolution */}
-      <div className="fhj-eyebrow mt-5 mb-2">This week vs last week</div>
-      <div className="grid grid-cols-2 gap-2">
-        {tpl.dashboardMetrics.map((k) => {
-          const f = getField(tpl, k);
-          const t = trendFor(entries, k, f.dir);
-          return (
-            <Card key={k} className="!p-3.5" style={{ padding: "0.875rem" }}>
-              <div className="text-xs font-medium truncate" style={{ color: C.sub }}>{f.label}</div>
-              <div className="font-display text-2xl leading-none mt-2 tabular-nums">{fmt1(t.a)}</div>
-              <div className="mt-1.5"><TrendArrow trend={t} dir={f.dir} /></div>
-            </Card>
-          );
-        })}
-      </div>
+      {/* Each tracked metric over the same range, against the same prior
+          period. Metrics with nothing logged keep their card and say so — a
+          card that quietly vanished would read as "this one is fine". */}
+      <div className="fhj-eyebrow mt-5 mb-2">Compared with {selection.subject}</div>
+      <MetricChangeGrid changes={metricChanges} />
+
+      {/* ---------- Month by month ----------
+          A sliding 30-day window never lines up with the month anyone is
+          actually thinking about — or talking about at an appointment. */}
+      {months.length > 0 && (
+        <>
+          <SectionTitle>Month by month</SectionTitle>
+          <MonthlySummary
+            summary={monthSummary}
+            options={months}
+            onChange={setMonth}
+            step={severityStep(monthSummary.summary.mean, keyField.dir)}
+          />
+        </>
+      )}
 
       {/* ---------- Possible Patterns ----------
           Locally calculated, plus optional AI observations. */}
-      <PatternsSection tpl={tpl} entries={entries} insights={insights}
+      <PatternsSection tpl={tpl} entries={entries} insights={insights} rangeLabel={selection.label}
         ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} aiAutoRun={aiAutoRun} />
 
       {/* reports entry points */}

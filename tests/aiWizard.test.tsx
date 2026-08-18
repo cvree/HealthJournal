@@ -128,10 +128,13 @@ describe("choosing a provider", () => {
   it("offers a choice, with the easiest one preselected", async () => {
     stubGoogle();
     await mountApp();
-    await openWizard();
+    const dialog = await openWizard();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
-    const options = screen.getAllByRole("radio");
+    /* Scoped to the wizard: Insights behind it now carries its own radiogroup
+       (the time-range control). The wizard is aria-modal, so a screen reader
+       never sees those — but a global getAllByRole does. */
+    const options = within(dialog).getAllByRole("radio");
     expect(options.length).toBeGreaterThanOrEqual(3);
     expect(options.find((o) => o.getAttribute("aria-checked") === "true")!.textContent)
       .toMatch(/Google Gemini/);

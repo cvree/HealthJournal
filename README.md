@@ -125,12 +125,26 @@ confirmation step, because it charges only the people who actually made a mistak
 log keeps its photo until the Undo has expired, so an Undo never brings a meal back without it.
 
 **See what's happening.** **Insights** is the second tab and the other half of the old
-dashboard: the day's headline number, a 30-day chart comparing up to four metrics at once,
-weekly bars, week-over-week cards, **Possible Patterns**, reports, photo progress and recent
-entries. Food and bowel logs join the chart as derived daily metrics (calories, macros, movement
-count, average Bristol type, urgency, straining, discomfort). Possible-pattern cards need at
-least six paired days before they'll say anything. Every chartable metric is reachable in the
-trend picker — it scrolls, it says so, and it works from a keyboard.
+dashboard, and one control now governs all of it: **7D · 30D · 90D · 1Y · All**. Every figure
+and every chart on the screen answers the same question about the same span of days, compares
+it with the equal-length period immediately before, and says how many of those days were
+actually logged — a 4.37 over 28 days and a 4.37 over 4 days are different claims, and the
+screen never lets them look alike. The range you pick is still there tomorrow.
+
+Under the range: the key metric's average with its change and coverage, four figures (median,
+best day, hardest day, hard days), the trend chart, weekly or monthly bars, a card per tracked
+metric, a **month-by-month summary** ("April average 4.37", with median, lowest, highest, most
+common, logged days, hard days and the change from March), **Possible Patterns**, reports, photo
+progress and recent entries.
+
+The **trend chart** draws the 7-day rolling average as the bold line and the daily 1–10 values
+behind it, with an optional 30-day average. A day nobody logged is a visible gap, never a line
+drawn through it, and the caption says how many. Touch it anywhere for a crosshair with that
+day's date, value, rolling averages and the note you wrote. Food and bowel logs join the chart
+as derived daily metrics (calories, macros, movement count, average Bristol type, urgency,
+straining, discomfort). Possible-pattern cards need at least six paired days before they'll say
+anything. Every chartable metric is reachable in the trend picker — it scrolls, it says so, and
+it works from a keyboard.
 
 **Designed, not just built.** *Soft Clinical* — soft graphite in the dark, warm off-white in
 the light, muted blue with sage, lavender and clay accents, generous spacing and quiet depth —

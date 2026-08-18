@@ -409,6 +409,59 @@
 > can never drift from what `buildSeries` expects without a test failing before a chart does.
 > No user-facing change yet; PR 2 (the universal time-range control) is what puts it on screen.
 
+> **2026-08-18 addendum 17 — Insights on one time range (PRs 2–4).**
+> The screen used to carry four fixed windows at once: a today figure that was blank until you
+> logged, a 7-day average, a 30-day average, a 30-day chart and a week-over-week grid. Four
+> windows meant four answers to "how am I doing" on one screen and none of them could be
+> changed. There is now **one control — 7D · 30D · 90D · 1Y · All** — at the top, and every
+> figure and chart below it moves together, compares against the equal-length period
+> immediately before, and states its own coverage. The choice persists in
+> `localStorage` under `fhj_insights_range_v1` (same defensive read as the theme keys).
+>
+> **`src/lib/insights.ts` is new**: the view-model layer between `analytics.ts` (numbers) and
+> the components (layout). `resolveRange`/`readRangePreference`/`saveRangePreference`,
+> `buildRangeInsights`, `buildMonthSummary` + `monthOptions`, `buildTrendRows` +
+> `describeTrend`, `bucketAverages`/`bucketModeFor`/`buildBuckets`, `buildMetricChanges`,
+> `changeLine`, `coverageLine`, `severityStep`, `metricSeries`, and the locale-free date words
+> (`monthName`, `shortDate`, `longDate`, `rangeDates`). Formatted strings live here on purpose:
+> "April average 4.37" and "1.63 lower than March" are *claims*, and a claim belongs where a
+> test can hold it still. `MetricInfo.scale` is what keeps weight and steps from being bounded
+> to 1–10 and silently dropped.
+>
+> **Four new components**, all typed: `RangeControl` (the five-pill radiogroup, arrow-key
+> navigable, full phrase as the accessible name), `RangeSummary` + `MetricChangeGrid`,
+> `MonthlySummary` (month selector whose arrows stop at the ends of the journal), `StatTiles`
+> (`StatCell`/`StatGrid`/`ChangeChip`/`CoverageNote` — the shared figure-with-a-name and the
+> change chip, whose `compact` form is the arrow and the number for two-column grids while the
+> full sentence stays as the accessible name).
+>
+> **`MetricTrendChart` replaces `MetricChart`.** The 7-day rolling average is now the bold line
+> and the daily values sit behind it at half opacity — that is the reading order of the
+> question, and of the tooltip. `connectNulls` is off for the daily series: a straight line from
+> Monday's 8 to Friday's 3 read as four days of steady improvement that nobody logged. The
+> optional 30-day average is a toggle, not a default. The tooltip is a crosshair panel with the
+> weekday, the raw value, both rolling averages and **the day's note**, which is usually the
+> answer to "why was that day an 8". `.fhj-trend` sets `touch-action: pan-y` so scrubbing never
+> fights scrolling the page.
+>
+> **Gotcha worth keeping:** the area wash was originally under the daily series. With gaps and
+> `connectNulls={false}` it restarts at every hole, and each restart draws a vertical edge down
+> to the axis — two of those in a month render as unexplained dark columns. It now sits under
+> the continuous rolling line.
+>
+> **Everywhere else in App.tsx:** `seriesFor`, `weeklyAverages`, `MetricChart` and `WeeklyBars`
+> are gone; `MultiMetricChart` takes a `range`; `PeriodBars` renders pre-bucketed data and hides
+> itself below three buckets (a lone bar restates the chart above it); `PatternsSection` takes
+> the range label so its empty state names the window and offers the lever that changes it.
+> `computeInsightsWindow` now runs over the selected range rather than a hard-coded 30 days.
+>
+> Tests: **840 across 32 suites** (was 779/30) — new `tests/insights.test.ts` (44 deterministic
+> cases over the claims, the wording, the persistence and the direction handling) and
+> `tests/insightsUi.test.tsx` (17 jsdom cases over the real screen). One existing assertion in
+> `aiWizard.test.tsx` was scoped to the wizard dialog: Insights behind the modal now has its own
+> radiogroup, which a global `getAllByRole("radio")` picked up first. The wizard is
+> `aria-modal`, so no screen reader ever saw those.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
