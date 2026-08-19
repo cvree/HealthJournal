@@ -70,10 +70,20 @@ function stubProvider(reply: unknown) {
   return sent;
 }
 
-/** Open a Quick Add tile by its label. */
+/** Open a logging action by its label — from the Quick Add row when it is
+    there, and from the + sheet's "Everything else" when it is not.
+
+    Which buttons sit on the dashboard is the person's own choice now (and
+    starts from what their conditions reach for), so a test about logging a
+    bowel movement should not also be a test about where that button lives. */
 const openTile = async (name: RegExp) => {
-  const tile = (await screen.findAllByRole("button", { name }))[0];
-  fireEvent.click(tile);
+  const tile = [...document.querySelectorAll(".fhj-tile")].find((t) => name.test(t.textContent || ""));
+  if (tile) { fireEvent.click(tile); return; }
+  fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Add to today" }));
+  const dlg = await screen.findByRole("dialog");
+  const more = within(dlg).queryByRole("button", { name: /Everything else/ });
+  if (more) fireEvent.click(more);
+  fireEvent.click((await within(dlg).findAllByRole("button", { name }))[0]);
 };
 
 /** The picker dialog, scoped — the timeline behind it carries the same food
@@ -105,11 +115,17 @@ const openFoodForm = async () => {
 };
 
 describe("Quick Add", () => {
-  it("offers the four things worth logging", async () => {
+  it("offers what this journal's own conditions reach for", async () => {
     await mountApp();
     const tiles = document.querySelectorAll(".fhj-tile");
     const labels = [...tiles].map((t) => t.querySelector(".fhj-tile-label")?.textContent);
-    expect(labels).toEqual(["Check-in", "Food", "Bowel", "Photo"]);
+    // Skin + diet: a camera, a routine, a flare and the day's meals. The set
+    // is derived from the packs rather than fixed, so a gut journal gets a
+    // bowel tile and this one does not.
+    expect(labels[0]).toBe("Check-in");
+    expect(labels).toContain("Food");
+    expect(labels).toContain("Photo");
+    expect(labels).toContain("Routine");
   });
 
   it("shows an empty timeline before anything is logged today", async () => {
@@ -614,25 +630,44 @@ describe("editing Quick Add", () => {
   it("reorders with the arrows", async () => {
     await mountApp();
     const dialog = await openEditor();
+    const before = tileLabels();
+    const wasAbove = before[before.indexOf("Food") - 1];
     fireEvent.click(within(dialog).getByRole("button", { name: "Move Food up" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
-    expect(tileLabels()).toEqual(["Food", "Check-in", "Bowel", "Photo"]);
+    const after = tileLabels();
+    // Food traded places with whatever was above it, and nothing else moved.
+    expect(after.indexOf("Food")).toBe(before.indexOf("Food") - 1);
+    expect(after[before.indexOf("Food")]).toBe(wasAbove);
+    expect(after.length).toBe(before.length);
   });
 
   it("removes a tile, and Cancel throws the change away", async () => {
     await mountApp();
     let dialog = await openEditor();
-    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Bowel/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Photo/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
-    expect(tileLabels()).toContain("Bowel");
+    expect(tileLabels()).toContain("Photo");
 
     dialog = await openEditor();
-    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Bowel/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Photo/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
-    expect(tileLabels()).not.toContain("Bowel");
+    expect(tileLabels()).not.toContain("Photo");
+  });
+
+  it("suggests the buttons this journal's conditions reach for", async () => {
+    await mountApp();
+    const dialog = await openEditor();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove Photo/ }));
+    // Removed, and immediately offered back as a suggestion rather than
+    // buried at the bottom of a list of everything.
+    const suggest = await within(dialog).findByRole("button", { name: /Add Photo to Quick Add/ });
+    fireEvent.click(suggest);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText("Edit Quick Add")).toBeNull());
+    expect(tileLabels()).toContain("Photo");
   });
 
   it("keeps the choice across a reload", async () => {

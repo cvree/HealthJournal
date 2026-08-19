@@ -80,21 +80,41 @@ describe("the bar", () => {
 });
 
 describe("the + sheet", () => {
-  it("offers everything a day can hold, from anywhere", async () => {
+  it("leads with the buttons this person chose, from anywhere", async () => {
     await mountApp();
     fireEvent.click(nav().getByRole("button", { name: "History" }));
     const dlg = await openAdd();
-    for (const label of ["Check-in", "Food", "Routine", "Photo", "Note", "Bowel", "Measurement"]) {
-      expect(within(dlg).getByText(label)).toBeTruthy();
-    }
+    // The sheet and the Quick Add row are two views of one list: whatever is
+    // on the dashboard is what the + offers first.
+    const tiles = [...document.querySelectorAll(".fhj-tile .fhj-tile-label")].map((t) => t.textContent);
+    for (const label of tiles) expect(within(dlg).getByText(label!)).toBeTruthy();
     // Opening it from History lands on Today, which is the day it adds to.
     expect(nav().getByRole("button", { name: "Today" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("keeps everything else one tap further down rather than losing it", async () => {
+    await mountApp();
+    const dlg = await openAdd();
+    // Not chosen for this journal, so not in the first grid...
+    expect(within(dlg).queryByText("Note")).toBeNull();
+    fireEvent.click(within(dlg).getByRole("button", { name: /Everything else/ }));
+    // ...but still reachable, which is what makes curating the row safe.
+    expect(await within(dlg).findByText("Note")).toBeTruthy();
+    expect(within(dlg).getByText("Bowel")).toBeTruthy();
+  });
+
+  it("opens the editor for the buttons from the sheet itself", async () => {
+    await mountApp();
+    const dlg = await openAdd();
+    fireEvent.click(within(dlg).getByRole("button", { name: /Edit these buttons/ }));
+    expect(await screen.findByText(/Pick the buttons you want/i)).toBeTruthy();
   });
 
   it("writes a note without opening the survey", async () => {
     await mountApp();
     const dlg = await openAdd();
-    fireEvent.click(within(dlg).getByText("Note"));
+    fireEvent.click(within(dlg).getByRole("button", { name: /Everything else/ }));
+    fireEvent.click(await within(dlg).findByText("Note"));
     fireEvent.change(await screen.findByLabelText("Note for today"), { target: { value: "Slept badly." } });
     fireEvent.click(screen.getByRole("button", { name: "Save note" }));
     await waitFor(() =>
@@ -104,7 +124,7 @@ describe("the + sheet", () => {
   it("takes a measurement straight to the keypad", async () => {
     await mountApp();
     const dlg = await openAdd();
-    fireEvent.click(within(dlg).getByText("Measurement"));
+    fireEvent.click(within(dlg).getByText("Measurement"));  // suggested by the diet pack
     fireEvent.click(await screen.findByRole("button", { name: /^Weight/ }));
     for (const key of ["1", "8", "0"]) fireEvent.click(await screen.findByRole("button", { name: key }));
     fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
@@ -115,7 +135,7 @@ describe("the + sheet", () => {
   it("ticks off the routine in one tap", async () => {
     await mountApp();
     const dlg = await openAdd();
-    fireEvent.click(within(dlg).getByText("Routine"));
+    fireEvent.click(within(dlg).getByText("Routine"));      // suggested by the skin pack
     const sheet = await screen.findByRole("dialog");
     const row = within(sheet).getAllByRole("button", { name: /CeraVe/ })[0];
     fireEvent.click(row);
@@ -156,15 +176,26 @@ describe("Quick Add learns", () => {
     const tiles = () => [...document.querySelectorAll(".fhj-tile")].map((t) => t.textContent!.trim());
     expect(tiles()[0]).toMatch(/^Check-in/);
 
-    // Three taps on Bowel — the sheet is closed again each time.
+    // Three taps on Food — the picker is closed again each time.
     for (let i = 0; i < 3; i++) {
-      fireEvent.click([...document.querySelectorAll(".fhj-tile")].find((t) => /^Bowel/.test(t.textContent!))!);
+      fireEvent.click([...document.querySelectorAll(".fhj-tile")].find((t) => /^Food/.test(t.textContent!))!);
       const close = screen.queryByRole("button", { name: /close/i });
       if (close) fireEvent.click(close);
     }
 
-    await waitFor(() => expect(saved().profile.actionStats?.bowel?.n).toBe(3));
-    await waitFor(() => expect(tiles()[0]).toMatch(/^Bowel/));
+    await waitFor(() => expect(saved().profile.actionStats?.food?.n).toBe(3));
+    await waitFor(() => expect(tiles()[0]).toMatch(/^Food/));
+  });
+
+  it("starts from the buttons this person's own conditions reach for", async () => {
+    await mountApp();
+    const tiles = [...document.querySelectorAll(".fhj-tile .fhj-tile-label")].map((t) => t.textContent);
+    // The sample journal is skin + diet: a camera and a routine, not a bowel
+    // tile nobody in that setup would press.
+    expect(tiles[0]).toBe("Check-in");
+    expect(tiles).toContain("Photo");
+    expect(tiles).toContain("Routine");
+    expect(tiles).not.toContain("Bowel");
   });
 
   it("stops learning the moment somebody arranges the tiles themselves", async () => {

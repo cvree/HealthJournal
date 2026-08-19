@@ -1,5 +1,86 @@
 # Changelog
 
+## 1.19.0
+
+### Quick Add is shaped like your condition
+
+Four buttons — check-in, food, bowel, photo — were the right default for
+nobody. Somebody tracking POTS has no use for a bowel tile and would give a
+great deal for a heart rate and a glass of water; somebody tracking eczema
+wants a camera, a cream and a way to say *this week is bad*; somebody tracking
+a gut condition wants the bathroom first and would rather not be asked to
+photograph anything.
+
+So there are fourteen buttons now, and which of them you start with comes from
+what you said you were tracking. The new ones:
+
+- **Flare** starts a bad stretch today and then reads *End flare · day 6* until
+  you end it. The arithmetic — how often, how long, how bad, more than last
+  year — was already in the app; it just took four taps through Insights to
+  begin one.
+- **Symptom** rates one question 1–10 and closes. Itch at 3pm and itch at 11pm
+  are different facts, and the honest response to noticing one should not be a
+  survey you already answered this morning.
+- **Heart rate** takes lying and standing and prints the jump between them,
+  with the sentence somebody with POTS would otherwise write in the note field
+  every single time. A record of what you measured, not a diagnosis.
+- **Water** is one tap and one cup, written straight to today with an Undo in
+  the toast. No sheet, because "one more" is not a decision.
+- **Trigger** tags what may have set today off, while you still remember. The
+  check-in asks this at bedtime, which is exactly when nobody can remember it.
+- **Note** and **Measurement** came down from the + sheet, where they had been
+  living alone.
+
+A button only ever appears when your own setup has a question behind it: no
+water question, no water button. Add one in Edit Setup and it turns up. The
+editor now leads with the buttons your conditions reach for, so the first thing
+you see there is a suggestion rather than a list of everything.
+
+### The + button shows what you chose
+
+The sheet behind the + had its own fixed list of seven, which meant the app
+held two different opinions about what a day can hold: the tiles you arranged,
+and this. Somebody who had switched Bowel off still got it here; somebody who
+had added Heart rate did not.
+
+One list now, honoured in both places. Everything else the app can still do is
+under *Everything else* at the foot of the sheet, and *Edit these buttons* is
+next to it — which is what makes curating the row safe rather than lossy.
+
+### First run guides you through the whole thing
+
+The first run got you to a real first entry in thirty seconds and then left
+you to discover the rest, with a "set everything up in detail instead" link
+beside it for anybody who wanted more. That link was an admission: it said the
+fast path was the cheap one and the real setup was somewhere else, and it made
+the person who most needed help choose, on screen two, between being rushed and
+being buried.
+
+It is one path now, and two screens longer:
+
+**What should it ask you?** Your daily check-in, already set up from the packs
+you picked, with the honest cost of it in the largest number on the screen —
+*14 questions, about 50 seconds a day* — changing as you switch one on or off.
+Quick, Balanced and Thorough are one tap each. Sections fold. The daily number
+is locked on, because a journal without one is not one. And *ask me something
+of my own* takes a question in your own words, as a 1–10, a yes/no or a number.
+
+**What else should it keep?** Photos — with the body map for the areas you want
+lined up over time — meds and creams, meals, flares, the bathroom, weight. Each
+one you tick draws itself into the row of one-tap buttons underneath, so the
+dashboard assembles in front of you out of your own answers instead of being
+filed away to be discovered later. Then a nudge, if you want one, at a time you
+choose, written straight into your reminders.
+
+Every screen after the first arrives already answered, so Continue is never
+blocked on work and thirty seconds is still thirty seconds. The five checkable
+promises about the build — no account, no server, no analytics, export it all,
+delete it all — moved onto the hero, one tap under the headline, where somebody
+deciding whether to type their symptoms into this can actually read them. The
+last screen still ends the way it did: the card you just filled in flies into
+place as the first card on a timeline, and now the three beats underneath it
+are about what *you* set up.
+
 ## 1.18.0
 
 ### How it's drawn is your choice
