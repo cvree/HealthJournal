@@ -34,12 +34,23 @@ everything else working exactly as it does now:
 because the point of tracking food is logging it while you eat. Add as many named times as suit
 your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
 
-**Setup asks about your health, not your wallpaper.** First run is: what are you tracking, which
-number matters most, which questions to keep, which spots to photograph — and then the first
-number, recorded on the last screen with one tap. There is no theme step; the look lives in
-Settings, where a preference belongs. The main number you pick is what Today asks for every day,
-what the streak counts, and the first figure in an appointment pack; it is changeable whenever
-you like.
+**The first thirty seconds.** First run is four acts, not a wizard. A full-screen hero — *Your
+health, remembered.* — over a journal that is already alive: a rating, a photograph fourteen days
+apart, a note about a bad night, a dose ticked off, a flare that ended, three months of trend with
+the flare shaded behind it. Then the only question that cannot be defaulted (*what are you
+tracking?*), then your first real entry — ten large targets you can tap or slide a thumb across,
+with the card taking the colour of the day as soon as there is a number.
+
+Then the part that is the point: **the card you just filled in flies into place as the first card
+on a timeline**, the rail draws downward past it into the days you have not lived yet, and the
+streak counts to one. A journal is a promise about the future, and watching your own first entry
+become the first thing on a timeline makes that promise in about three seconds.
+
+Everything else first run used to ask for — which questions, which body spots, weight, progress
+photos, a name, a theme — has a sensible default and a screen in Settings. The long form is still
+one tap away for anybody who would rather build the whole survey first, and both paths produce the
+same journal. The main number you pick is what Today asks for every day, what the streak counts,
+and the first figure in an appointment pack; it is changeable whenever you like.
 
 **Build your own survey.** Start from a question pack — Eczema/Skin, Carnivore/Diet, POTS,
 IBS, Migraine, Allergy/MCAS, Fatigue/Long COVID, Autoimmune, Thyroid, Joint Pain, General
@@ -580,7 +591,8 @@ health-journal/
 │   │                           #   year heatmap, score distribution, episode
 │   │                           #   timeline, small-multiple comparisons,
 │   │                           #   relationships explorer, long-term view,
-│   │                           #   appointment pack (the printed page)
+│   │                           #   appointment pack (the printed page),
+│   │                           #   first run (the four acts)
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving
@@ -594,6 +606,7 @@ health-journal/
 │   │   ├── distribution.ts     # days per score, the three middles, hard/calm counts
 │   │   ├── episodes.ts         # the flare model + every number one can be asked for
 │   │   ├── appointmentPack.ts  # the printable summary: figures, floors, what it refuses
+│   │   ├── intro.ts            # the first-run choreography (hero, FLIP, timeline draw)
 │   │   ├── pulse.ts            # the one-tap day, and which details to offer next
 │   │   ├── quickActions.ts     # learned ordering + one-tap repeats, scored
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
@@ -626,7 +639,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 955 tests across 43 suites
+└── tests/                      # 967 tests across 44 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

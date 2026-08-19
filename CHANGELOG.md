@@ -1,5 +1,68 @@
 # Changelog
 
+## 1.18.0
+
+### The first thirty seconds
+
+Somebody installing a health journal is not shopping. Something is wrong, or
+they are afraid something might be, and what they want is to believe this will
+be worth the effort — and then to put something down. The old first run gave
+them a seven-screen wizard whose second screen was a theme picker.
+
+First run is now four acts, and the fourth one is the whole argument.
+
+**One. The promise.** A full-screen hero: *Your health, remembered.* Behind it,
+a journal that is already alive — a rating with its itch and sleep beneath it, a
+photograph of a spot fourteen days apart, a note about a bad night, a dose
+ticked off, a flare that ended, three months of trend with the flare shaded
+behind it. Six fragments hanging off one rail, drifting on their own periods.
+Between them they name everything this app records, and not one of them
+explains anything.
+
+**Two. The only question that cannot be defaulted.** What are you tracking?
+Six packs, in the order people arrive with them, and the rest one tap away.
+Everything first run used to ask for — which questions, which body spots,
+weight, progress photos, a name, a theme — has a sensible default and a screen
+in Settings. Asking for them here cost the thing they were meant to protect.
+
+**Three. The first entry, and it is real.** The main number, ten large targets,
+asked as a question a person would ask: *How is your skin today?* Tap it, or
+slide a thumb across it — the drag walks the number with a tick at every rung.
+Once there is a number the card takes its colour, a wash and a hairline in the
+temperature of the day. A note is optional and one tap away. The number is not
+a demo: it is written to the journal.
+
+**Four. The journal begins.** The card they just filled in physically flies
+into place as the first card on a timeline. The rail draws downward past it
+into Tomorrow, Thursday and Friday — drawn as the faintest thing on the screen,
+because the days not lived yet are the entire product — the streak counts up to
+one, and the promise resolves into three beats: how you felt, what happened,
+what changed.
+
+That last act is the argument no paragraph makes. A journal is a promise about
+the future — keep writing this down and in six months it will tell you
+something — and watching your own first entry become the first thing on a
+timeline makes that promise in about three seconds.
+
+### The motion is the product, and it is optional
+
+`src/lib/intro.ts` is the choreography: the hero assembling in reading order,
+the fragments breathing afterwards, the FLIP that carries a card from one act
+into the next, the rail drawing, the bloom, the count. Every function returns
+immediately under `prefers-reduced-motion`, every act is composed so that the
+still frame *is* the finished layout, and nothing blocks — each helper calls
+back even when it does nothing at all. The whole flow was driven end to end
+with motion switched off, in both themes, to prove it.
+
+### And the long form is still there
+
+Anybody who would rather build the whole survey before logging anything can:
+"Set everything up in detail instead" hands over to the seven-screen wizard,
+unchanged. Both paths produce the same journal — the short one turns the
+chosen packs' quick questions on and assumes nothing else — so a journal begun
+in thirty seconds and one built over seven screens are the same object
+afterwards.
+
 ## 1.17.0
 
 ### One tap is a whole day

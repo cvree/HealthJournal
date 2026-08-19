@@ -54,9 +54,23 @@ beforeEach(() => {
 const exact = (label: string) =>
   screen.getAllByRole("button").find((b) => (b.textContent || "").trim() === label);
 
+/** The long form, which now sits behind the four-act first run: hero →
+    "what are you tracking" → "set everything up in detail instead". */
 async function mount() {
   const { default: App } = await import("../src/App");
   render(React.createElement(App));
+  const start = await waitFor(() => {
+    const b = screen.getAllByRole("button").find((el) => /start my journal/i.test(el.textContent || ""));
+    expect(b).toBeTruthy();
+    return b!;
+  });
+  fireEvent.click(start);
+  const detail = await waitFor(() => {
+    const b = screen.getAllByRole("button").find((el) => /set everything up in detail/i.test(el.textContent || ""));
+    expect(b).toBeTruthy();
+    return b!;
+  });
+  fireEvent.click(detail);
   return waitFor(() => {
     const b = screen.getAllByRole("button").find((el) => /set me up/i.test(el.textContent || ""));
     expect(b).toBeTruthy();

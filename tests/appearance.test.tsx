@@ -189,11 +189,11 @@ describe("first launch", () => {
     const { default: App } = await import("../src/App");
     render(React.createElement(App));
     const start = await waitFor(() =>
-      screen.getAllByRole("button").find((b) => /set me up/i.test(b.textContent || ""))!
+      screen.getAllByRole("button").find((b) => /start my journal/i.test(b.textContent || ""))!
     );
     fireEvent.click(start);
 
-    // The screen after the welcome asks what somebody is tracking. Choosing a
+    // The screen after the hero asks what somebody is tracking. Choosing a
     // theme before the app has asked a single question about why they
     // installed it is a first run telling you what it thinks it is.
     await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
@@ -203,11 +203,11 @@ describe("first launch", () => {
     expect(screen.queryByLabelText(/hue/i)).toBeNull();
   });
 
-  it("still runs the real backdrop behind setup, at whatever the theme already is", async () => {
+  it("still runs the real backdrop behind the hero, at whatever the theme already is", async () => {
     const { default: App } = await import("../src/App");
     render(React.createElement(App));
     await waitFor(() =>
-      screen.getAllByRole("button").find((b) => /set me up/i.test(b.textContent || ""))!
+      screen.getAllByRole("button").find((b) => /start my journal/i.test(b.textContent || ""))!
     );
     expect(backdropEl()).toBeTruthy();
   });

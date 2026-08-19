@@ -78,6 +78,7 @@ import {
   DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, metricCtx,
 } from "./lib/metrics";
 import AppointmentPackView from "./components/AppointmentPackView";
+import FirstRun from "./components/FirstRun";
 import { followUps, pulseState, scoreWord } from "./lib/pulse";
 import {
   noteUse, rankIds, repeatSuggestions, sanitizeActionStats,
@@ -111,7 +112,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.17.0";
+export const APP_VERSION = "1.18.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -14213,6 +14214,77 @@ const ONBOARD_SEVERITY_LINK = {
 const SIDE_SINGULAR = { Hands: "hand", Arms: "arm", Legs: "leg", Feet: "foot" };
 const spotLabel = (s) => (s.side ? `${s.side} ${SIDE_SINGULAR[s.part] || s.part.toLowerCase()}` : s.part);
 
+/* What the first-run screen is allowed to offer, and how it says it.
+
+   The pack catalogue lives in TEMPLATES, which is a data structure about
+   questions; this is the same list said out loud to somebody who has just
+   opened the app and does not know what a "pack" is. Six of them are shown
+   first — the ones people arrive with — and the rest are one tap away.
+
+   Built as a function rather than a constant because `TEMPLATES[*].color` is a
+   live getter that follows the theme (see liveTint), and a frozen array would
+   pin the first paint's palette forever. */
+const FIRST_RUN_BLURBS = {
+  eczema: "Itch, flares, skin",
+  ibs: "Gut, food, bathroom",
+  migraine: "Headaches, triggers",
+  pots: "Dizziness, standing",
+  fatigue: "Energy, crashes, fog",
+  allergy: "Reactions, hives",
+  autoimmune: "Symptoms, joints",
+  thyroid: "Energy, weight",
+  joint: "Pain, stiffness",
+  carnivore: "Diet, weight, energy",
+  wellness: "Mood, sleep, habits",
+};
+const FIRST_RUN_ICONS = {
+  eczema: "drop", ibs: "bowel", migraine: "spark", pots: "sunrise", fatigue: "moon",
+  allergy: "warn", autoimmune: "star", thyroid: "target", joint: "log",
+  carnivore: "food", wellness: "sun",
+};
+const FIRST_RUN_ORDER = ["eczema", "ibs", "migraine", "pots", "fatigue", "wellness"];
+
+function FIRST_RUN_PACKS() {
+  const keys = [...FIRST_RUN_ORDER, ...Object.keys(TEMPLATES).filter((k) => !FIRST_RUN_ORDER.includes(k))];
+  return keys.filter((k) => TEMPLATES[k]).map((k) => {
+    const t = TEMPLATES[k];
+    return {
+      key: k,
+      label: t.label,
+      color: t.color,
+      blurb: FIRST_RUN_BLURBS[k] || t.fields.filter((f) => f.quick).slice(0, 2).map((f) => f.label).join(", "),
+      icon: FIRST_RUN_ICONS[k] || "star",
+      keyMetric: t.keyMetric,
+      scales: t.fields
+        .filter((f) => f.type === "scale" && t.chartMetrics.includes(f.k))
+        .slice(0, 6)
+        .map((f) => ({
+          k: f.k, label: f.label, dir: f.dir,
+          /* The question, asked the way a person would ask it. A screen that
+             says "Overall skin severity" is a form; one that says "How is your
+             skin today?" is somebody being asked. */
+          ask: f.k === t.keyMetric ? FIRST_RUN_ASKS[k] : undefined,
+        })),
+    };
+  });
+}
+
+/* One line each, and the only place in the app that speaks in the second
+   person about a body part. It is the first entry somebody ever makes. */
+const FIRST_RUN_ASKS = {
+  eczema: "How is your skin today?",
+  ibs: "How is your gut today?",
+  migraine: "How bad is the head today?",
+  pots: "How are your symptoms today?",
+  fatigue: "How is your energy today?",
+  allergy: "How are your reactions today?",
+  autoimmune: "How are your symptoms today?",
+  thyroid: "How is your energy today?",
+  joint: "How is the pain today?",
+  carnivore: "How did the day go?",
+  wellness: "How are you today?",
+};
+
 /* Merge selected packs' fields, de-duped by key (first pack wins) — mirrors getProfileTemplate */
 function mergedPackFields(modules) {
   const seen = new Set(); const out = [];
@@ -15113,6 +15185,14 @@ export default function App({ viewer = false }) {
   /* The + sheet is opened from the navigation bar, which lives in the shell,
      and answered by Today, which owns every sheet it can open. */
   const [addSheet, setAddSheet] = useState(false);
+  /* The long form, reached from the first-run screen by anybody who would
+     rather build the whole survey now than start with one number. */
+  const [detailedSetup, setDetailedSetup] = useState(false);
+  /* One shot, on the very first Today: the screen the journal was just handed
+     over on. The last act of first run ends on a card flying into a timeline,
+     and landing on a dashboard that simply *appears* would drop the thread —
+     this carries the movement one screen further and then never runs again. */
+  const [justBegan, setJustBegan] = useState(false);
   /* Which flare the detail screen is showing. Kept here rather than in the URL
      for the same reason every other screen's parameter is: this app has no
      router, and a deep link into a record that may have been deleted on another
@@ -15506,6 +15586,20 @@ export default function App({ viewer = false }) {
 
   // App lock gates come first — before onboarding/corrupt-data/viewer screens,
   // since those can surface raw journal content too.
+  /* The arrival, once. Declared here with the other effects rather than beside
+     the JSX it animates: everything below this point sits under early returns
+     (first run, the lock screen, recovery), and a hook after one of those is
+     the "rendered more hooks than during the previous render" crash this file
+     has already paid for once — see the note on ReportScreen. */
+  useEffect(() => {
+    if (!justBegan) return;
+    const t = setTimeout(() => {
+      animateStepIn(screenRef.current);
+      setJustBegan(false);
+    }, 30);
+    return () => clearTimeout(t);
+  }, [justBegan]);
+
   if (!viewer && lock === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.sub }}>
@@ -15544,29 +15638,68 @@ export default function App({ viewer = false }) {
   }
 
   if (!db.onboarded) {
+    /* One writer for both first-run paths — the four-act one and the long
+       form behind it. Whatever produced the profile, the journal is created
+       the same way, and a first entry lands with it rather than after it. */
+    const beginJournal = (profile, dest, firstEntry) => {
+      setDb((prev) => {
+        const next = { ...prev, profile, ack: true, onboarded: true };
+        /* Written here rather than in the setup screens: the entry belongs to
+           a profile that did not exist until this line. */
+        if (firstEntry && firstEntry.key && firstEntry.value != null) {
+          const now = new Date().toISOString();
+          next.entries = [...(prev.entries || []), {
+            id: uid(), profileId: profile.id, date: todayStr(),
+            answers: { [firstEntry.key]: firstEntry.value }, photos: {},
+            notes: (firstEntry.note || "").trim(),
+            quickLogCompleted: true, detailedLogCompleted: false,
+            createdAt: now, updatedAt: now,
+          }];
+        }
+        return next;
+      });
+      if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); }
+      else setScreen("dashboard");
+      setJustBegan(true);
+    };
+
+    if (detailedSetup) {
+      return (
+        <OnboardingWizard
+          onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
+          onComplete={beginJournal}
+        />
+      );
+    }
+
     return (
-      <OnboardingWizard
-        onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
-        onComplete={(profile, dest, firstEntry) => {
-          setDb((prev) => {
-            const next = { ...prev, profile, ack: true, onboarded: true };
-            /* Written here rather than in the wizard: the entry belongs to a
-               profile that did not exist until this line. */
-            if (firstEntry) {
-              const now = new Date().toISOString();
-              next.entries = [...(prev.entries || []), {
-                id: uid(), profileId: profile.id, date: todayStr(),
-                answers: { [firstEntry.key]: firstEntry.value }, photos: {}, notes: "",
-                quickLogCompleted: true, detailedLogCompleted: false,
-                createdAt: now, updatedAt: now,
-              }];
-            }
-            return next;
-          });
-          if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); }
-          else setScreen("dashboard");
-        }}
-      />
+      <>
+        <AmbientBackdrop />
+        <FirstRun
+          packs={FIRST_RUN_PACKS()}
+          Icon={Icon}
+          appName={APP_NAME}
+          disclaimer={DISCLAIMER}
+          onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
+          onDetailed={() => setDetailedSetup(true)}
+          onComplete={(choice) => {
+            /* The short path builds the same profile the long one does — the
+               pack's quick questions on, nothing else assumed — so a journal
+               started in thirty seconds and one built over seven screens are
+               the same object afterwards. */
+            const fields = mergedPackFields(choice.modules);
+            const enabledKeys = new Set(
+              fields.filter((f) => f.quick && f.type !== "photo" && f.k !== "weight").map((f) => f.k)
+            );
+            const profile = buildOnboardProfile({
+              modules: choice.modules, enabledKeys, spots: [], weightOn: false,
+              progressAngles: [], name: "", customs: [], keyMetric: choice.keyMetric,
+            });
+            beginJournal(profile, "dashboard",
+              choice.score != null ? { key: choice.keyMetric, value: choice.score, note: choice.note } : null);
+          }}
+        />
+      </>
     );
   }
 

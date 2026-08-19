@@ -3179,6 +3179,799 @@ button.fhj-section:disabled {
 }
 
 /* ============================================================
+   First run — the four acts
+   ============================================================
+
+   The one place in this app that is allowed to be cinematic. Everywhere else
+   the register is calm and administrative on purpose; here it has thirty
+   seconds to make a promise about the next six months, and a quiet fade does
+   not make promises.
+
+   Three things carry it: type set much larger than anywhere else in the
+   product, real depth (layered cards, a bloom behind them, shadows that mean
+   distance rather than decoration), and motion that is *about* something — the
+   journal assembling, the entry becoming a card, the rail drawing down into
+   days that have not happened yet.
+
+   Every animation here is defined so that its finished state is the layout.
+   Under prefers-reduced-motion nothing moves and nothing is missing. */
+
+.fhj-fr {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 30rem;
+  margin-inline: auto;
+  padding: 0 1.25rem env(safe-area-inset-bottom);
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-fr-hero {
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+/* ---------- the collage ----------
+   A timeline, not a scatter: one rail down the left with fragments hanging off
+   it at their own widths and angles. It is the same shape the fourth act draws
+   for real, which is the point — the hero shows the thing the last screen then
+   builds out of the person's own first entry. */
+
+.fhj-fr-collage {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 62dvh;
+  min-height: 21rem;
+  padding: max(2.5rem, env(safe-area-inset-top)) 0 0 1.5rem;
+  pointer-events: none;
+  overflow: hidden;
+  /* Fades into the headline rather than stopping at an edge, so the two layers
+     read as one image. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 58%, transparent 97%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 58%, transparent 97%);
+}
+
+.fhj-fr-rail {
+  position: absolute;
+  left: 1.5rem;
+  top: 2.5rem;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  transform-origin: top center;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--fhj-accent, #8fb0e3) 70%, transparent) 0%,
+    color-mix(in srgb, var(--fhj-accent, #8fb0e3) 22%, transparent) 70%,
+    transparent 100%
+  );
+}
+
+.fhj-fr-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.fhj-fr-row {
+  position: relative;
+  display: flex;
+}
+.fhj-fr-row.is-a { width: 82%; transform: rotate(-0.6deg); }
+.fhj-fr-row.is-b { width: 58%; margin-left: 22%; transform: rotate(0.8deg); }
+.fhj-fr-row.is-c { width: 86%; transform: rotate(-0.4deg); }
+.fhj-fr-row.is-d { width: 92%; }
+.fhj-fr-row.is-e { width: 74%; margin-left: 8%; transform: rotate(0.5deg); }
+
+/* The dot that ties a fragment to the rail. */
+.fhj-fr-node {
+  position: absolute;
+  left: -1.55rem;
+  top: 1.15rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--fhj-accent, #8fb0e3);
+  border: 2px solid var(--fhj-bg, #141519);
+  box-sizing: content-box;
+}
+.fhj-fr-node.is-soft {
+  background: transparent;
+  border: 1.5px solid var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+}
+
+.fhj-fr-frag {
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--fhj-radius);
+  background: color-mix(in srgb, var(--fhj-card, #1e2026) 92%, transparent);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(6px);
+  padding: 0.625rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fhj-fr-frag-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.fhj-fr-frag-eyebrow {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-frag-score {
+  font-family: var(--fhj-font-display);
+  font-size: 2rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-fr-frag-meta {
+  font-size: 0.625rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-frag-note {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-fr-frag.is-photo {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.fhj-fr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding-top: 0.5rem;
+}
+
+.fhj-fr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.6875rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fhj-card, #1e2026) 92%, transparent);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+/* A photograph, without shipping one: a soft two-tone wash under a grain. It
+   has to read as "a photo of skin" at 60px and never as a real body. */
+.fhj-fr-photo {
+  display: block;
+  flex: none;
+  width: 3.25rem;
+  height: 3.75rem;
+  border-radius: 0.5rem;
+  background:
+    radial-gradient(120% 90% at 30% 20%, rgba(255, 255, 255, 0.16), transparent 60%),
+    linear-gradient(150deg, #c98f78 0%, #a96a56 45%, #7d4a3c 100%);
+  position: relative;
+  overflow: hidden;
+}
+.fhj-fr-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.35) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+.fhj-fr-spark {
+  width: 100%;
+  height: 2.5rem;
+}
+
+/* ---------- hero type ---------- */
+
+.fhj-fr-hero-body {
+  position: relative;
+  padding-bottom: 2rem;
+}
+
+.fhj-fr-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-bottom: 0.75rem;
+}
+
+.fhj-fr-display {
+  font-family: var(--fhj-font-display);
+  font-size: clamp(2.6rem, 13vw, 3.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+}
+
+.fhj-fr-display.is-small {
+  font-size: clamp(1.9rem, 8.5vw, 2.4rem);
+  line-height: 1.04;
+  letter-spacing: -0.028em;
+}
+
+/* Each line rides up out from behind its own edge — type being set, rather
+   than a block sliding in. */
+.fhj-fr-mask {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em;
+}
+.fhj-fr-mask > span {
+  display: block;
+}
+
+.fhj-fr-sub {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  margin-top: 0.875rem;
+  color: var(--fhj-sub, #b9bac2);
+  max-width: 26rem;
+}
+
+.fhj-fr-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.75rem;
+}
+
+/* The one button the whole screen is for. A solid, a hard shadow that it lands
+   on when pressed, and a slow sheen that crosses it once every few seconds so
+   it reads as live rather than as a rectangle. */
+.fhj-fr-primary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 3.5rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fhj-on-accent, #121419);
+  background: var(--fhj-accent, #8fb0e3);
+  box-shadow: var(--fhj-shadow-pop-lg, 5px 5px 0 rgba(0, 0, 0, 0.5));
+  overflow: hidden;
+  transition: transform 90ms var(--fhj-out), box-shadow 90ms var(--fhj-out), opacity var(--fhj-quick) ease;
+}
+.fhj-fr-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -40%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: fhjSheen 4.5s ease-in-out 1.2s infinite;
+}
+.fhj-fr-primary:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+.fhj-fr-primary:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
+.fhj-fr-primary:disabled::after {
+  display: none;
+}
+
+@keyframes fhjSheen {
+  0% { transform: translateX(0); }
+  55%, 100% { transform: translateX(360%); }
+}
+
+.fhj-fr-ghost {
+  width: 100%;
+  min-height: 2.75rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-sub, #b9bac2);
+  background: transparent;
+  transition: color var(--fhj-quick) ease;
+}
+@media (hover: hover) {
+  .fhj-fr-ghost:hover { color: var(--fhj-ink, #ecebe7); }
+}
+
+.fhj-fr-fine {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.fhj-fr-fine-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  color: var(--fhj-subtle, #9a9ca6);
+  min-height: 2rem;
+}
+
+.fhj-fr-fine-body {
+  font-size: 0.6875rem;
+  line-height: 1.55;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.5rem;
+  text-align: left;
+  animation: fhjFrFine 260ms var(--fhj-out) both;
+}
+
+@keyframes fhjFrFine {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- acts two and three ---------- */
+
+.fhj-fr-act {
+  flex: 1;
+  padding-top: max(3.5rem, env(safe-area-inset-top));
+  padding-bottom: 1.5rem;
+}
+
+.fhj-fr-step {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fhj-accent-text, #a6c3ea);
+  margin-bottom: 0.75rem;
+}
+
+.fhj-fr-foot {
+  position: sticky;
+  bottom: 0;
+  padding: 0.75rem 0 max(1rem, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--fhj-bg, #141519) 62%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fhj-fr-packs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+  margin-top: 1.5rem;
+}
+
+.fhj-fr-pack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.875rem;
+  min-height: 6.25rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition:
+    transform 140ms var(--fhj-spring),
+    border-color var(--fhj-quick) ease,
+    background var(--fhj-quick) ease;
+}
+.fhj-fr-pack:active { transform: scale(0.97); }
+.fhj-fr-pack.is-on {
+  border-color: var(--fhj-pack);
+  background: color-mix(in srgb, var(--fhj-pack) 12%, var(--fhj-card, #1e2026));
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+}
+
+.fhj-fr-pack-mark {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  margin-bottom: 0.25rem;
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-fr-pack.is-on .fhj-fr-pack-mark { background: var(--fhj-pack); }
+
+.fhj-fr-pack-name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.15;
+}
+
+.fhj-fr-pack-blurb {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-more {
+  display: block;
+  width: 100%;
+  margin-top: 0.875rem;
+  min-height: 2.75rem;
+  border-radius: var(--fhj-radius);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-accent-text, #a6c3ea);
+  border: 1px dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+}
+
+/* ---------- the card that becomes the timeline card ---------- */
+
+.fhj-fr-card {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.34);
+}
+
+/* Once there is a number, the card takes its colour — a wash behind it and a
+   hairline in it. Nothing about it is a status light; it is the day having a
+   temperature. */
+.fhj-fr-card.is-live {
+  border-color: color-mix(in srgb, var(--fhj-day) 45%, transparent);
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--fhj-day) 18%, transparent),
+    0 12px 60px -12px color-mix(in srgb, var(--fhj-day) 45%, transparent);
+  background:
+    radial-gradient(120% 90% at 50% -20%, color-mix(in srgb, var(--fhj-day) 12%, transparent), transparent 70%),
+    var(--fhj-card, #1e2026);
+  transition: box-shadow 320ms var(--fhj-out), border-color 320ms var(--fhj-out), background 320ms var(--fhj-out);
+}
+
+.fhj-fr-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.fhj-fr-card-date {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-card-badge {
+  padding: 0.1875rem 0.5rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.75rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-fr-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  min-height: 3.25rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.fhj-fr-readout-num {
+  font-family: var(--fhj-font-display);
+  font-size: 3rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-fr-readout-word {
+  font-size: 0.9375rem;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+.fhj-fr-readout-hint {
+  font-size: 0.875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  align-self: center;
+}
+
+.fhj-fr-scale {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 0.25rem;
+}
+
+.fhj-fr-rung {
+  min-height: 3.5rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition: background var(--fhj-quick) ease, color var(--fhj-quick) ease, transform 90ms var(--fhj-out);
+}
+.fhj-fr-rung:active { transform: translateY(2px); }
+.fhj-fr-rung.is-filled {
+  background: color-mix(in srgb, var(--fhj-rung) 26%, transparent);
+  border-color: color-mix(in srgb, var(--fhj-rung) 45%, transparent);
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-fr-rung.is-picked {
+  background: var(--fhj-rung);
+  border-color: var(--fhj-rung);
+  color: #121419;
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.5));
+}
+
+.fhj-fr-scale-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.625rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-note {
+  margin-top: 0.875rem;
+  animation: fhjFrFine 240ms var(--fhj-out) both;
+}
+.fhj-fr-note textarea {
+  width: 100%;
+  resize: none;
+  border-radius: var(--fhj-radius-sm);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: inherit;
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  outline: none;
+}
+
+.fhj-fr-swap {
+  margin-top: 1.5rem;
+}
+
+.fhj-fr-swap-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-swap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-fr-swap-chip {
+  padding: 0.4375rem 0.75rem;
+  min-height: 2.25rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid transparent;
+  transition: all var(--fhj-quick) ease;
+}
+.fhj-fr-swap-chip.is-on {
+  color: var(--fhj-ink, #ecebe7);
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* ---------- act four ---------- */
+
+.fhj-fr-act.is-born {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.fhj-fr-bloom {
+  position: absolute;
+  left: 50%;
+  top: 26%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.fhj-fr-bloom > span {
+  position: absolute;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: -0.25rem;
+  border-radius: 50%;
+  opacity: 0;
+  background: var(--fhj-accent, #8fb0e3);
+  box-shadow: 0 0 18px var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-timeline {
+  position: relative;
+  padding-left: 1.75rem;
+}
+
+.fhj-fr-tl-rail {
+  position: absolute;
+  left: 0.4375rem;
+  top: 0.75rem;
+  bottom: 0.5rem;
+  width: 2px;
+  border-radius: 2px;
+  transform-origin: top center;
+  background: linear-gradient(
+    to bottom,
+    var(--fhj-accent, #8fb0e3) 0%,
+    color-mix(in srgb, var(--fhj-accent, #8fb0e3) 30%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+.fhj-fr-tl-row {
+  position: relative;
+  margin-bottom: 0.75rem;
+}
+
+.fhj-fr-tl-dot {
+  position: absolute;
+  left: -1.5rem;
+  top: 1rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  border: 2px solid var(--fhj-bg, #141519);
+}
+.fhj-fr-tl-dot.is-ghost {
+  background: transparent;
+  border: 1.5px solid var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+  width: 0.625rem;
+  height: 0.625rem;
+  left: -1.375rem;
+  top: 0.9rem;
+}
+
+.fhj-fr-card.is-landed {
+  margin-top: 0;
+}
+
+.fhj-fr-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-fr-card-metric {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.fhj-fr-card-note {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+/* The days that have not happened yet. The faintest thing on the screen, and
+   the entire product. */
+.fhj-fr-ghost-card {
+  height: 2.75rem;
+  border-radius: var(--fhj-radius);
+  border: 1px dashed var(--fhj-line, rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  padding: 0 0.875rem;
+  font-size: 0.75rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  opacity: 0.55;
+}
+
+.fhj-fr-born-copy {
+  margin-top: 2rem;
+}
+
+.fhj-fr-streak {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.fhj-fr-streak-num {
+  font-family: var(--fhj-font-display);
+  font-size: 2.75rem;
+  line-height: 1;
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Three beats, because the promise has three parts and a sentence makes them
+   one blur. */
+.fhj-fr-beats {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+.fhj-fr-beats li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.fhj-fr-beats b {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.008em;
+}
+.fhj-fr-beats span span {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-beat-mark {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  border: 1px solid color-mix(in srgb, var(--fhj-accent, #8fb0e3) 25%, transparent);
+}
+
+.fhj-fr-streak-label {
+  font-size: 0.8125rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-fr-primary::after,
+  .fhj-fr-note,
+  .fhj-fr-fine-body {
+    animation: none;
+  }
+  .fhj-fr-primary::after { display: none; }
+}
+
+/* ============================================================
    Navigation: two destinations and one verb
    ============================================================ */
 

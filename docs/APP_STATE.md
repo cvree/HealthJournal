@@ -569,6 +569,54 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-19 addendum 20 — 1.18: the first thirty seconds.**
+> **`src/components/FirstRun.tsx` (new)** is the first-run surface: four acts in one component
+> (`hero | focus | entry | born`) held in local state, with `onComplete(choice)` handing App
+> `{modules, keyMetric, score, note}`. It is fully presentational — the pack catalogue arrives as
+> a `packs` prop built by `FIRST_RUN_PACKS()` in App.tsx (a function, not a constant, because
+> `TEMPLATES[*].color` is a live getter that follows the theme), and even `Icon` is passed in, so
+> the component draws nothing of its own and can be reasoned about without App.
+>
+> **`src/lib/intro.ts` (new, typed)** is the choreography: `heroIn` (clip-reveal lines → rail draw
+> → fragments → CTA, then per-fragment float loops on their own periods, returning one killer),
+> `actIn`, `rungPop`/`readoutSwap`, `liftCard`/`landCard` (the FLIP, deliberately split because
+> the act that owns the card unmounts between the two — capturing a rect and cloning later would
+> animate from a position that no longer exists), `buildTimeline`, `bloom`, `countUp`. Everything
+> no-ops under reduced motion and calls its `onDone` regardless.
+>
+> **App wiring.** `if (!db.onboarded)` now renders `FirstRun` (with `AmbientBackdrop` behind it);
+> `detailedSetup` state swaps in the untouched `OnboardingWizard`. `beginJournal(profile, dest,
+> firstEntry)` is the single writer for both paths and takes `firstEntry.note`. The short path
+> builds its profile with `buildOnboardProfile` over the packs' `quick` fields, so both paths
+> produce the same object. `justBegan` runs `animateStepIn` on the first dashboard once.
+>
+> **The hook-order trap, paid for a second time.** The `justBegan` effect was first written next to
+> the JSX it animates — below `if (!db.onboarded) return`, `if (!lock)`, `if (corrupt)` — and
+> every existing-journal test went blank with "Rendered more hooks than during the previous
+> render". Same bug as addendum 7's `ReportScreen` crash. **In App.tsx, every hook goes above the
+> early-return stack**, which now starts at `if (!viewer && lock === undefined)`.
+>
+> **Drag-to-rate.** `BigScale` reads the value off the pointer's x within the row. Two details are
+> load-bearing: it must *not* `setPointerCapture` (capture retargets the click and the plain tap
+> stops working — this cost a debugging round in the browser), and the click that ends a drag is
+> suppressed via a flag cleared on the *next* `pointerdown` rather than when a click consumes it,
+> because a drag ending off a rung produces no click at all and a stale flag ate the following tap.
+>
+> **CSS.** One `/* First run — the four acts */` block: `.fhj-fr-*`. Type is set much larger than
+> anywhere else in the product (`clamp(2.6rem, 13vw, 3.5rem)` on the hero), the collage is a rail
+> with fragments hanging off it at their own widths and rotations (the same shape act four draws
+> for real), and `.fhj-fr-card.is-live` takes `--fhj-day` from the score so the card carries the
+> day's temperature.
+>
+> **Verified in a browser, not only in jsdom:** the whole flow end to end in dark and light, with
+> `reducedMotion: "reduce"` and without, zero console errors, plus a real mouse drag across the
+> scale proving tap-then-drag-then-tap all still register.
+>
+> Tests: **967 across 44 suites** (was 955/43) — `tests/firstRun.test.tsx` (12);
+> `onboarding`/`appearance` now reach the long form through the hero.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
