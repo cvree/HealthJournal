@@ -117,6 +117,9 @@ export interface TrackingSetup {
   reminders?: NamedReminder[];
   /** Optional daily nutrition targets. */
   goals?: NutritionGoals;
+  /** Up to four metrics pinned to Insights, in order. The first is the one
+      the hero and the main trend chart are about. */
+  pinnedMetrics?: string[];
   /** Which Quick Add tiles the dashboard shows, in order. `undefined` means
       "never chosen" and gets the default four; an empty array is a real
       choice and hides the section. */

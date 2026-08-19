@@ -128,10 +128,13 @@ describe("choosing a provider", () => {
   it("offers a choice, with the easiest one preselected", async () => {
     stubGoogle();
     await mountApp();
-    await openWizard();
+    const openWizardDialog = openWizard;
+    const dialog = await openWizardDialog();
     fireEvent.click(btn(/^Get started$/));
     await step(2);
-    const options = screen.getAllByRole("radio");
+    /* Scoped to the wizard: Insights itself carries a radio group (the range
+       selector) behind the sheet, and an unscoped query picks that up first. */
+    const options = within(dialog).getAllByRole("radio");
     expect(options.length).toBeGreaterThanOrEqual(3);
     expect(options.find((o) => o.getAttribute("aria-checked") === "true")!.textContent)
       .toMatch(/Google Gemini/);
