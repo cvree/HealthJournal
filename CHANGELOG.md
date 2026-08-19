@@ -1,5 +1,86 @@
 # Changelog
 
+## 1.16.0
+
+### The appointment pack
+
+A year of logging has one moment it is really for: ten minutes in a room with a
+specialist, every few months, opening with "so how have you been?" That question
+is the one memory answers worst. It reaches for the last bad week — because that
+is what memory does — and the last bad week is not the year.
+
+Everything needed to answer it properly was already in the journal and none of it
+was in a form anybody could hand over. Insights is nine sections of scrolling on
+a phone. The CSV is a spreadsheet. The weekly report is a week.
+
+So Export now opens with **Prepare an Appointment Pack**, above CSV, Excel and
+JSON, because a file for a spreadsheet and a page for a person are not the same
+errand and the second one is the one that changes an appointment.
+
+**Pick a window, get a page.** The last 30 days, the last three months, your own
+dates — or **since my last appointment**, which is the range everybody actually
+wants and the only one the app cannot work out on its own. So it asks, once, in
+the place where it matters, and afterwards there is a button on the pack that
+marks today as the visit, which is what makes the *next* pack cover exactly the
+stretch since this one.
+
+**It prints in the order a consultation runs.**
+
+1. **How it's been** — the average, the change against the same number of days
+   immediately before, and the days it rests on.
+2. **Best, hardest, usual** — because an average of 5.2 is one number for two
+   completely different lives.
+3. **Flares** — how many, how many days of them, how long they ran on average,
+   the longest, the average severity and the worst it got.
+4. **Biggest changes** — the three metrics that moved most.
+5. **Routine** — what was taken against what the plan asked for.
+6. **Photos** — one before-and-after pair.
+7. **Notes** — the days you picked out yourself.
+8. **Questions for my appointment** — yours, printed with a rule under each one.
+
+That last section is the one that turns a summary into a document somebody can
+use in a room. Questions occur to you at 2am in the middle of a flare and are
+gone by the time you are sitting on the paper. They live on the journal now, not
+in screen state, so a question written a fortnight before the visit is still
+there in the waiting room — and it prints with somewhere to write the answer.
+
+**Four rules govern every figure on it.**
+
+*Nothing is invented.* A section with nothing behind it is left out, and the
+reason is shown in the app rather than printed as a zero. "No flares recorded"
+and "no flares happened" are different sentences and only the first is knowable.
+
+*A comparison needs both sides.* The previous window is the same number of days
+immediately before the range. If either side has fewer than five logged days,
+there is no change printed — a "+2.1" built on three days against thirty is a
+lie with a decimal point in it.
+
+*Coverage travels with every average.* "5.8" is printed as "5.8 · 22 of 30 days
+(73%)". Anybody reading it is entitled to know what it rests on without asking.
+
+*The app does not grade anybody.* Routine adherence is a count of what was
+recorded against what the plan asks for, from the day each item was added — the
+app keeps no history of schedules, so counting a medication started on Monday as
+four weeks of missed doses would be inventing a failure. There is no colour on
+it, no target, and no verdict. The reading belongs to the two people in the room.
+
+**Ranking changes fairly.** The three biggest movers are ranked by *relative*
+movement, not by the raw number. A step count that fell by 900 and an itch rating
+that rose by 1.5 cannot be compared on the size of the number, and sorting on it
+would fill every pack with whichever metric happens to have the biggest units.
+Both figures are printed; only the ranking is proportional.
+
+**Choosing is the person's job.** The pack never picks which of your notes a
+doctor reads, and never picks the photo pair. Both are one tap to choose and
+neither happens by itself: an app that selects which sentence about somebody's
+illness gets read aloud has quietly started editing their account of it.
+
+**On paper.** Every section can be switched off, and the pack says up front
+whether it is about one page or two. The printed page carries its own masthead,
+the date it was printed, the pattern caveat and the disclaimer, because it leaves
+the app and has to stand up alone. Nothing on it needs a tooltip, a legend, or a
+colour to be read — a pack photocopied in a clinic is black and white.
+
 ## 1.15.0
 
 ### Insights, rebuilt around the questions people actually ask

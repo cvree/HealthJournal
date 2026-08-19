@@ -3179,6 +3179,232 @@ button.fhj-section:disabled {
 }
 
 /* ============================================================
+   Appointment pack
+   ============================================================
+   The one surface in this app whose real output is paper, so it is laid out
+   twice: as a readable preview on a phone, and as a one-or-two page document
+   under @media print (further down, next to the rest of the print rules).
+
+   Everything is a figure with its caption underneath. No tooltips, no legends,
+   no colour carrying meaning by itself — a pack photocopied in a clinic has to
+   survive being black and white. */
+
+.fhj-pack {
+  padding-bottom: 1.5rem;
+}
+
+.fhj-pack-masthead {
+  padding-bottom: 0.75rem;
+  margin-bottom: var(--fhj-gap);
+  border-bottom: var(--fhj-bw-strong) solid var(--fhj-ink, #ecebe7);
+}
+
+.fhj-pack-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.5rem;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.fhj-pack-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.875rem;
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-pack-section {
+  margin-bottom: var(--fhj-gap);
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-pack-section:last-of-type {
+  border-bottom: none;
+}
+
+.fhj-pack-head {
+  font-family: var(--fhj-font-display);
+  font-size: 1.0625rem;
+  font-weight: 620;
+  letter-spacing: -0.018em;
+  margin-bottom: 0.625rem;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-pack-figs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.fhj-pack-fig {
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+}
+
+.fhj-pack-num {
+  font-family: var(--fhj-font-display);
+  font-size: 1.5rem;
+  line-height: 1.05;
+  margin-top: 0.375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-pack-cap {
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  margin-top: 0.375rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-pack-list {
+  margin-top: 0.625rem;
+}
+.fhj-pack-list > li {
+  padding: 0.4375rem 0;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-pack-list > li:first-child {
+  border-top: none;
+}
+
+.fhj-pack-list-name {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.fhj-pack-list-meta {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fhj-sub, #b9bac2);
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-pack-note {
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  margin-top: 0.5rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-pack-notes > li {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-pack-notes > li:first-child {
+  border-top: none;
+}
+
+.fhj-pack-note-text {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin-top: 0.125rem;
+}
+
+.fhj-pack-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+}
+
+.fhj-pack-photo img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: var(--fhj-radius-sm);
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-pack-photo figcaption {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  margin-top: 0.3125rem;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+/* Numbered, with a rule under each — the rule is the point. A question with
+   nowhere to write the answer is a question that gets asked and forgotten. */
+.fhj-pack-questions {
+  counter-reset: fhj-q;
+}
+.fhj-pack-questions > li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  counter-increment: fhj-q;
+  padding: 0.5rem 0 0.4375rem;
+  border-bottom: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-pack-questions > li::before {
+  content: counter(fhj-q) ".";
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-pack-q {
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.fhj-pack-q-x {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+}
+
+.fhj-pack-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+.fhj-pack-add .fhj-input {
+  flex: 1;
+}
+
+.fhj-pack-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-pack-foot {
+  margin-top: var(--fhj-gap);
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-pack-foot p {
+  margin-bottom: 0.25rem;
+}
+
+/* The entry point in Export. It is the first thing on that screen and has to
+   read as the recommended path without shouting — a tinted panel and a real
+   heading, against three plain download buttons underneath. */
+.fhj-pack-cta {
+  border: var(--fhj-bw-strong) solid var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* ============================================================
    Print
    ============================================================
    A printed report is what gets handed to a clinician, so it is its own
@@ -3219,8 +3445,19 @@ button.fhj-section:disabled {
     padding: 0 !important;
   }
   /* The app is a 28rem phone column on screen; paper is not. */
-  .max-w-md {
+  .max-w-md,
+  .fhj-shell {
     max-width: none !important;
+  }
+  .fhj-shell {
+    padding-bottom: 0 !important;
+  }
+  /* Section headings and eyebrows read their colour from the live theme, which
+     on paper is whatever the person happens to be running — a dark-theme ink
+     prints as pale grey on white and the headings vanish. Paper has one
+     theme. */
+  .fhj-eyebrow {
+    color: #4a4d57 !important;
   }
   * {
     box-shadow: none !important;
@@ -3760,5 +3997,78 @@ button.fhj-section:disabled {
   .fhj-rel-bar > span,
   .fhj-ep-block {
     transition: none;
+  }
+}
+
+/* ---------- the pack, on paper ----------
+   Tighter than the screen: this has one or two pages to work with and the
+   promise made in Export is that it will fit. Figures go four across, the
+   surfaces lose their fills, and each section is kept whole across a break. */
+@media print {
+  .fhj-pack-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #adafb8 !important;
+  }
+  /* The last section is followed by the footnote's own rule; two hairlines a
+     few millimetres apart read as a printing fault. */
+  .fhj-pack-section:last-of-type {
+    border-bottom: none !important;
+  }
+  .fhj-pack-head,
+  .fhj-pack-title {
+    color: #1a1c21 !important;
+  }
+  .fhj-pack-head {
+    font-size: 12pt;
+    margin-bottom: 6px;
+  }
+  .fhj-pack-masthead {
+    border-bottom-color: #1a1c21 !important;
+  }
+  .fhj-pack-meta {
+    color: #4a4d57 !important;
+  }
+  .fhj-pack-figs {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .fhj-pack-fig {
+    background: #fff !important;
+    border: 1px solid #adafb8 !important;
+    padding: 6px 8px;
+  }
+  .fhj-pack-num {
+    font-size: 15pt;
+    color: #1a1c21 !important;
+  }
+  .fhj-pack-cap,
+  .fhj-pack-note,
+  .fhj-pack-list-meta,
+  .fhj-pack-photo figcaption {
+    font-size: 8pt;
+    color: #4a4d57 !important;
+  }
+  .fhj-pack-list-name,
+  .fhj-pack-note-text,
+  .fhj-pack-q {
+    font-size: 9.5pt;
+    color: #1a1c21 !important;
+  }
+  .fhj-pack-list > li,
+  .fhj-pack-notes > li {
+    padding: 3px 0;
+    border-top: 1px solid #d6d7dd !important;
+  }
+  /* Room to write the answer in the room, which is the whole reason the
+     questions are printed at all. */
+  .fhj-pack-questions > li {
+    padding: 9px 0 3px;
+    border-bottom: 1px solid #1a1c21 !important;
+  }
+  .fhj-pack-photo img {
+    border: 1px solid #adafb8 !important;
   }
 }

@@ -77,6 +77,12 @@ import {
 import {
   DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, metricCtx,
 } from "./lib/metrics";
+import AppointmentPackView from "./components/AppointmentPackView";
+import {
+  PACK_SECTIONS, sanitizePackPrefs, buildAppointmentPack,
+  candidateNotes, rangeOfDays, rangeSinceAppointment, rangeCustom, pageLabel,
+  coverageLabel,
+} from "./lib/appointmentPack";
 import {
   ROUTINE_KINDS, ROUTINE_TIMES, kindDef, kindLabel, timeLabel, slotForTime,
   newRoutineItem, logFromItem, bumpItemUse,
@@ -101,7 +107,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.13.0";
+export const APP_VERSION = "1.16.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -5502,7 +5508,382 @@ function wideTable(profile, entries, food = [], routine = []) {
   return buildWideTable(getProfileTemplate(profile), profile, entries, food, routine);
 }
 
-function ExportScreen({ db, setDb }) {
+/* ============================================================
+   The Appointment Pack
+   ============================================================
+
+   Ten minutes with a specialist every few months is what this whole journal is
+   for, and the question that opens it — "so how have you been?" — is the one
+   memory answers worst. It reaches for the last bad week, because that is what
+   memory does.
+
+   So the pack is the first thing on the Export screen, above the three file
+   formats, and it is one tap from a range to a printable page: what the average
+   was and which way it moved, what the days were like, what the flares did,
+   what changed, what is being taken, what it looks like, what happened, and —
+   last, because it is the part that belongs to the person rather than the app —
+   what they want to ask.
+
+   The arithmetic lives in src/lib/appointmentPack.ts and the paper lives in
+   src/components/AppointmentPackView.tsx. What is here is the wiring: which
+   metrics the pack is allowed to talk about, which photos make a before and
+   after, and the two pickers that keep both of those choices the user's. */
+
+/** Everything numeric the person tracks, charted metrics first — that order is
+    the one they already chose on Insights, so the three biggest changes come
+    out of the metrics they care about rather than alphabetically. */
+function packMetricsFor(tpl) {
+  const out = [], seen = new Set();
+  const add = (k) => {
+    const f = getField(tpl, k);
+    if (!f || seen.has(k)) return;
+    if (f.type !== "scale" && f.type !== "number") return;
+    seen.add(k);
+    out.push({ key: f.k, label: f.label, dir: f.dir, unit: f.unit, scale: f.type === "scale" });
+  };
+  for (const k of tpl.chartMetrics) add(k);
+  for (const k of tpl.dashboardMetrics) add(k);
+  for (const f of tpl.fields) add(f.k);
+  return out;
+}
+
+/** Every photo field that can show this range as a before and an after.
+
+    "Before" is the last shot taken on or before the range starts, falling back
+    to the earliest one inside it — a photo from the week before the last
+    appointment is a truer "before" than the first one taken after it, and using
+    the range's own first photo when there is nothing earlier is the honest
+    second choice. Both dates are printed either way. */
+function packPhotoPairs(tpl, entries, range) {
+  const items = buildPhotoItems(tpl, entries); // newest first
+  const groups = [];
+  for (const f of tpl.fields.filter((x) => x.type === "photo")) {
+    const mine = items.filter((it) => it.field.k === f.k)
+      .slice().sort((a, b) => (a.date < b.date ? -1 : 1)); // oldest first
+    const inRange = mine.filter((it) => it.date >= range.start && it.date <= range.end);
+    const after = inRange[inRange.length - 1];
+    if (!after) continue;
+    const earlier = mine.filter((it) => it.date <= range.start);
+    const before = earlier.length ? earlier[earlier.length - 1] : inRange[0];
+    if (!before || before.photoId === after.photoId) continue;
+    groups.push({
+      fieldKey: f.k,
+      label: f.label,
+      spot: bodyPartLabel(f) || f.label,
+      ratingLabel: linkedLabel(f, tpl),
+      before: { photoId: before.photoId, date: before.date, rating: before.rating },
+      after: { photoId: after.photoId, date: after.date, rating: after.rating },
+      apart: daySpan(before.date, after.date) - 1,
+    });
+  }
+  return groups;
+}
+
+function PackPhoto({ side }) {
+  const src = usePhoto(side.photoId, "full");
+  if (src === undefined) return <div className="fhj-shimmer rounded-xl" style={{ aspectRatio: "3 / 4", background: C.faint }} />;
+  if (!src) {
+    return (
+      <div className="rounded-xl flex items-center justify-center text-[11px]"
+        style={{ aspectRatio: "3 / 4", background: C.faint, color: C.sub }}>
+        Photo missing
+      </div>
+    );
+  }
+  return <img src={src} alt={`${fmtNice(side.date)}`} />;
+}
+
+/* ---------- the pack screen ---------- */
+
+function AppointmentPackScreen({ db, setDb, params, goBack, viewer }) {
+  const profile = db.profile;
+  const tpl = getProfileTemplate(profile);
+  const entries = entriesFor(db);
+  const t0 = todayStr();
+  const range = params.range || rangeOfDays(30, t0);
+  const prefs = useMemo(() => sanitizePackPrefs(profile.appointment), [profile.appointment]);
+  const [picking, setPicking] = useState(null); // "notes" | "photo" | null
+  const canEdit = !viewer && !!setDb;
+
+  const savePrefs = (patch) => {
+    if (!canEdit) return;
+    setDb((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        appointment: sanitizePackPrefs({ ...sanitizePackPrefs(prev.profile.appointment), ...patch }),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
+
+  const metrics = useMemo(() => packMetricsFor(tpl), [tpl]);
+  const primary = useMemo(() => {
+    const pinned = (profile.pinnedMetrics || [])[0];
+    return metrics.find((m) => m.key === pinned)
+      || metrics.find((m) => m.key === tpl.keyMetric)
+      || metrics[0]
+      || { key: tpl.keyMetric, label: "Key metric" };
+  }, [metrics, profile.pinnedMetrics, tpl.keyMetric]);
+
+  const pairs = useMemo(() => packPhotoPairs(tpl, entries, range), [tpl, entries, range.start, range.end]);
+  const photo = useMemo(() => {
+    if (prefs.photoField === "none") return null;
+    return pairs.find((g) => g.fieldKey === prefs.photoField) || pairs[0] || null;
+  }, [pairs, prefs.photoField]);
+
+  const notes = useMemo(() => candidateNotes(entries, range), [entries, range.start, range.end]);
+
+  const pack = useMemo(() => buildAppointmentPack({
+    today: t0, range, entries, primary, metrics,
+    episodes: db.episodes || [],
+    routineItems: db.routineItems || [], routineLogs: db.routine || [],
+    sections: prefs.sections, noteDates: prefs.noteDates, questions: prefs.questions,
+    photo,
+  }), [t0, range.start, range.end, entries, primary, metrics, db.episodes, db.routineItems, db.routine, prefs, photo]);
+
+  const onCount = PACK_SECTIONS.filter((sec) => pack.sections[sec.key] !== false).length;
+
+  const toggleNote = (date) => {
+    const has = prefs.noteDates.includes(date);
+    feedback(has ? "nav" : "select");
+    savePrefs({ noteDates: has ? prefs.noteDates.filter((d) => d !== date) : [...prefs.noteDates, date] });
+  };
+
+  return (
+    <div className="pb-10">
+      <div className="no-print px-4 pt-3">
+        <Card className="fhj-pack-cta">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="fhj-eyebrow">Ready to print</div>
+              <div className="font-display text-lg leading-tight mt-1">{range.label}</div>
+              <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+                {range.start} to {range.end} · {pageLabel(pack).toLowerCase()}
+              </div>
+            </div>
+            <button onClick={() => { feedback("save"); window.print(); }}
+              className="fhj-btn fhj-btn-primary shrink-0">
+              Print / PDF
+            </button>
+          </div>
+        </Card>
+
+        <Disclosure className="mt-2"
+          label="Choose what's in it"
+          summary={`${onCount} of ${PACK_SECTIONS.length} sections${pack.omitted.length ? ` · ${pack.omitted.length} with nothing to show` : ""}`}>
+          {PACK_SECTIONS.map((sec) => {
+            const why = pack.omitted.find((o) => o.key === sec.key);
+            return (
+              <SwitchRow key={sec.key}
+                on={pack.sections[sec.key] !== false}
+                disabled={!canEdit}
+                onChange={(v) => {
+                  feedback("select");
+                  savePrefs({ sections: { ...prefs.sections, [sec.key]: v } });
+                }}
+                label={sec.label}
+                desc={why && pack.sections[sec.key] !== false ? why.reason : sec.hint} />
+            );
+          })}
+        </Disclosure>
+      </div>
+
+      <div className="px-4 pt-3">
+        <AppointmentPackView
+          pack={pack}
+          meta={{
+            name: profile.name, setup: tpl.label,
+            appName: APP_NAME, version: APP_VERSION, printedOn: t0,
+            disclaimer: DISCLAIMER, patternNote: PATTERN_NOTE,
+          }}
+          renderPhoto={(side) => <PackPhoto side={side} />}
+          onQuestionsChange={canEdit ? ((questions) => savePrefs({ questions })) : undefined}
+          onChooseNotes={canEdit && notes.length ? (() => setPicking("notes")) : undefined}
+          onChoosePhoto={canEdit && pairs.length ? (() => setPicking("photo")) : undefined}
+          onFeedback={feedback}
+        />
+      </div>
+
+      <div className="no-print px-4">
+        <Card className="mt-3">
+          <div className="text-[13px] font-semibold mb-1">After the appointment</div>
+          <p className="text-xs leading-relaxed mb-3" style={{ color: C.sub }}>
+            Marking the date is what makes the next pack cover exactly the time since this visit —
+            nothing else uses it.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => { feedback("save"); savePrefs({ lastAppointment: t0 }); toast({ text: "Saved — the next pack starts from today" }); }}
+              disabled={!canEdit || prefs.lastAppointment === t0}
+              className="fhj-btn fhj-btn-secondary">
+              {prefs.lastAppointment === t0 ? "Today is marked" : "My appointment was today"}
+            </button>
+            <label className="flex items-center gap-2 text-[11px]" style={{ color: C.subtle }}>
+              Another day
+              <input type="date" value={prefs.lastAppointment || ""} max={t0} disabled={!canEdit}
+                aria-label="Date of my last appointment"
+                onChange={(e) => savePrefs({ lastAppointment: e.target.value || null })}
+                className="fhj-input" style={{ width: "auto" }} />
+            </label>
+          </div>
+        </Card>
+        <button onClick={goBack} className="fhj-btn fhj-btn-ghost fhj-btn-block mt-2">Back to Export</button>
+      </div>
+
+      {picking === "notes" && (
+        <Modal title="Pick the notes to print" onClose={() => setPicking(null)}
+          eyebrow={`${prefs.noteDates.length} chosen · up to 6`}>
+          <p className="text-xs leading-relaxed mb-3" style={{ color: C.sub }}>
+            Nothing is chosen for you — these are your words, and which of them a doctor reads is
+            your call.
+          </p>
+          <div className="flex flex-col">
+            {notes.map((n) => {
+              const on = prefs.noteDates.includes(n.date);
+              return (
+                <button key={n.date} onClick={() => toggleNote(n.date)}
+                  aria-pressed={on} aria-label={`Include the note from ${fmtNice(n.date)}`}
+                  className="text-left py-2.5 px-1"
+                  style={{ borderTop: `1px solid ${C.line}` }}>
+                  <div className="flex items-center gap-2">
+                    <span className="fhj-check-box" aria-hidden="true"
+                      style={{ background: on ? C.accent : "transparent", borderColor: on ? C.accent : C.line }}>
+                      {on ? <Icon name="check" size={12} color={C.onAccent} /> : null}
+                    </span>
+                    <span className="text-[11px] font-semibold" style={{ color: C.sub }}>{fmtNice(n.date)}</span>
+                  </div>
+                  <div className="text-[13px] leading-snug mt-1">{n.text.slice(0, 220)}</div>
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+
+      {picking === "photo" && (
+        <Modal title="Pick the before and after" onClose={() => setPicking(null)}>
+          <div className="flex flex-col gap-2">
+            {pairs.map((g) => (
+              <button key={g.fieldKey}
+                onClick={() => { feedback("select"); savePrefs({ photoField: g.fieldKey }); setPicking(null); }}
+                className="text-left rounded-xl px-3 py-2.5"
+                style={{
+                  background: C.faint,
+                  border: `1.5px solid ${(photo?.fieldKey === g.fieldKey) ? C.accent : C.line}`,
+                }}>
+                <div className="text-sm font-semibold">{g.spot}</div>
+                <div className="text-[11px] mt-0.5" style={{ color: C.sub }}>
+                  {fmtNice(g.before.date)} → {fmtNice(g.after.date)} · {g.apart} days apart
+                </div>
+              </button>
+            ))}
+            <button onClick={() => { feedback("nav"); savePrefs({ photoField: "none" }); setPicking(null); }}
+              className="fhj-btn fhj-btn-ghost">No photos in this pack</button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ---------- the entry point on Export ---------- */
+
+function AppointmentPackCard({ db, setDb, goPack }) {
+  const t0 = todayStr();
+  const prefs = useMemo(() => sanitizePackPrefs(db.profile.appointment), [db.profile.appointment]);
+  const [kind, setKind] = useState(prefs.lastAppointment ? "appt" : "30");
+  const [from, setFrom] = useState(addDays(t0, -29));
+  const [to, setTo] = useState(t0);
+
+  const range = useMemo(() => {
+    if (kind === "appt" && prefs.lastAppointment) return rangeSinceAppointment(prefs.lastAppointment, t0);
+    if (kind === "90") return rangeOfDays(90, t0);
+    if (kind === "custom") return rangeCustom(from, to);
+    return rangeOfDays(30, t0);
+  }, [kind, prefs.lastAppointment, from, to, t0]);
+
+  const entries = entriesFor(db);
+  const logged = entries.filter((e) => e.date >= range.start && e.date <= range.end).length;
+  const flares = (db.episodes || []).filter((ep) => {
+    const last = ep.end || t0;
+    return !(ep.start > range.end || last < range.start);
+  }).length;
+
+  const setLast = (value) => {
+    if (!setDb) return;
+    setDb((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        appointment: sanitizePackPrefs({ ...sanitizePackPrefs(prev.profile.appointment), lastAppointment: value || null }),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    if (value) setKind("appt");
+  };
+
+  const chip = (active, label, onClick, disabled = false) => (
+    <button key={label} onClick={() => { feedback("select"); onClick(); }} disabled={disabled}
+      aria-pressed={active}
+      className="px-3 py-1.5 rounded-full text-sm font-medium disabled:opacity-40"
+      style={{ background: active ? C.accent : C.card, color: active ? C.onAccent : C.ink, border: `1px solid ${active ? C.accent : C.line}` }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <Card className="fhj-pack-cta">
+      <div className="fhj-eyebrow">Bring this to your appointment</div>
+      <h2 className="font-display text-xl leading-tight mt-1">Prepare an Appointment Pack</h2>
+      <p className="text-sm leading-relaxed mt-1.5" style={{ color: C.sub }}>
+        One or two printed pages that answer “how have you been?” — the average and which way it
+        moved, your flares, what changed, your routine, and your own questions with room to write
+        the answers.
+      </p>
+
+      <div className="flex flex-wrap gap-1.5 mt-3">
+        {chip(kind === "appt", "Since my last appointment", () => setKind("appt"), !prefs.lastAppointment)}
+        {chip(kind === "30", "Last 30 days", () => setKind("30"))}
+        {chip(kind === "90", "Last 3 months", () => setKind("90"))}
+        {chip(kind === "custom", "Custom dates", () => setKind("custom"))}
+      </div>
+
+      {/* The one range people actually want is the one this app cannot know on
+          its own, so the field that unlocks it sits directly under the chip it
+          unlocks rather than at the bottom of the card. */}
+      {!prefs.lastAppointment && setDb && (
+        <label className="flex flex-wrap items-center gap-2 mt-2.5 text-[11px]" style={{ color: C.subtle }}>
+          When was your last appointment?
+          <input type="date" value="" max={t0} aria-label="Date of my last appointment"
+            onChange={(e) => setLast(e.target.value)} className="fhj-input" style={{ width: "auto" }} />
+        </label>
+      )}
+
+      {kind === "custom" && (
+        <div className="flex items-center gap-2 mt-3">
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
+            aria-label="Pack start date" className="fhj-input" />
+          <span className="text-xs" style={{ color: C.sub }}>to</span>
+          <input type="date" value={to} min={from} max={t0} onChange={(e) => setTo(e.target.value)}
+            aria-label="Pack end date" className="fhj-input" />
+        </div>
+      )}
+
+      <div className="text-sm mt-3" style={{ color: C.sub }}>
+        <b style={{ color: C.ink }}>{coverageLabel(logged, range.days)}</b> logged
+        {flares ? ` · ${flares} flare${flares === 1 ? "" : "s"}` : ""}
+      </div>
+
+      <button onClick={() => { feedback("save"); goPack(range); }}
+        className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
+        Prepare the pack
+      </button>
+
+    </Card>
+  );
+}
+
+function ExportScreen({ db, setDb, goPack }) {
   const profile = db.profile;
   const [range, setRange] = useState("30");
   const [from, setFrom] = useState(addDays(todayStr(), -29));
@@ -5638,6 +6019,16 @@ function ExportScreen({ db, setDb }) {
 
   return (
     <div className="px-4 pb-8 pt-3">
+      {/* First, and deliberately the loudest thing on the screen. Everything
+          below this is a file for a spreadsheet; this is the thing somebody
+          actually carries into a room and hands to a person. */}
+      <AppointmentPackCard db={db} setDb={setDb} goPack={goPack} />
+
+      <h2 className="fhj-section-title mt-5 mb-2">Raw data</h2>
+      <p className="text-xs leading-relaxed mb-2" style={{ color: C.sub }}>
+        Your logs as files — for a spreadsheet, another app, or your own records.
+      </p>
+
       <Card>
         <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: C.sub }}>Date range</div>
         <div className="flex flex-wrap gap-1.5">
@@ -13712,6 +14103,12 @@ function migrateDb(data) {
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
   if (d.profile.quickAdd !== undefined) d.profile.quickAdd = sanitizeQuickAdd(d.profile.quickAdd);
+  /* The appointment pack's settings — which sections print, the questions
+     somebody has been collecting since the last visit, and when that visit was.
+     Same reasoning as the rest: this reaches us from a hand-editable backup as
+     readily as from our own writer, and a malformed section map would render
+     as a pack with nothing in it. */
+  d.profile.appointment = sanitizePackPrefs(d.profile.appointment);
   /* Reminders moved from one time to a list. readReminders migrates a
      pre-list install on the way through, so nobody loses the time they set. */
   d.profile.reminders = readReminders(d.profile);
@@ -13784,6 +14181,11 @@ export default function App({ viewer = false }) {
   const [logMode, setLogMode] = useState("quick");
   const [logPhotos, setLogPhotos] = useState(false);
   const [reportParams, setReportParams] = useState({ type: "week" });
+  /* The pack's range is chosen on Export and carried into the pack screen —
+     the two screens have to agree on one window, and a range that lived in the
+     pack screen's own state would silently reset every time somebody went back
+     to change it. */
+  const [packParams, setPackParams] = useState({ range: null });
   /* Which flare the detail screen is showing. Kept here rather than in the URL
      for the same reason every other screen's parameter is: this app has no
      router, and a deep link into a record that may have been deleted on another
@@ -14257,6 +14659,7 @@ export default function App({ viewer = false }) {
     setLogDate(d); setLogMode("quick"); setLogPhotos(!!opts?.photos); setScreen("log");
   };
   const goReport = (type) => { setReportParams({ type }); setScreen("report"); };
+  const openPack = (range) => { setPackParams({ range }); setScreen("pack"); };
   const openSavedReport = (savedId) => { setReportParams({ savedId }); setScreen("report"); };
   const deleteSavedReport = (id) => setDb((prev) => ({ ...prev, reports: (prev.reports || []).filter((r) => r.id !== id) }));
   /* The AI slice holds the opt-in flag, the last analysis, and which
@@ -14541,7 +14944,12 @@ export default function App({ viewer = false }) {
   } else if (screen === "setup") {
     content = <EditSetupScreen profile={profile} entries={entries} onSave={updateProfile} goBack={goHome} />;
   } else if (screen === "export") {
-    content = <ExportScreen db={db} setDb={viewer ? null : setDb} />;
+    content = <ExportScreen db={db} setDb={viewer ? null : setDb} goPack={openPack} />;
+  } else if (screen === "pack") {
+    content = (
+      <AppointmentPackScreen db={db} setDb={viewer ? null : setDb} viewer={viewer}
+        params={packParams} goBack={() => setScreen("export")} />
+    );
   } else if (screen === "log") {
     content = (
       <LogScreen profile={profile} entries={entries} date={logDate} setDate={setLogDate}
@@ -14604,7 +15012,7 @@ export default function App({ viewer = false }) {
   const screenTitle = {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
-    routine: "Your Routine", episode: "Flare",
+    routine: "Your Routine", episode: "Flare", pack: "Appointment Pack",
     fitbit: "Import Health Data",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
   }[screen] || APP_NAME;

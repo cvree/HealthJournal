@@ -468,6 +468,53 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-19 addendum 18 — 1.16: the Appointment Pack.**
+> **`src/lib/appointmentPack.ts` (new, fully typed, pure, clock-free).** The whole pack is one
+> `buildAppointmentPack(input)` over `{today, range, entries, primary, metrics, episodes,
+> routineItems, routineLogs, sections, noteDates, questions, photo}`. Range helpers
+> (`rangeOfDays`, `rangeSinceAppointment`, `rangeCustom`, `previousWindow`) are exported because
+> Export builds the range and the pack screen consumes it — the two must agree on one window.
+> Floors are exported too (`MIN_AVERAGE_DAYS=3`, `MIN_CHANGE_DAYS=5`) so the UI can print *why*
+> something is missing: every section that is on but empty lands in `pack.omitted` with a reason,
+> which the section switches show and the paper never does.
+> Two decisions carry the module. **Changes are ranked by relative movement** (`|delta| / |prev|`)
+> — ranking on the raw delta would fill every pack with whichever metric has the largest units,
+> and a step count would permanently outrank a 1–10 rating. **Adherence counts from
+> `item.createdAt`**: the app keeps no history of schedules, only the plan as it stands today, so
+> counting a medication added on Monday against four earlier weeks would invent a failure.
+> As-needed items are counted (`taken`) and never scored (`adherence: null`).
+>
+> **`src/components/AppointmentPackView.tsx` (new).** Presentational; takes the built pack, a
+> `meta` block, a `renderPhoto` render prop (so the module never touches photo storage), and
+> optional edit callbacks — omit them and it is a read-only document, which is what the viewer
+> gets. The question editor writes through `onQuestionsChange`; starters are offered only while
+> the list is empty.
+>
+> **Profile slice `profile.appointment`** (`{lastAppointment, sections, questions, noteDates,
+> photoField}`), sanitised on every load in `migrateDb` via `sanitizePackPrefs`. It is *not* in
+> `DEVICE_LOCAL_PROFILE_KEYS`: the questions somebody has been collecting for a fortnight describe
+> the journal, not the machine, so they travel with sync and with a backup.
+>
+> **New screen `pack`** (`AppointmentPackScreen`), reached only from Export via `openPack(range)`
+> → `packParams`. `AppointmentPackCard` is the entry point and is the first thing on Export,
+> above CSV/Excel/JSON, which now sit under a "Raw data" heading.
+>
+> **Print.** `.fhj-pack-*` classes in `index.css` with a second `@media print` block: four
+> figures across, section fills dropped, `break-inside: avoid` per section, and a rule under each
+> question to write the answer on. Two things bit here and are worth remembering: the pack's
+> masthead is `print-only` (on screen the app header and the control card already say it), and
+> **section headings read their colour from the live theme**, so on paper a dark-theme ink printed
+> as pale grey and the headings vanished — the print block now forces `#1a1c21` on
+> `.fhj-pack-head`/`.fhj-pack-title` and `#4a4d57` on `.fhj-eyebrow`. `.fhj-shell` also had to
+> join `.max-w-md` in losing its max-width, or the whole document printed as a 28rem column down
+> the left of an A4 page. Verified by rendering to PDF in headless Chromium.
+>
+> Tests: **896 across 38 suites** (was 852/36) — `tests/appointmentPack.test.ts` (30, the
+> arithmetic and everything it refuses to print), `tests/appointmentPackUi.test.tsx` (14, the pack
+> being first on Export, one tap to a page, section switches, and questions surviving a reload).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 

@@ -253,6 +253,24 @@ period with arrows or a horizontal swipe. Save up to 24 reports to history, shar
 image, or **print it** — the printed version is a clean, self-contained document with its own
 masthead and disclaimer, meant to be handed to a clinician.
 
+**The appointment pack.** Ten minutes with a specialist every few months is what all of this is
+for, and the question that opens it — *"so how have you been?"* — is the one memory answers
+worst: it reaches for the last bad week, because that is what memory does. So the first thing on
+the Export screen, above the three file formats, is **Prepare an Appointment Pack**. Choose a
+window — the last 30 days, three months, your own dates, or **since my last appointment** — and
+one tap produces one or two printed pages in the order a consultation actually runs: the average
+and which way it moved against the same number of days before it, how many days it rests on, your
+best, hardest and most common day, how many flares there were and how long they ran and how bad
+they got, the three metrics that moved the most, what you took against what the plan asked for, a
+before-and-after photo pair, the notes you picked out yourself, and — last, because it is the part
+that belongs to you rather than to the app — **your own questions, printed with a rule under each
+one so there is somewhere to write the answer down.**
+
+Every section can be switched off, every average carries the coverage behind it, and a figure with
+nothing behind it is left out with its reason shown in the app rather than printed as a zero.
+Nothing is chosen for you: which notes a doctor reads, and which photos, are decisions the app
+declines to make on your behalf.
+
 **Get your data out.** CSV, multi-sheet Excel, and JSON — with date-range filters — plus a full
 JSON backup including photos that restores on any device.
 
@@ -526,7 +544,8 @@ health-journal/
 │   │                           #   recovery, viewer landing, metric picker,
 │   │                           #   year heatmap, score distribution, episode
 │   │                           #   timeline, small-multiple comparisons,
-│   │                           #   relationships explorer, long-term view
+│   │                           #   relationships explorer, long-term view,
+│   │                           #   appointment pack (the printed page)
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving
@@ -539,6 +558,7 @@ health-journal/
 │   │   ├── heatmap.ts          # the 12-month year grid, summaries and colour ramp
 │   │   ├── distribution.ts     # days per score, the three middles, hard/calm counts
 │   │   ├── episodes.ts         # the flare model + every number one can be asked for
+│   │   ├── appointmentPack.ts  # the printable summary: figures, floors, what it refuses
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
 │   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors
 │   │   ├── exports.ts          # typed CSV / wide-table generation
@@ -569,7 +589,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 852 tests across 36 suites
+└── tests/                      # 896 tests across 38 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
