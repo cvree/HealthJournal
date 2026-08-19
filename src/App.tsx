@@ -78,6 +78,7 @@ import {
   DERIVED_METRICS, derivedMetric, isDerivedKey, availableDerivedMetrics, metricCtx,
 } from "./lib/metrics";
 import AppointmentPackView from "./components/AppointmentPackView";
+import { followUps, pulseState, scoreWord } from "./lib/pulse";
 import {
   PACK_SECTIONS, sanitizePackPrefs, buildAppointmentPack,
   candidateNotes, rangeOfDays, rangeSinceAppointment, rangeCustom, pageLabel,
@@ -13133,7 +13134,223 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
+/* ============================================================
+   The Daily Pulse
+   ============================================================
+
+   One question, ten targets, one tap, written immediately. It is the first
+   thing on Today and the only thing on Today that is not optional, because for
+   most people on most days it is the only thing that will get recorded — and a
+   year of one honest number is worth more than a fortnight of forty.
+
+   Three things this is careful about:
+
+   **The tap is the save.** There is no Save button, no confirmation step, and
+   no "did you mean it?" — the number goes into the journal on the tap. Tapping
+   the same number again clears it, which is the same gesture the rest of the
+   app already uses for a scale.
+
+   **The saved state is derived, never asserted.** The line under the scale
+   reads the value back out of the journal. If the write did not happen, it
+   does not appear — an app that says "Saved" because a tap fired is an app
+   that will eventually lie about somebody's medical history.
+
+   **Detail comes after, never in front.** Under it: three to five optional
+   follow-ups chosen for today's score (see src/lib/pulse.ts), each answered
+   inline, and one link to the full check-in for anybody who wants the survey.
+   Nothing here opens a screen the person did not ask for. */
+
+function PulseScale({ field, value, onSet, disabled }) {
+  const lowLbl = field.dir === "pos" ? "1 · low" : "1 · none";
+  const highLbl = field.dir === "pos" ? "10 · great" : "10 · severe";
+  return (
+    <>
+      <div className="fhj-pulse-scale" role="group" aria-label={field.label}>
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+          const filled = value != null && n <= value;
+          return (
+            <button key={n} type="button" disabled={disabled}
+              aria-label={`${field.label} ${n} out of 10`}
+              aria-pressed={value === n}
+              onClick={(e) => onSet(n, e.currentTarget)}
+              className={"fhj-pulse-rung" + (filled ? " is-filled" : "") + (value === n ? " is-picked" : "")}
+              style={filled ? { "--fhj-rung": colorFor(value, field.dir) } : undefined}>
+              {n}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex justify-between mt-1.5 text-[10px]" style={{ color: C.subtle }}>
+        <span>{lowLbl}</span>
+        <span>{highLbl}</span>
+      </div>
+    </>
+  );
+}
+
+/** One optional follow-up, expanded in place. A field chip opens the app's own
+    input for that field — the same control the survey uses, so an answer given
+    here and an answer given there are the same act. */
+function FollowUpCard({ item, field, tpl, value, onSet, onClose }) {
+  return (
+    <Card className="mt-2">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="fhj-eyebrow">{item.label}</span>
+        <button type="button" onClick={onClose} aria-label={`Close ${item.label}`} className="fhj-icon-btn">
+          <Icon name="x" size={14} color={C.sub} />
+        </button>
+      </div>
+      <FieldInput field={field} value={value} onChange={onSet} tint={tpl.color} />
+    </Card>
+  );
+}
+
+function DailyPulse({
+  profile, tpl, keyField, entries, entry, date, viewer,
+  routineItems, routine, photoFields, onPatch, onOpenLog, onOpenPhotos, onOpenRoutine,
+}) {
+  const answers = entry?.answers || {};
+  const { value, recorded } = pulseState(answers, keyField.k);
+  const [open, setOpen] = useState(null);      // which follow-up is expanded
+  const [note, setNote] = useState(entry?.notes || "");
+  const noteRef = useRef(null);
+
+  /* Photos are per-field on an entry, so "have I photographed anything lately"
+     is a question about the journal rather than about today's answers. */
+  const photoInfo = useMemo(() => {
+    let last = null;
+    for (const e of entries) {
+      if (!e.photos) continue;
+      if (Object.values(e.photos).some((p) => p?.photoId) && (!last || e.date > last)) last = e.date;
+    }
+    return {
+      photoToday: last === date,
+      daysSincePhoto: last ? daySpan(last, date) - 1 : null,
+    };
+  }, [entries, date]);
+
+  const routineDue = useMemo(() => {
+    const p = routineProgress(routineItems || [], routine || [], date);
+    return p.total - p.done - p.skipped;
+  }, [routineItems, routine, date]);
+
+  const items = useMemo(() => followUps({
+    primaryKey: keyField.k,
+    score: value,
+    dir: keyField.dir,
+    fields: tpl.fields,
+    priority: tpl.chartMetrics,
+    answers,
+    hasNote: !!(entry?.notes || "").trim(),
+    photoFields: photoFields.map((f) => f.k),
+    photoToday: photoInfo.photoToday,
+    daysSincePhoto: photoInfo.daysSincePhoto,
+    routineDue,
+  }), [keyField, value, tpl, answers, entry, photoFields, photoInfo, routineDue]);
+
+  const setPulse = (n, el) => {
+    if (viewer) return;
+    if (value === n) { feedback("erase"); onPatch(profile.id, date, { answers: { [keyField.k]: null } }, "quick"); return; }
+    feedback("quickadd", { el });
+    place("scale", n, 10);
+    onPatch(profile.id, date, { answers: { [keyField.k]: n } }, "quick");
+  };
+
+  const openItem = (item) => {
+    feedback("tap");
+    if (item.kind === "photo") return onOpenPhotos();
+    if (item.kind === "routine") return onOpenRoutine();
+    setOpen((cur) => (cur === item.id ? null : item.id));
+  };
+
+  const openItemDef = items.find((i) => i.id === open);
+  const openField = openItemDef?.kind === "field" ? getField(tpl, openItemDef.key) : null;
+
+  return (
+    <Card className="fhj-pulse-card mt-4">
+      <div className="fhj-eyebrow">{recorded ? "Today, recorded" : "Today, in one tap"}</div>
+      <h2 className="font-display text-[1.35rem] leading-tight mt-1 mb-3">{keyField.label}</h2>
+
+      <PulseScale field={keyField} value={value} onSet={setPulse} disabled={viewer} />
+
+      {/* Derived from the journal, not from the tap. See the note above. */}
+      <div className="fhj-pulse-state" aria-live="polite">
+        {recorded ? (
+          <>
+            <span className="fhj-pulse-mark" style={{ background: colorFor(value, keyField.dir) }}>
+              <Icon name="check" size={13} color={readableInk(colorFor(value, keyField.dir))} />
+            </span>
+            <span>
+              <b>{value}/10</b> saved for today — {scoreWord(value, keyField.dir)}.
+              {" "}<span style={{ color: C.subtle }}>Tap it again to clear.</span>
+            </span>
+          </>
+        ) : (
+          <span style={{ color: C.subtle }}>
+            {viewer ? "Read-only — nothing is saved here." : "Nothing recorded yet. One tap is a whole day logged."}
+          </span>
+        )}
+      </div>
+
+      {recorded && !viewer && items.length > 0 && (
+        <div className="mt-3">
+          <div className="fhj-eyebrow mb-1.5">Anything else? — all optional</div>
+          <div className="fhj-pulse-chips">
+            {items.map((item) => (
+              <button key={item.id} type="button" onClick={() => openItem(item)}
+                aria-expanded={item.kind === "field" || item.kind === "note" ? open === item.id : undefined}
+                className={"fhj-pulse-chip" + (open === item.id ? " is-open" : "")}>
+                <Icon name={item.icon} size={14} color="currentColor" />
+                <span>
+                  <span className="fhj-pulse-chip-label">{item.label}</span>
+                  <span className="fhj-pulse-chip-hint">{item.hint}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {openField && (
+            <FollowUpCard item={openItemDef} field={openField} tpl={tpl} value={answers[openField.k]}
+              onSet={(v) => onPatch(profile.id, date, { answers: { [openField.k]: v } }, "quick")}
+              onClose={() => setOpen(null)} />
+          )}
+          {openItemDef?.kind === "note" && (
+            <Card className="mt-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="fhj-eyebrow">Note</span>
+                <button type="button" onClick={() => setOpen(null)} aria-label="Close Note" className="fhj-icon-btn">
+                  <Icon name="x" size={14} color={C.sub} />
+                </button>
+              </div>
+              <textarea ref={noteRef} rows={2} value={note} autoFocus
+                aria-label="Note for today"
+                onChange={(e) => setNote(e.target.value)}
+                onBlur={() => onPatch(profile.id, date, { notes: note }, "quick")}
+                placeholder="Anything worth remembering about today…"
+                className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
+                style={{ background: C.faint, border: `1px solid ${C.line}` }} />
+              <button type="button"
+                onClick={() => { feedback("save"); onPatch(profile.id, date, { notes: note }, "quick"); setOpen(null); }}
+                className="fhj-btn fhj-btn-secondary fhj-btn-sm mt-2" disabled={!note.trim()}>
+                Save note
+              </button>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {!viewer && (
+        <button type="button" onClick={() => { feedback("nav"); onOpenLog(); }}
+          className="fhj-pulse-more">
+          Add more detail
+          <Icon name="right" size={13} color="currentColor" />
+        </button>
+      )}
+    </Card>
+  );
+}
+
+function DashboardScreen({ profile, entries, openLog, onPatch, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -13206,9 +13423,24 @@ function DashboardScreen({ profile, entries, openLog, goSettings, goSetup, goFoo
         )}
       </div>
 
+      {/* ---------- The Daily Pulse ----------
+          Above everything, including Quick Add. Quick Add is a menu of things
+          you *could* log; this is the one thing worth logging every day, and
+          it is answered without leaving the screen. */}
+      {keyField && keyField.type === "scale" && (
+        <DailyPulse
+          profile={profile} tpl={tpl} keyField={keyField} entries={entries} entry={today}
+          date={todayStr()} viewer={viewer}
+          routineItems={routineItems} routine={routine} photoFields={photoFields}
+          onPatch={onPatch}
+          onOpenLog={() => openLog(todayStr())}
+          onOpenPhotos={() => openLog(todayStr(), { photos: true })}
+          onOpenRoutine={goRoutine} />
+      )}
+
       {/* ---------- Quick Add ----------
-          First thing under the header, every time. This is what the app is
-          for; everything else on this screen is a report on it. */}
+          Under the pulse: the other things a day can hold, for the days that
+          hold more than a number. */}
       {!viewer && (
         <>
           <div className="fhj-section mt-5 fhj-cat-symptom">
@@ -14900,7 +15132,7 @@ export default function App({ viewer = false }) {
   }));
 
   const todayProps = {
-    profile, entries, openLog: goToLog, viewer,
+    profile, entries, openLog: goToLog, viewer, onPatch: upsertEntry,
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
     routine: db.routine || [], routineItems: db.routineItems || [],
     onUpdateLibrary: setLibrary,

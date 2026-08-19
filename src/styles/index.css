@@ -3179,6 +3179,157 @@ button.fhj-section:disabled {
 }
 
 /* ============================================================
+   The Daily Pulse
+   ============================================================
+   The one control on Today that has to be legible, reachable and unambiguous
+   at arm's length, first thing in the morning, with one thumb. Everything here
+   is bigger than the app's normal scale on purpose: the rungs are the largest
+   tap targets in the product, and the number under them is set at display
+   size, because "did that register?" is the question this card exists to
+   answer before it is asked. */
+
+.fhj-pulse-card {
+  border-color: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  border-width: var(--fhj-bw-strong);
+}
+
+.fhj-pulse-scale {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 0.25rem;
+}
+
+.fhj-pulse-rung {
+  position: relative;
+  min-height: 3.25rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition:
+    background var(--fhj-quick) ease,
+    color var(--fhj-quick) ease,
+    transform 90ms var(--fhj-out);
+}
+.fhj-pulse-rung:active:not(:disabled) {
+  transform: translateY(2px);
+}
+/* Everything up to the chosen number fills, so the row reads as a level rather
+   than as ten unrelated buttons — the shape of "6 out of 10" is legible from
+   across a room, before any number is read. */
+.fhj-pulse-rung.is-filled {
+  background: color-mix(in srgb, var(--fhj-rung) 26%, transparent);
+  border-color: color-mix(in srgb, var(--fhj-rung) 45%, transparent);
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-pulse-rung.is-picked {
+  background: var(--fhj-rung);
+  border-color: var(--fhj-rung);
+  color: #121419;
+  font-weight: 700;
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.5));
+}
+@media (min-width: 380px) {
+  .fhj-pulse-rung {
+    min-height: 3.5rem;
+    font-size: 1rem;
+  }
+}
+
+.fhj-pulse-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--fhj-sub, #b9bac2);
+  min-height: 1.75rem;
+}
+
+.fhj-pulse-mark {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fhj-pulse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+/* An offer, not a task. Deliberately lighter than a Quick Add tile: these
+   appear *after* the day is already logged, and nothing here is owed. */
+.fhj-pulse-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  min-height: var(--fhj-tap);
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  color: var(--fhj-ink, #ecebe7);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition:
+    background var(--fhj-quick) ease,
+    border-color var(--fhj-quick) ease,
+    transform 90ms var(--fhj-out);
+}
+.fhj-pulse-chip:active {
+  transform: translateY(1px);
+}
+.fhj-pulse-chip.is-open {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+.fhj-pulse-chip-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.fhj-pulse-chip-hint {
+  display: block;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  margin-top: 0.0625rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-pulse-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: var(--fhj-tap);
+  margin-top: 0.75rem;
+  border-radius: var(--fhj-radius);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-accent-text, #8fb0e3);
+  background: transparent;
+  border: 1px dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+  transition: background var(--fhj-quick) ease;
+}
+@media (hover: hover) {
+  .fhj-pulse-more:hover {
+    background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  }
+}
+
+/* ============================================================
    Appointment pack
    ============================================================
    The one surface in this app whose real output is paper, so it is laid out
