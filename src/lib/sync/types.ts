@@ -32,6 +32,7 @@
 export type RecordKind =
   | "entry" | "food" | "bowel" | "foodItem"
   | "routine" | "routineItem"
+  | "episode"
   | "profile";
 
 /** One syncable thing, in the form both sides agree on. `payload` is the

@@ -44,6 +44,25 @@ export function validateDatabase(data: unknown): ValidationResult {
 
   if (d.reports !== undefined && !Array.isArray(d.reports)) errors.push("Reports is not an array.");
 
+  /* Episodes carry dates that drive every duration in Insights, so a malformed
+     one is worth naming rather than silently dropping — `sanitizeEpisodes`
+     will still drop it, but the recovery screen gets to say what was wrong. */
+  if (d.episodes !== undefined) {
+    if (!Array.isArray(d.episodes)) errors.push("Episodes is not an array.");
+    else {
+      d.episodes.forEach((e: unknown, i: number) => {
+        if (!e || typeof e !== "object") { errors.push(`Episode ${i} is not an object.`); return; }
+        const ep = e as Record<string, unknown>;
+        if (typeof ep.start !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(ep.start))
+          errors.push(`Episode ${i} has an invalid start date.`);
+        if (ep.end != null && (typeof ep.end !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(ep.end)))
+          errors.push(`Episode ${i} has an invalid end date.`);
+        if (typeof ep.metric !== "string" || !ep.metric)
+          errors.push(`Episode ${i} has no metric.`);
+      });
+    }
+  }
+
   return { ok: errors.length === 0, errors };
 }
 

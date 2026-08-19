@@ -49,6 +49,12 @@ import MetricPicker from "./components/MetricPicker";
 import YearHeatmap from "./components/YearHeatmap";
 import { buildHeatmap } from "./lib/heatmap";
 import {
+  sanitizeEpisodes, newEpisode, startFlare, endFlare, updateEpisode, removeEpisode,
+  openEpisode, sortEpisodes, isOpen as episodeIsOpen, lastDay as episodeLastDay,
+  episodeStats, episodeYear, compareEpisodeYears, episodeBands, episodeOn,
+  daySpan, datesBetween, durationLabel, episodeWhen,
+} from "./lib/episodes";
+import {
   MEALS, mealLabel, mealForTime, UNITS, BRISTOL, bristolLabel, BOWEL_COLORS,
   BOWEL_CONSISTENCY, BOWEL_AMOUNTS, SEVERITY_0_3, severityLabel,
   NUTRIENTS, NUTRIENT_KEYS, nutrientDef, formatNutrient,
@@ -5555,6 +5561,7 @@ async function buildFullBackup(db) {
     profile: db.profile, entries: db.entries, reports: db.reports || [],
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
     routine: db.routine || [], routineItems: db.routineItems || [],
+    episodes: db.episodes || [],
     // Past AI observations travel with the journal, but the opt-in does not:
     // turning on a feature that talks to an external service is a decision
     // made per device, by the person holding it, not inherited from a file.
@@ -5624,6 +5631,7 @@ async function restoreBackup(obj, setDb) {
     profile: obj.profile, entries: obj.entries, reports: Array.isArray(obj.reports) ? obj.reports : [],
     food: obj.food, bowel: obj.bowel, foods: obj.foods,
     routine: obj.routine, routineItems: obj.routineItems,
+    episodes: obj.episodes,
     // `enabled` is deliberately not restored — see buildFullBackup.
     ai: { ...DEFAULT_AI, analysis: obj.ai?.analysis ?? null, dismissed: Array.isArray(obj.ai?.dismissed) ? obj.ai.dismissed : [] },
     ack: true, onboarded: true,
@@ -13041,6 +13049,10 @@ function migrateDb(data) {
   /* The routine, for the same reason and on the same terms. */
   d.routineItems = sanitizeRoutineItems(d.routineItems);
   d.routine = sanitizeRoutineLogs(d.routine);
+  /* Flares, likewise. These drive every duration in Insights, so a row with the
+     dates the wrong way round would print negative weeks — sanitizeEpisodes
+     repairs that rather than trusting the file. */
+  d.episodes = sanitizeEpisodes(d.episodes);
   if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */

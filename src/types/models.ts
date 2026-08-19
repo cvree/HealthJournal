@@ -4,6 +4,8 @@
    the test suite. New code must import from here; App.tsx adopts them
    incrementally (it still carries @ts-nocheck until fully migrated). */
 
+import type { HealthEpisode } from "../lib/episodes";
+
 /* ---------- questions ---------- */
 
 export type FieldType =
@@ -470,5 +472,16 @@ export interface AppDatabase extends OnboardingState {
   routineItems?: RoutineItem[];
   /** One row per use of a routine item. Many per day. */
   routine?: RoutineLog[];
+  /** Flares and bad stretches, marked by the user. See src/lib/episodes.ts. */
+  episodes?: HealthEpisode[];
   schemaVersion?: number;
 }
+
+/* ---------- episodes ----------
+
+   The shape lives in src/lib/episodes.ts next to the arithmetic that reads it —
+   that module is pure and self-contained, and splitting a twelve-line interface
+   away from the two hundred lines that use it would help nobody. It is
+   re-exported here so `types/models` remains the one import for the data
+   contract. */
+export type { HealthEpisode };

@@ -56,6 +56,7 @@ interface Db {
   foods?: any[];
   routine?: any[];
   routineItems?: any[];
+  episodes?: any[];
   tombstones?: Tombstone[];
   [k: string]: unknown;
 }
@@ -67,6 +68,7 @@ const COLLECTIONS: [RecordKind, string][] = [
   ["foodItem", "foods"],
   ["routine", "routine"],
   ["routineItem", "routineItems"],
+  ["episode", "episodes"],
 ];
 
 function stripDeviceLocal(profile: any) {
@@ -123,7 +125,7 @@ export function projectDb(db: Db, deviceId: string, rev = 0): SyncRecord[] {
 
 const FIELD_OF: Record<string, string> = {
   entry: "entries", food: "food", bowel: "bowel", foodItem: "foods",
-  routine: "routine", routineItem: "routineItems",
+  routine: "routine", routineItem: "routineItems", episode: "episodes",
 };
 
 export interface ApplyResult {
