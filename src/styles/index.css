@@ -4965,6 +4965,34 @@ button:active > .fhj-nav-add {
   justify-content: space-between;
   margin-bottom: 0.25rem;
 }
+.fhj-cmp-keyset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem 0.875rem;
+  min-width: 0;
+}
+
+/* ---------- how it's drawn ----------
+   See src/components/ChartViewControls.tsx. Five rows of the same shape — a
+   label, a segmented control, and one line saying what the choice costs. */
+
+.fhj-view {
+  padding-top: 0.75rem;
+}
+.fhj-view-row + .fhj-view-row {
+  margin-top: 0.875rem;
+}
+.fhj-view-reset {
+  display: block;
+  margin-top: 1rem;
+  padding: 0.375rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 .fhj-cmp-key {
   display: inline-flex;
   align-items: center;
@@ -4999,7 +5027,9 @@ button:active > .fhj-nav-add {
   display: grid;
   gap: 0.5rem;
 }
-@media (min-width: 34rem) {
+/* Two-up only where both labels still fit on one line. At 34rem they did
+   not: "COMPARED WITH" wrapped and the two cards stopped matching. */
+@media (min-width: 46rem) {
   .fhj-rel-pickers {
     grid-template-columns: 1fr 1fr;
   }

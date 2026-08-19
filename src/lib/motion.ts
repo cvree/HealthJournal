@@ -66,13 +66,22 @@ export function lockPageScroll(): () => void {
   if (scrollLocks === 1 && typeof document !== "undefined") {
     lenis?.stop();
     const body = document.body;
+    const root = document.documentElement;
     const y = window.scrollY || window.pageYOffset || 0;
     const prev = {
       overflow: body.style.overflow,
       position: body.style.position,
       top: body.style.top,
       width: body.style.width,
+      paddingRight: body.style.paddingRight,
     };
+    /* Pinning the body takes the document scrollbar away with it, and on a
+       desktop that hands the page ~15px of extra width for exactly as long as
+       the sheet is open — every card under the scrim jumps sideways as it
+       opens and jumps back as it closes. Holding the gutter open costs
+       nothing and is invisible where the scrollbar is an overlay (every
+       phone), because there the gap is zero. */
+    const gutter = window.innerWidth - root.clientWidth;
     /* position:fixed rather than overflow:hidden — iOS Safari ignores the
        latter on the body and rubber-bands the page anyway. The scroll offset
        has to be carried on `top` and put back by hand, or closing the dialog
@@ -81,13 +90,33 @@ export function lockPageScroll(): () => void {
     body.style.position = "fixed";
     body.style.top = `-${y}px`;
     body.style.width = "100%";
+    if (gutter > 0) body.style.paddingRight = `${gutter}px`;
     restoreScroll = () => {
       body.style.overflow = prev.overflow;
       body.style.position = prev.position;
       body.style.top = prev.top;
       body.style.width = prev.width;
-      window.scrollTo(0, y);
+      body.style.paddingRight = prev.paddingRight;
+      /* Putting the page back must be a jump, not a journey. Two separate
+         things would otherwise animate it: `html { scroll-behavior: smooth }`,
+         and Lenis, which replaces `window.scrollTo` with its own eased
+         version. Between them, closing any sheet sent the page to the top and
+         then flew it back down over a second — from the reader's side, the
+         app scrolling itself for no reason. So: suspend smooth behaviour,
+         write the native scrollTop directly (the one route neither of them
+         intercepts), and hand Lenis the same number so it resumes from where
+         the page actually is rather than from zero. */
+      const behavior = root.style.scrollBehavior;
+      root.style.scrollBehavior = "auto";
+      const scroller = document.scrollingElement || root;
+      scroller.scrollTop = y;
       lenis?.start();
+      /* Lenis measured the document while it was pinned, so its idea of the
+         scrollable limit is zero — without this its own scrollTo clamps the
+         page straight back to the top. */
+      lenis?.resize();
+      lenis?.scrollTo(y, { immediate: true, force: true });
+      root.style.scrollBehavior = behavior;
     };
   }
   let released = false;

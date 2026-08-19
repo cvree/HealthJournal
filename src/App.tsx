@@ -50,6 +50,8 @@ import YearHeatmap from "./components/YearHeatmap";
 import ScoreDistribution from "./components/ScoreDistribution";
 import EpisodeTimeline from "./components/EpisodeTimeline";
 import MetricComparison, { ChartBands } from "./components/MetricComparison";
+import ChartViewControls from "./components/ChartViewControls";
+import { avgKeyOf, chartViewSummary, sanitizeChartView } from "./lib/chartView";
 import RelationshipExplorer from "./components/RelationshipExplorer";
 import LongTermView from "./components/LongTermView";
 import { distribution, hardLabel, calmLabel, pct } from "./lib/distribution";
@@ -1157,7 +1159,31 @@ function weeklyAverages(entries, key, weeks = 6) {
     const start = addDays(end, -6);
     const vals = entries.filter((e) => e.date >= start && e.date <= end)
       .map((e) => e.answers[key]).filter((v) => typeof v === "number");
-    out.push({ d: fmtShort(end), v: vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null });
+    out.push({
+      d: fmtShort(end), n: vals.length,
+      v: vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null,
+    });
+  }
+  return out;
+}
+
+/** The same shape by calendar month, for people whose "how has it been going"
+    is a longer question than six weeks can answer. Bars carry `n` so the
+    tooltip can say how many days are behind each one — a month averaged from
+    three days and one averaged from thirty should not read alike. */
+function monthlyBars(entries, key, months = 6) {
+  const t0 = todayStr();
+  const [y0, m0] = t0.split("-").map(Number);
+  const out = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(y0, m0 - 1 - i, 1);
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const vals = entries.filter((e) => e.date.slice(0, 7) === stamp)
+      .map((e) => e.answers[key]).filter((v) => typeof v === "number");
+    out.push({
+      d: d.toLocaleDateString(undefined, { month: "short" }), n: vals.length,
+      v: vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null,
+    });
   }
   return out;
 }
@@ -3249,29 +3275,53 @@ function ChartEmpty({ title, height = 210 }) {
    them; `seriesBetween` is its range-aware replacement. */
 
 
-function WeeklyBars({ entries, field, color }) {
-  const data = weeklyAverages(entries, field.k, 6);
+/** Six weeks, or six months — the same question at two lengths, because "is
+    this better than it was" is a different question over a fortnight and over
+    half a year, and only the person reading it knows which one they meant. */
+function PeriodBars({ entries, field, color, bucket, onBucket, onFeedback }) {
+  const data = bucket === "month"
+    ? monthlyBars(entries, field.k, 6)
+    : weeklyAverages(entries, field.k, 6);
   const isScale = field.type === "scale";
   const last = data.length - 1;
+  const word = bucket === "month" ? "monthly" : "weekly";
   return (
-    <div style={{ width: "100%", height: 118 }}>
-      <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 6, right: 8, left: -2, bottom: 0 }}>
-          <XAxis dataKey="d" tick={axisTick()} axisLine={false} tickLine={false} tickMargin={6} />
-          <YAxis domain={isScale ? [0, 10] : ["auto", "auto"]}
-            tick={axisTick()} axisLine={false} tickLine={false} width={34} />
-          <Tooltip formatter={(v) => [field.unit ? `${v} ${field.unit}` : v, "weekly avg"]}
-            cursor={{ fill: C.faint }} {...tooltipProps()} />
-          <Bar dataKey="v" radius={[6, 6, 2, 2]} {...chartAnim()}>
-            {/* The current week is the one being asked about; the ones before
-                it are context, so they sit back a step. */}
-            {data.map((_, i) => (
-              <Cell key={i} fill={color} fillOpacity={i === last ? 1 : 0.42} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <>
+      <div className="fhj-segmented mb-2.5" role="radiogroup" aria-label="Averaged into">
+        {[["week", "Weeks"], ["month", "Months"]].map(([v, label]) => (
+          <button key={v} type="button" role="radio" aria-checked={bucket === v}
+            onClick={() => { onFeedback?.("select"); onBucket(v); }}
+            className={"fhj-segment" + (bucket === v ? " is-active" : "")}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div style={{ width: "100%", height: 118 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 6, right: 8, left: -2, bottom: 0 }}>
+            <XAxis dataKey="d" tick={axisTick()} axisLine={false} tickLine={false} tickMargin={6} />
+            <YAxis domain={isScale ? [0, 10] : ["auto", "auto"]}
+              tick={axisTick()} axisLine={false} tickLine={false} width={34} />
+            <Tooltip formatter={(v, _n, p) => [
+              field.unit ? `${v} ${field.unit}` : v,
+              `${word} avg · ${p?.payload?.n ?? 0} ${p?.payload?.n === 1 ? "day" : "days"}`,
+            ]} cursor={{ fill: C.faint }} {...tooltipProps()} />
+            <Bar dataKey="v" radius={[6, 6, 2, 2]} {...chartAnim()}>
+              {/* The current week is the one being asked about; the ones before
+                  it are context, so they sit back a step. */}
+              {data.map((_, i) => (
+                <Cell key={i} fill={color} fillOpacity={i === last ? 1 : 0.42} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="fhj-caption mt-1.5">
+        Touch a bar for how many days are behind it — an average of three days
+        and an average of thirty look the same on a chart and are not the same
+        thing.
+      </div>
+    </>
   );
 }
 
@@ -4398,6 +4448,27 @@ function avgBetween(entries, key, start, end) {
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 }
 
+/** The line under the trend chart, which has to describe whatever the reader
+    chose rather than the one shape the chart used to have. */
+function chartNote(view, field, banded) {
+  const bits = [];
+  if (view.avg === "only") {
+    bits.push("Every line is a 7-day average");
+  } else {
+    bits.push(
+      view.shape === "dots" ? "One dot per logged day"
+        : view.shape === "steps" ? "Each day held until the next one"
+          : "Solid line: daily"
+    );
+    if (view.avg === "on") {
+      bits.push(`dashed line: 7-day average of ${String(field.label).toLowerCase()}`);
+    }
+  }
+  if (view.breakGaps) bits.push("gaps left where nothing was logged");
+  if (banded) bits.push("shaded: a flare you marked");
+  return bits.join(" · ");
+}
+
 /* MainTrendChart lived here. It drew the primary metric and nothing else,
    under a picker that let you pin four — so three of the four pins changed
    nothing you could see until you scrolled to a second card further down.
@@ -4566,7 +4637,7 @@ function EpisodesSection({
   );
 }
 
-function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [], onStartFlare, onEndFlare, onOpenEpisode, onPinMetrics }) {
+function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [], onStartFlare, onEndFlare, onOpenEpisode, onPinMetrics, onChartView }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const t0 = todayStr();
@@ -4593,6 +4664,16 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
   const pin = (next) => {
     setMetrics(next);
     if (!viewer) onPinMetrics?.(next);
+  };
+
+  /* How the chart is drawn is a saved preference for the same reason the pins
+     are: somebody who reads their journal in steps with the gaps left open
+     wants it that way tomorrow too. */
+  const [bucket, setBucket] = useState("week");
+  const [chartView, setChartView] = useState(() => sanitizeChartView(profile.chartView));
+  const setView = (next) => {
+    setChartView(next);
+    if (!viewer) onChartView?.(next);
   };
   const selFields = metrics.map(fieldFor).filter(Boolean);
   const metricField = selFields[0] || keyField;
@@ -4706,32 +4787,33 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
     });
   }, [entries, metricField, t0]);
 
-  /* One row per day in the window, every pinned metric on it, plus the
-     primary's trailing 7-day average — the dashed line the trend chart draws
-     behind the metric this screen is about. */
+  /* One row per day in the window, every pinned metric on it, and each one's
+     trailing 7-day average alongside it — the dashed line behind the primary,
+     and every line at once when the reader asks for averages only. */
   const comparisonData = useMemo(() => {
     const byDate = new Map(chartEntries.map((e) => [e.date, e]));
     const rows = [];
     for (let d = range.start; d <= range.end; d = addDays(d, 1)) {
       const answers = byDate.get(d)?.answers || {};
-      const row = { d, avg: null };
+      const row = { d };
       for (const f of selFields) {
         const v = answers[f.k];
         row[f.k] = typeof v === "number" ? v : null;
       }
       rows.push(row);
     }
-    if (primaryKey) {
+    for (const f of selFields) {
+      const ak = avgKeyOf(f.k);
       for (let i = 0; i < rows.length; i++) {
         const win = rows.slice(Math.max(0, i - 6), i + 1)
-          .map((r) => r[primaryKey]).filter((v) => v != null);
+          .map((r) => r[f.k]).filter((v) => v != null);
         // Two days is the least that can average to something other than itself.
-        rows[i].avg = win.length >= 2
+        rows[i][ak] = win.length >= 2
           ? Math.round((win.reduce((a, b) => a + b, 0) / win.length) * 10) / 10 : null;
       }
     }
     return rows;
-  }, [chartEntries, selFields, primaryKey, range.start, range.end]);
+  }, [chartEntries, selFields, range.start, range.end]);
 
   /* What the explorer is allowed to offer. Outcomes are 1–10 ratings only —
      "how did your steps relate to your weight" is a question this screen has no
@@ -4881,17 +4963,23 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
             underneath, and one crosshair crosses all of them. */}
         <MetricComparison
           fields={selFields} data={comparisonData} palette={CHART_PALETTE(tpl.color)}
-          primaryKey={primaryKey} mainHeight={214} bands={bands}
+          primaryKey={primaryKey} view={chartView} mainHeight={214} bands={bands}
           tooltipProps={tooltipProps} axisTick={axisTick} chartAnim={chartAnim}
           fmtShort={fmtShort} fmtNice={fmtNice}
           renderEmpty={(title, height) => <ChartEmpty title={title} height={height} />}
-          note={<>
-            Solid line: daily · dashed line: 7-day average of {metricField.label.toLowerCase()}
-            {bands.length > 0 && " · shaded: a flare you marked"}
-          </>} />
-        <Disclosure className="mt-3.5" label="Week by week"
-          summary="The same metric, averaged into weeks">
-          <WeeklyBars entries={chartEntries} field={metricField} color={tpl.color} />
+          note={chartNote(chartView, metricField, bands.length > 0)} />
+        <Disclosure className="mt-3.5" label="How it's drawn"
+          summary={chartViewSummary(chartView)}>
+          <ChartViewControls
+            view={chartView} onChange={setView} onFeedback={feedback}
+            hasRatings={selFields.some((f) => f.type === "scale")}
+            ratingCount={selFields.filter((f) => f.type === "scale").length} />
+        </Disclosure>
+        <Disclosure className="mt-3.5"
+          label={bucket === "month" ? "Month by month" : "Week by week"}
+          summary={`The same metric, averaged into ${bucket === "month" ? "months" : "weeks"}`}>
+          <PeriodBars entries={chartEntries} field={metricField} color={tpl.color}
+            bucket={bucket} onBucket={setBucket} onFeedback={feedback} />
         </Disclosure>
       </Card>
 
@@ -15938,6 +16026,15 @@ export default function App({ viewer = false }) {
     },
   }));
 
+  const saveChartView = (view) => setDb((prev) => ({
+    ...prev,
+    profile: {
+      ...prev.profile,
+      chartView: sanitizeChartView(view),
+      updatedAt: new Date().toISOString(),
+    },
+  }));
+
   const setQuickAdd = (ids, order) => setDb((prev) => ({
     ...prev,
     profile: {
@@ -15989,7 +16086,7 @@ export default function App({ viewer = false }) {
     ai: db.ai, setAi, aiAutoRun,
     episodes: db.episodes || [],
     onStartFlare: beginFlare, onEndFlare: finishFlare,
-    onOpenEpisode: openEpisodeScreen, onPinMetrics: pinMetrics,
+    onOpenEpisode: openEpisodeScreen, onPinMetrics: pinMetrics, onChartView: saveChartView,
   };
 
   let content = null;

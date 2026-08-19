@@ -2,6 +2,53 @@
 
 ## 1.18.0
 
+### How it's drawn is your choice
+
+There is more than one honest way to draw a month of ratings, and which one is
+useful depends on what you came to find out. A line implies the days between
+two entries; steps do not. A 7-day average is the only way to see a direction
+through a noisy fortnight, and the only way to miss a single awful day. Four
+ratings on one axis is a comparison; four ratings on four axes is four answers.
+
+So they are settings now, under the chart, behind a row that prints the current
+answer when it is closed. Shape: line, filled, steps, or bare dots. The 7-day
+average: off, dashed behind the daily line, or the only thing drawn. Days you
+didn't log: joined up, or left as a gap. Several ratings: one axis, or one chart
+each. And the rating axis: the full 1–10, or fitted to the range you actually
+scored.
+
+Every option says what it costs rather than what it is — "holds each day's
+value until the next one, and claims nothing in between" is the entire
+difference between a line and steps. The last one can mislead, so it is the one
+the chart itself confesses to: while a fitted axis is on, the caption reads
+"axis fitted to 3–9 of 1–10, so differences look bigger than they are". An axis
+that starts at 3 turns a calm fortnight into a mountain range, and nobody reads
+axis labels.
+
+The choices are saved next to your pins, so the chart opens tomorrow the way you
+left it, and one link puts everything back the way it started. Underneath,
+"Week by week" gained a second length — the same metric averaged into months —
+and every bar now says how many days are behind it, because an average of three
+days and an average of thirty look identical on a chart and are not the same
+thing.
+
+### Sheets stopped moving the page
+
+Closing any sheet in the app — a food entry, a metric picker, a confirmation —
+sent the page to the top and then flew it back down over about a second. It
+looked like the app scrolling itself for no reason, and it was: the page is
+pinned while a sheet is open, and putting it back afterwards went through
+`window.scrollTo`, which is animated twice over here (the stylesheet asks for
+smooth scrolling, and Lenis replaces the method with its own eased version).
+Restoring the offset is now a jump, through the one route neither of them
+intercepts, with Lenis re-measured and handed the same number so it resumes
+from where the page actually is rather than from zero.
+
+While a sheet is open the scrollbar's gutter is held open too, so the cards
+underneath no longer shuffle 15px sideways as it opens and back as it closes.
+On a phone, where the scrollbar is an overlay, the gutter is zero and nothing
+changes.
+
 ### The trend chart draws what you pinned
 
 Insights let you pin four metrics and then drew one of them. The other three

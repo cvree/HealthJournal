@@ -150,6 +150,87 @@ describe("pinned metrics", () => {
   });
 });
 
+describe("how the chart is drawn", () => {
+  const openControls = () =>
+    fireEvent.click(screen.getByRole("button", { name: /How it's drawn/ }));
+  const pick = (group: string, option: string) =>
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: group }))
+      .getByRole("radio", { name: option }));
+
+  it("says what it is doing before you open it", async () => {
+    await mountInsights();
+    expect(screen.getByRole("button", { name: /How it's drawn/ }).textContent)
+      .toContain("line · 7-day average");
+  });
+
+  it("offers the choices that mean something for what is pinned", async () => {
+    await mountInsights();
+    openControls();
+    for (const group of ["Shape", "7-day average", "Days you didn't log", "Rating axis"]) {
+      expect(screen.getByRole("radiogroup", { name: group })).toBeTruthy();
+    }
+    /* One rating pinned: "one axis or one chart each" is not a question yet. */
+    expect(screen.queryByRole("radiogroup", { name: "Several ratings" })).toBeNull();
+    const group = screen.getByRole("group", { name: "Pinned metrics" });
+    const chips = within(group).getAllByRole("button")
+      .filter((b) => b.getAttribute("aria-pressed") !== null);
+    fireEvent.click(chips[1]);
+    await waitFor(() =>
+      expect(screen.getByRole("radiogroup", { name: "Several ratings" })).toBeTruthy());
+  });
+
+  it("writes the choice to the journal, so it is there tomorrow", async () => {
+    await mountInsights();
+    openControls();
+    pick("Shape", "Steps");
+    await waitFor(() => expect(saved().profile.chartView.shape).toBe("steps"));
+    pick("7-day average", "Only");
+    await waitFor(() => expect(saved().profile.chartView.avg).toBe("only"));
+    pick("Days you didn't log", "Leave a gap");
+    await waitFor(() => expect(saved().profile.chartView.breakGaps).toBe(true));
+    expect(screen.getByRole("button", { name: /How it's drawn/ }).textContent)
+      .toContain("steps · averages only · gaps open");
+  });
+
+  it("opens on whatever was saved last time", async () => {
+    await mountInsights((db) => { db.profile.chartView = { shape: "dots", avg: "off" }; });
+    expect(screen.getByRole("button", { name: /How it's drawn/ }).textContent).toContain("dots");
+    openControls();
+    expect(screen.getByRole("radio", { name: "Dots" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  /* The one setting that can mislead has to admit to it on the chart itself. */
+  it("says so on the chart while the axis is fitted to the data", async () => {
+    await mountInsights();
+    openControls();
+    expect(document.body.textContent).not.toContain("so differences look bigger");
+    pick("Rating axis", "Fit the data");
+    await waitFor(() =>
+      expect(document.body.textContent).toMatch(/Axis fitted to \d+–\d+ of 1–10/));
+    expect(document.body.textContent).toContain("so differences look bigger than they are");
+  });
+
+  it("puts everything back in one tap", async () => {
+    await mountInsights();
+    openControls();
+    pick("Shape", "Dots");
+    await waitFor(() => expect(saved().profile.chartView.shape).toBe("dots"));
+    fireEvent.click(screen.getByRole("button", { name: /Put it back the way it started/ }));
+    await waitFor(() => expect(saved().profile.chartView.shape).toBe("line"));
+    expect(screen.queryByRole("button", { name: /Put it back the way it started/ })).toBeNull();
+  });
+
+  it("averages into weeks or into months, and says which", async () => {
+    await mountInsights();
+    fireEvent.click(screen.getByRole("button", { name: /Week by week/ }));
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Averaged into" }))
+      .getByRole("radio", { name: "Months" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Month by month/ })).toBeTruthy());
+    expect(document.body.textContent).toContain("averaged into months");
+  });
+});
+
 describe("flares", () => {
   it("offers one button, and never invents an episode by itself", async () => {
     const db = await mountInsights();

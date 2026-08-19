@@ -125,6 +125,16 @@ export interface TrackingSetup {
   /** Up to four metrics pinned to Insights, in order. The first is the one
       the hero and the main trend chart are about. */
   pinnedMetrics?: string[];
+  /** How the trend chart is drawn — shape, the 7-day average, gaps, one axis
+      or several, full 1–10 or fitted. See src/lib/chartView.ts; always read
+      back through `sanitizeChartView`. */
+  chartView?: {
+    shape?: string;
+    avg?: string;
+    breakGaps?: boolean;
+    apart?: boolean;
+    zoom?: boolean;
+  };
   /** Which Quick Add tiles the dashboard shows, in order. `undefined` means
       "never chosen" and gets the default four; an empty array is a real
       choice and hides the section. */

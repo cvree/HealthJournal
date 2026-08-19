@@ -210,6 +210,20 @@ one had the opposite fault: a picker that let you pin four metrics above a chart
 with the comparison exiled to a second card further down the screen. Pinning is now visible
 where you pin.
 
+**How it's drawn is your choice, and every choice says what it costs.** Under the chart, "How
+it's drawn" — closed, it prints the current answer; open, it is five decisions. *Shape*: a line,
+a filled line, steps, or bare dots — and the difference is stated, because steps hold each day's
+value until the next one and claim nothing in between, while a line runs straight through days
+you never logged. *7-day average*: off, dashed behind the daily line, or the only thing drawn —
+smoother, and a single terrible day disappears into it. *Days you didn't log*: joined up, or left
+as a gap. *Several ratings*: together on one axis where heights are comparable, or one chart each
+when four lines become spaghetti. *Rating axis*: the full 1–10, or fitted to the range you
+actually scored — and while that one is on, the chart prints "axis fitted to 3–9 of 1–10, so
+differences look bigger than they are", because an axis that starts at 3 flatters a flat
+fortnight into a mountain range and nobody reads axis labels. The choices are saved with your
+pins, so the chart opens tomorrow the way you left it. Underneath, the same metric averaged into
+weeks or into months, with the number of days behind each bar on touch.
+
 **Possible relationships.** Pick something you're tracking and something you suspect; the screen
 compares the days both were logged, same-day or with a one-day lag. The two pickers are the
 app's own control rather than a native `<select>` — the list runs to two dozen metrics, so it
@@ -597,6 +611,7 @@ health-journal/
 │   ├── components/             # ambient backdrop, appearance panel, lock,
 │   │                           #   recovery, viewer landing, metric picker,
 │   │                           #   field select (the app's own dropdown),
+│   │                           #   chart view controls (how it's drawn),
 │   │                           #   year heatmap, score distribution, episode
 │   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
@@ -628,7 +643,8 @@ health-journal/
 │   │   ├── reminders.ts        # check-in times, .ics, notifications
 │   │   ├── durability.ts       # persistent storage, backup freshness
 │   │   ├── deeplink.ts         # ?screen= allowlist for Home Screen shortcuts
-│   │   ├── motion.ts           # Lenis + GSAP
+│   │   ├── chartView.ts        # how the trend chart is drawn (pure, saved)
+│   │   ├── motion.ts           # Lenis + GSAP, and the scroll lock behind sheets
 │   │   ├── sound.ts            # the synthesised instrument
 │   │   ├── feedback.ts         # one door: haptics + sound + motion + visual
 │   │   ├── sync/               # optional cross-device sync

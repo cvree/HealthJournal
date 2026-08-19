@@ -662,6 +662,57 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-19 addendum 22 — 1.18: chart view options, and the scroll lock that scrolled.**
+> **The bug worth remembering.** Closing *any* sheet flew the page from the top back down to
+> where it was, over about a second. `lockPageScroll` pins the body (`position: fixed; top: -y`)
+> and restored the offset with `window.scrollTo`, which is animated twice here: the stylesheet
+> sets `html { scroll-behavior: smooth }`, and Lenis *replaces* `window.scrollTo` with its own
+> eased version. The restore now suspends smooth behaviour, writes `document.scrollingElement
+> .scrollTop` directly (the one route neither intercepts), then `lenis.start()` →
+> **`lenis.resize()`** → `lenis.scrollTo(y, { immediate: true, force: true })`. The `resize()` is
+> not optional: Lenis measured the document while it was pinned, so its cached limit is 0 and its
+> own `scrollTo` clamps straight back to the top — which is exactly what the first attempt at
+> this fix did. The lock also holds the scrollbar gutter open (`body.paddingRight`) so desktop
+> cards stop shuffling 15px sideways when a sheet opens. `tests/scrollLock.test.ts` (6) pins all
+> of it, including "never calls `window.scrollTo`".
+>
+> **`src/lib/chartView.ts` (new, pure)** is the saved `ChartView`: `shape` (line | area | steps |
+> dots), `avg` (off | on | only), `breakGaps`, `apart`, `zoom`, plus `DEFAULT_CHART_VIEW`,
+> `sanitizeChartView` (per-field fallback — one bad key must not discard the rest),
+> `chartViewSummary` for the closed disclosure row, `curveOf`, and `avgKeyOf` — the `avg~<key>`
+> row key, prefixed so it can never collide with a real field key. Persisted at
+> `profile.chartView` via `saveChartView`, and it syncs like `pinnedMetrics` does.
+>
+> **`src/components/ChartViewControls.tsx` (new)** is five `fhj-segmented` rows inside App's
+> `Disclosure`, each with a line saying what the choice *costs*. Two rows are conditional:
+> "Several ratings" needs more than one rating pinned, and both rating rows need a rating at all.
+>
+> **`MetricComparison` is panel-driven now.** It builds a `Panel[]` (`apart` → one per field;
+> otherwise the ratings share one and every own-unit metric keeps its own), sorts the primary's
+> panel first, and draws each with its own domain — `[1,10]`, or a fitted range computed here,
+> or `["auto","auto"]` for own units. `avg: "only"` swaps every series' `dataKey` for its
+> average, fills included. The date axis is drawn under the *last drawn* panel, not the last
+> field. Rows now carry an average per metric rather than one for the primary.
+>
+> **`WeeklyBars` → `PeriodBars`**, with a Weeks/Months segmented control (`monthlyBars`, six
+> calendar months) and `n` on every bar so the tooltip can say how many days are behind it. The
+> Disclosure's own label follows the choice ("Week by week" / "Month by month").
+>
+> **CSS.** `.fhj-view*` (the controls), `.fhj-cmp-keyset`; `.fhj-rel-pickers` goes two-up at
+> 46rem rather than 34rem — at 34rem "COMPARED WITH" wrapped and the two triggers stopped
+> matching.
+>
+> **Verified in a browser:** every shape, every average mode, gaps, apart, the fitted axis and
+> its confession, weeks vs months, and the scroll offset measured before/after all four ways of
+> closing a sheet (Escape, scrim, Close, choosing) — unchanged to the pixel at 120ms, 400ms and
+> 1200ms.
+>
+> Tests: **997 across 47 suites** (was 978/45) — `tests/chartView.test.ts` (6),
+> `tests/scrollLock.test.ts` (6), `insightsUi` +7 (the view controls, the fitted-axis caption,
+> the reset, weeks/months).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
