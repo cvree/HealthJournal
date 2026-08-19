@@ -811,9 +811,18 @@ function computeProfileTemplate(profile) {
       }
     }
   }
-  const keyMetric = fields.find((f) => f.k === primary.keyMetric && f.dashboard !== false)
-    ? primary.keyMetric
-    : (dashboardMetrics[0] || chartMetrics[0] || fields.find((f) => f.type === "scale")?.k || null);
+  /* The one number this journal is about. The person picks it during setup —
+     "which of these matters most?" is a question only they can answer, and a
+     pack's own idea of its key metric is a default, not a diagnosis. It is
+     honoured only while it still names a real 1–10 question in the setup, so
+     switching a pack off can never leave the app pointed at nothing. */
+  const chosen = profile.keyMetric
+    && fields.find((f) => f.k === profile.keyMetric && f.type === "scale" && f.dashboard !== false)
+    ? profile.keyMetric : null;
+  const keyMetric = chosen
+    || (fields.find((f) => f.k === primary.keyMetric && f.dashboard !== false)
+      ? primary.keyMetric
+      : (dashboardMetrics[0] || chartMetrics[0] || fields.find((f) => f.type === "scale")?.k || null));
   const label = modules.length ? modules.map((mk) => TEMPLATES[mk].label).join(" + ") : "Custom setup";
   return liveTint({
     label, keyMetric,
@@ -8418,15 +8427,16 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
   const [order, setOrder] = useState(profile.fieldOrder || []);
   const [overrides, setOverrides] = useState(profile.fieldOverrides || {});
   const [cameraTimer, setCameraTimer] = useState(profile.cameraTimer ?? 3);
+  const [keyMetric, setKeyMetric] = useState(profile.keyMetric || null);
   const mounted = useRef(false);
 
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }
     onSave({
       name: name.trim(), modules: Array.from(modules), disabledFields: Array.from(disabledFields),
-      customQuestions, fieldOrder: order, fieldOverrides: overrides, cameraTimer,
+      customQuestions, fieldOrder: order, fieldOverrides: overrides, cameraTimer, keyMetric,
     });
-  }, [name, modules, disabledFields, customQuestions, order, overrides, cameraTimer]); // eslint-disable-line
+  }, [name, modules, disabledFields, customQuestions, order, overrides, cameraTimer, keyMetric]); // eslint-disable-line
 
   const toggleModule = (k) => {
     if (modules.has(k)) {
@@ -8476,6 +8486,16 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
     }
     return Array.from(byKey.values());
   }, [modules, customQuestions]);
+
+  /* Which questions could be the main number: the 1–10 ones that are actually
+     switched on. A journal cannot be about a question it does not ask. */
+  const keyScales = useMemo(
+    () => naturalFields.filter((f) => f.type === "scale" && !disabledFields.has(f.k)),
+    [naturalFields, disabledFields]
+  );
+  /* What the app is pointing at right now, so the chips show the live answer
+     rather than nothing at all before anybody has ever chosen one. */
+  const activeKeyMetric = useMemo(() => getProfileTemplate(profile).keyMetric, [profile]);
   const displayFields = useMemo(() => orderFields(naturalFields, order), [naturalFields, order]);
 
   /* Reordering swaps a question with its neighbour *inside its own drawer*,
@@ -8614,6 +8634,32 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
       <p className="text-[11.5px] leading-relaxed mb-7" style={{ color: C.subtle }}>
         Mix and match — shared questions (like sleep or stress) are only asked once.
       </p>
+
+      {/* The main number, changeable. It is chosen during setup, and what it
+          points at is not fixed for life: the thing somebody most needs to
+          watch in March is often not the thing they needed to watch in
+          November. */}
+      {keyScales.length > 0 && (
+        <>
+          <div className="fhj-eyebrow">Main number — the one-tap question on Today</div>
+          <div className="flex flex-wrap gap-1.5 mt-2.5 mb-2">
+            {keyScales.map((f) => {
+              const on = (keyMetric || activeKeyMetric) === f.k;
+              return (
+                <button key={f.k} type="button" aria-pressed={on}
+                  onClick={() => { feedback("select"); setKeyMetric(f.k); }}
+                  className={"fhj-chip" + (on ? " is-active" : "")}>
+                  {on && <Icon name="check" size={13} color="currentColor" />}{f.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11.5px] leading-relaxed mb-7" style={{ color: C.subtle }}>
+            It is what Today asks for in one tap, what the streak counts, and the first figure in
+            an appointment pack. Everything you have already logged stays exactly as it is.
+          </p>
+        </>
+      )}
 
       <div className="fhj-eyebrow mt-1">Questions</div>
       <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
@@ -13998,15 +14044,22 @@ const PROMISES = [
 
 /* The setup, named. Seven dots told someone they were on the fourth of seven
    somethings; these tell them what the fourth one is and what is left after it,
-   which is the difference between a progress bar and an agenda. */
+   which is the difference between a progress bar and an agenda.
+
+   Every step here is about the person's health. Choosing a theme used to be
+   the second screen — before the app had asked a single question about why
+   somebody had installed it — and a first run that opens with decoration is a
+   first run that has told you what it thinks it is. The look lives in
+   Settings, where a preference belongs, and the last screen of setup is not a
+   summary: it is the first number on the record. */
 const ONBOARD_STEPS = [
   { key: "welcome", label: "Welcome" },
-  { key: "look", label: "Look" },
-  { key: "focus", label: "Focus" },
+  { key: "focus", label: "Tracking" },
+  { key: "metric", label: "Main number" },
   { key: "questions", label: "Questions" },
   { key: "photos", label: "Photos" },
   { key: "body", label: "Body" },
-  { key: "done", label: "Done" },
+  { key: "first", label: "First entry" },
 ];
 
 /* part|side → severity scale key it can link a photo rating to */
@@ -14088,9 +14141,16 @@ function buildOnboardProfile(sel) {
     if (!sel.enabledKeys.has(f.k)) disabled.push(f.k);
   }
 
+  /* Only honoured if it survived the question step — somebody can pick a main
+     number and then switch that very question off two screens later, and a
+     journal pointed at a question it does not ask is worse than one falling
+     back to its pack's default. */
+  const keyMetric = sel.keyMetric && keptKeys.has(sel.keyMetric) ? sel.keyMetric : undefined;
+
   return {
     id: "p_self", name: (sel.name || "").trim(), modules: [...sel.modules],
     disabledFields: disabled, customQuestions: custom, fieldOrder: [], fieldOverrides: overrides,
+    keyMetric,
     photoBaselines: {}, cameraTimer: 3, prefs: { ...DEFAULT_PREFS }, createdAt: now, updatedAt: now,
   };
 }
@@ -14143,6 +14203,11 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
   const [progressTouched, setProgressTouched] = useState(false);
   const [name, setName] = useState("");
   const [customs, setCustoms] = useState([]);
+  /* The two health-first additions: which number this journal is about, and
+     the first one of them. `firstScore` is held here and written by App once
+     the profile it belongs to exists. */
+  const [keyMetric, setKeyMetric] = useState(null);
+  const [firstScore, setFirstScore] = useState(null);
   const scrollRef = useRef(null);
   const bodyRef = useRef(null);
   const railRef = useRef(null);
@@ -14235,8 +14300,12 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
        thing here the user will never do again. */
     feedback("complete");
     onComplete(
-      buildOnboardProfile({ modules: mods, enabledKeys: enabled, spots, weightOn, progressAngles, name, customs }),
-      dest
+      buildOnboardProfile({ modules: mods, enabledKeys: enabled, spots, weightOn, progressAngles, name, customs, keyMetric }),
+      dest,
+      /* The first entry, if they made one. Written by App against the profile
+         this call is creating — it cannot be written here, because the journal
+         it belongs to does not exist yet. */
+      keyMetric && firstScore != null ? { key: keyMetric, value: firstScore } : null
     );
   };
 
@@ -14310,35 +14379,10 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </div>
     );
   } else if (step === 1) {
-    /* Appearance comes before anything else on purpose. Every screen after
-       this one is already wearing the choice, so the setup itself is the
-       preview — and the one question a first-run screen can ask that costs
-       nothing to answer and nothing to get wrong is "which of these do you
-       like?". Nothing here is load-bearing; all of it is in Settings too. */
     body = (
       <>
-        <div>
-          {greet}
-          <div className="font-display text-2xl mb-1">Make it yours</div>
-          <p className="text-sm" style={{ color: C.sub }}>
-            Pick a look. The rest of the setup will use it, so you can see what you're choosing.
-            You can change any of this later in Settings.
-          </p>
-        </div>
-        <Card className="mt-4">
-          <AppearancePanel onChoice={() => feedback("select")} />
-        </Card>
-      </>
-    );
-    actions = (
-      <button onClick={() => go(2)} className="fhj-btn fhj-btn-primary fhj-btn-block">
-        Continue
-      </button>
-    );
-  } else if (step === 2) {
-    body = (
-      <>
-        <div className="font-display text-2xl mb-1">What do you want to track?</div>
+        {greet}
+        <div className="font-display text-2xl mb-1">What are you tracking?</div>
         <p className="text-sm mb-4" style={{ color: C.sub }}>Pick one or more. You can change everything later in Edit Setup.</p>
         <div className="flex flex-col gap-3">
           {ONBOARD_PACKS.map(({ key, desc }) => {
@@ -14369,9 +14413,82 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       </>
     );
     actions = (
-      <button onClick={() => go(3)} disabled={!mods.length}
+      <button onClick={() => go(2)} disabled={!mods.length}
         className="fhj-btn fhj-btn-primary fhj-btn-block">
         {mods.length ? "Continue" : "Pick at least one to continue"}
+      </button>
+    );
+  } else if (step === 2) {
+    /* The main number.
+
+       Every pack ships with an opinion about which of its questions matters
+       most, and for most people that opinion is right — but it is an opinion,
+       and this is the number that becomes the one-tap question on Today, the
+       hero on Insights and the first figure a clinician reads in the
+       appointment pack. Somebody whose eczema is fine but whose sleep is
+       wrecked should be able to say so on day one, in one tap, rather than
+       discovering three months later that the app has been charting the wrong
+       thing about their life. */
+    /* Every 1–10 question in the chosen packs could be the main number, but a
+       list of eighteen is not a choice somebody can make in ten seconds. The
+       packs' own headline metrics come first — that is what `chartMetrics` is,
+       each pack's opinion of what it is about — and the body areas and the
+       rest sit behind one control for the person whose journal really is about
+       their left hand. */
+    const scales = merged.filter((f) => f.type === "scale");
+    const headline = new Set(mods.flatMap((mk) => TEMPLATES[mk]?.chartMetrics || []));
+    const top = scales.filter((f) => headline.has(f.k)).slice(0, 6);
+    const rest = scales.filter((f) => !top.includes(f));
+    const suggested = TEMPLATES[mods[0]]?.keyMetric;
+    const picked = keyMetric || suggested;
+    const optionBtn = (f) => {
+      const on = picked === f.k;
+      const t = TEMPLATES[f.module] || TEMPLATES[mods[0]];
+      return (
+        <button key={f.k} onClick={() => { feedback("select"); setKeyMetric(f.k); }}
+          aria-pressed={on}
+          className="text-left rounded-2xl px-4 py-3 flex items-center gap-3 w-full"
+          style={{ background: C.card, border: `2px solid ${on ? t.color : C.line}` }}>
+          <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+            style={{ background: on ? t.color : C.faint }}>
+            {on ? <Icon name="check" size={15} color={readableInk(t.color)} /> : null}
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-[15px]">{f.label}</span>
+            <span className="block text-[11.5px]" style={{ color: C.subtle }}>
+              {f.k === suggested ? "Suggested for this pack" : (f.sec || t.label)}
+            </span>
+          </span>
+        </button>
+      );
+    };
+    body = (
+      <>
+        <div className="font-display text-2xl mb-1">Which number matters most?</div>
+        <p className="text-sm mb-4" style={{ color: C.sub }}>
+          This is the one you will be asked for every day, in one tap — and the one every chart,
+          streak and summary is about. You can change it whenever you like.
+        </p>
+        <div className="flex flex-col gap-2">
+          {(top.length ? top : scales).map(optionBtn)}
+        </div>
+        {top.length > 0 && rest.length > 0 && (
+          <Disclosure className="mt-3" label={`Other questions (${rest.length})`}
+            summary="Body areas and everything else you kept">
+            <div className="flex flex-col gap-2">{rest.map(optionBtn)}</div>
+          </Disclosure>
+        )}
+        {scales.length === 0 && (
+          <p className="text-sm" style={{ color: C.sub }}>
+            The packs you chose have no 1–10 questions in them, so there is nothing to pick here.
+          </p>
+        )}
+      </>
+    );
+    actions = (
+      <button onClick={() => { if (!keyMetric && suggested) setKeyMetric(suggested); go(3); }}
+        className="fhj-btn fhj-btn-primary fhj-btn-block">
+        Continue
       </button>
     );
   } else if (step === 3) {
@@ -14545,6 +14662,8 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
       .filter((f) => f.quick && enabled.has(f.k))
       .slice(0, 3)
       .map((f) => f.label);
+    const pulseField = tunable.find((f) => f.k === keyMetric)
+      || tunable.find((f) => f.type === "scale" && enabled.has(f.k));
     body = (
       <>
         <div>
@@ -14555,6 +14674,40 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
             Here is the check-in you just built. Everything stays on this device.
           </p>
         </div>
+
+        {/* The setup does not end on a summary. It ends with the thing the app
+            is for, done once — because the difference between an app somebody
+            configured and an app somebody uses is one tap, and this is the
+            best moment it will ever have to ask for it. */}
+        {pulseField && (
+          <Card className="mt-4 fhj-pulse-card">
+            <div className="fhj-eyebrow">{firstScore != null ? "Your first entry" : "Start now — one tap"}</div>
+            <div className="font-display text-[1.35rem] leading-tight mt-1 mb-3">
+              {pulseField.label} today?
+            </div>
+            <PulseScale field={pulseField} value={firstScore}
+              onSet={(n, el) => {
+                if (firstScore === n) { feedback("erase"); setFirstScore(null); return; }
+                feedback("quickadd", { el });
+                place("scale", n, 10);
+                setFirstScore(n);
+              }} />
+            <div className="fhj-pulse-state">
+              {firstScore != null ? (
+                <>
+                  <span className="fhj-pulse-mark" style={{ background: colorFor(firstScore, pulseField.dir) }}>
+                    <Icon name="check" size={13} color={readableInk(colorFor(firstScore, pulseField.dir))} />
+                  </span>
+                  <span>
+                    <b>{firstScore}/10</b> — saved with your setup, as today's first entry.
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: C.subtle }}>Optional. It becomes day one of your journal.</span>
+              )}
+            </div>
+          </Card>
+        )}
 
         <Card className="mt-4">
           <div className="font-display text-lg mb-2" style={{ color: tint }}>{setupLabel}</div>
@@ -14584,11 +14737,11 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
     );
     actions = (
       <div className="flex flex-col gap-2">
-        <button onClick={() => finish("log")} className="fhj-btn fhj-btn-primary fhj-btn-block">
-          Start my first check-in
+        <button onClick={() => finish("dashboard")} className="fhj-btn fhj-btn-primary fhj-btn-block">
+          {firstScore != null ? "Save it and start" : "Start using it"}
         </button>
-        <button onClick={() => finish("dashboard")} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
-          Go to my dashboard
+        <button onClick={() => finish("log")} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
+          Answer the rest of today's questions
         </button>
       </div>
     );
@@ -14596,8 +14749,9 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
-      {/* The setup screens run over the real backdrop, so the choice made on
-          step 1 is visible for the rest of the flow rather than described. */}
+      {/* The setup runs over the app's real backdrop — the one the theme is
+          already set to. Choosing it is a Settings job; this screen has
+          health questions to ask. */}
       <AmbientBackdrop />
       <div ref={scrollRef} className="max-w-md mx-auto px-4 relative" style={{ paddingBottom: "9.5rem", zIndex: 1 }}>
         {/* Seven anonymous dots told someone they were on the fourth of seven
@@ -15132,6 +15286,7 @@ export default function App({ viewer = false }) {
       profile: {
         ...prev.profile, name: draft.name, modules: draft.modules, disabledFields: draft.disabledFields,
         customQuestions: draft.customQuestions, fieldOrder: draft.fieldOrder, fieldOverrides: draft.fieldOverrides,
+        keyMetric: draft.keyMetric ?? prev.profile.keyMetric,
         cameraTimer: draft.cameraTimer ?? prev.profile.cameraTimer ?? 3,
         updatedAt: new Date().toISOString(),
       },
@@ -15248,8 +15403,22 @@ export default function App({ viewer = false }) {
     return (
       <OnboardingWizard
         onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
-        onComplete={(profile, dest) => {
-          setDb((prev) => ({ ...prev, profile, ack: true, onboarded: true }));
+        onComplete={(profile, dest, firstEntry) => {
+          setDb((prev) => {
+            const next = { ...prev, profile, ack: true, onboarded: true };
+            /* Written here rather than in the wizard: the entry belongs to a
+               profile that did not exist until this line. */
+            if (firstEntry) {
+              const now = new Date().toISOString();
+              next.entries = [...(prev.entries || []), {
+                id: uid(), profileId: profile.id, date: todayStr(),
+                answers: { [firstEntry.key]: firstEntry.value }, photos: {}, notes: "",
+                quickLogCompleted: true, detailedLogCompleted: false,
+                createdAt: now, updatedAt: now,
+              }];
+            }
+            return next;
+          });
           if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); }
           else setScreen("dashboard");
         }}

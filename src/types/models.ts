@@ -117,6 +117,11 @@ export interface TrackingSetup {
   reminders?: NamedReminder[];
   /** Optional daily nutrition targets. */
   goals?: NutritionGoals;
+  /** The one number this journal is about: the Daily Pulse on Today, the hero
+      on Insights, the metric the Appointment Pack leads with. Chosen during
+      setup and changeable afterwards; falls back to the primary pack's own
+      key metric when unset or no longer valid. */
+  keyMetric?: string;
   /** Up to four metrics pinned to Insights, in order. The first is the one
       the hero and the main trend chart are about. */
   pinnedMetrics?: string[];

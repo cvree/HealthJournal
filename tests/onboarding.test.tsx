@@ -15,8 +15,13 @@
       the end — where it used to be — it was a label on a profile nobody opens.
    3. The privacy promises are on the first screen, before anything is typed.
 
+   Setup is health-first: there is no appearance step at all — the look lives
+   in Settings — and the last screen is not a summary but the first number on
+   the record.
+
    The disclaimer and the sample-data escape hatch are covered in render.test,
-   and the appearance step in appearance.test; this file does not restate them.
+   and the appearance controls in appearance.test; this file does not restate
+   them.
 */
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
@@ -59,17 +64,20 @@ async function mount() {
   });
 }
 
-/** Welcome -> appearance -> pack picker. */
+/** Welcome -> pack picker. One screen, because nothing decorative sits in
+    between any more. */
 async function toPacks() {
   const start = await mount();
   fireEvent.click(start);
-  const cont = await waitFor(() => {
-    const b = exact("Continue");
-    expect(b).toBeTruthy();
-    return b!;
-  });
-  fireEvent.click(cont);
-  await waitFor(() => expect(document.body.textContent).toMatch(/what do you want to track/i));
+  await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
+}
+
+/** Packs -> main number -> the question editor. */
+async function toQuestions() {
+  fireEvent.click(exact("Continue")!);
+  await waitFor(() => expect(document.body.textContent).toMatch(/which number matters most/i));
+  fireEvent.click(exact("Continue")!);
+  await waitFor(() => expect(document.body.textContent).toMatch(/build your daily check-in/i));
 }
 
 describe("first-run setup", () => {
@@ -90,10 +98,9 @@ describe("first-run setup", () => {
       expect(Number(est![1]), "picking a pack enabled no questions").toBeGreaterThan(0);
     });
 
-    fireEvent.click(exact("Continue")!);
-    await waitFor(() => expect(document.body.textContent).toMatch(/build your daily check-in/i));
+    await toQuestions();
 
-    // ...and step 3 is passable without first hunting for "Track everything".
+    // ...and the question step is passable without hunting for "Track everything".
     await waitFor(() => {
       const next = exact("Continue") as HTMLButtonElement | undefined;
       expect(next, "step 3 offers no enabled Continue").toBeTruthy();
@@ -104,8 +111,7 @@ describe("first-run setup", () => {
   it("keeps a question the user switched off when another pack is added", async () => {
     await toPacks();
     fireEvent.click(screen.getAllByRole("button").find((b) => /Eczema/i.test(b.textContent || ""))!);
-    fireEvent.click(await waitFor(() => exact("Continue")!));
-    await waitFor(() => expect(document.body.textContent).toMatch(/build your daily check-in/i));
+    await toQuestions();
 
     const before = Number(document.body.textContent!.match(/(\d+) quick questions?/)![1]);
     // "Itch" is a quick question in the eczema pack; switching it off has to
@@ -116,10 +122,11 @@ describe("first-run setup", () => {
     );
 
     fireEvent.click(screen.getByLabelText("back"));
-    await waitFor(() => expect(document.body.textContent).toMatch(/what do you want to track/i));
+    await waitFor(() => expect(document.body.textContent).toMatch(/which number matters most/i));
+    fireEvent.click(screen.getByLabelText("back"));
+    await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
     fireEvent.click(screen.getAllByRole("button").find((b) => /Carnivore/i.test(b.textContent || ""))!);
-    fireEvent.click(exact("Continue")!);
-    await waitFor(() => expect(document.body.textContent).toMatch(/build your daily check-in/i));
+    await toQuestions();
 
     // The new pack's questions arrived on; the one deliberately switched off
     // stayed off rather than being reset by the pack change.
@@ -140,8 +147,49 @@ describe("first-run setup", () => {
   it("says nothing personal when no name was given", async () => {
     const start = await mount();
     fireEvent.click(start);
-    await waitFor(() => expect(document.body.textContent).toMatch(/make it yours/i));
+    await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
     expect(document.body.textContent).not.toMatch(/nice to meet you/i);
+  });
+
+  it("asks about health before anything else — no look-and-feel step", async () => {
+    const start = await mount();
+    const rail = screen.getByRole("list", { name: /setup step/i });
+    expect(rail.textContent).not.toMatch(/look/i);
+    fireEvent.click(start);
+    await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
+    // The second screen is about the condition, not about a colour.
+    expect(document.body.textContent).not.toMatch(/make it yours|pick a look|backdrop/i);
+  });
+
+  it("lets the main number be chosen, and defaults to the pack's own", async () => {
+    await toPacks();
+    fireEvent.click(screen.getAllByRole("button").find((b) => /Eczema/i.test(b.textContent || ""))!);
+    fireEvent.click(exact("Continue")!);
+    await waitFor(() => expect(document.body.textContent).toMatch(/which number matters most/i));
+
+    // The pack's own key metric is offered as the suggestion, and it is one of
+    // several — the app is not telling somebody what matters about their body.
+    expect(document.body.textContent).toMatch(/suggested for this pack/i);
+    const options = screen.getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") !== null);
+    expect(options.length).toBeGreaterThan(2);
+  });
+
+  it("ends on the first entry rather than a summary, and it is optional", async () => {
+    await toPacks();
+    fireEvent.click(screen.getAllByRole("button").find((b) => /Eczema/i.test(b.textContent || ""))!);
+    await toQuestions();
+    fireEvent.click(exact("Continue")!);           // photo spots
+    await waitFor(() => expect(document.body.textContent).toMatch(/problem spots/i));
+    fireEvent.click(exact("Skip for now") || exact("Continue")!);
+    await waitFor(() => expect(document.body.textContent).toMatch(/weight/i));
+    fireEvent.click(exact("Continue")!);
+
+    await waitFor(() => expect(document.body.textContent).toMatch(/one tap/i));
+    expect(exact("Start using it")).toBeTruthy();   // skippable
+    const rung = screen.getAllByRole("button").find((b) => /severity 6 out of 10/i.test(b.getAttribute("aria-label") || ""))!;
+    fireEvent.click(rung);
+    await waitFor(() => expect(document.body.textContent).toMatch(/6\/10/));
+    expect(exact("Save it and start")).toBeTruthy();
   });
 
   it("states what the app does and doesn't do before anything is typed", async () => {
@@ -161,15 +209,15 @@ describe("first-run setup", () => {
     const start = await mount();
     const rail = () => screen.getByRole("list", { name: /setup step/i });
     // Every step is named, including the ones ahead.
-    for (const label of ["Welcome", "Look", "Focus", "Questions", "Photos", "Body", "Done"]) {
+    for (const label of ["Welcome", "Tracking", "Main number", "Questions", "Photos", "Body", "First entry"]) {
       expect(rail().textContent, label).toContain(label);
     }
     const stepBtn = (label: string) =>
       Array.from(rail().querySelectorAll("button")).find((b) => b.textContent?.includes(label)) as HTMLButtonElement;
 
-    expect(stepBtn("Look").disabled, "a step ahead should not be reachable").toBe(true);
+    expect(stepBtn("Tracking").disabled, "a step ahead should not be reachable").toBe(true);
     fireEvent.click(start);
-    await waitFor(() => expect(stepBtn("Look").disabled).toBe(false));
+    await waitFor(() => expect(stepBtn("Tracking").disabled).toBe(false));
 
     // ...and a step already behind you is a way back to it.
     fireEvent.click(stepBtn("Welcome"));

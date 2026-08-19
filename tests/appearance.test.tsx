@@ -185,51 +185,31 @@ describe("the appearance controls", () => {
 });
 
 describe("first launch", () => {
-  it("asks how the app should look, before asking anything else", async () => {
+  it("does not ask about the look at all — setup is about health", async () => {
     const { default: App } = await import("../src/App");
     render(React.createElement(App));
     const start = await waitFor(() =>
       screen.getAllByRole("button").find((b) => /set me up/i.test(b.textContent || ""))!
     );
-    expect(start).toBeTruthy();
     fireEvent.click(start);
 
-    await waitFor(() => expect(document.body.textContent).toMatch(/make it yours/i));
-    // Everything from the Settings panel is here too — same component, so
-    // there is no second copy to drift.
+    // The screen after the welcome asks what somebody is tracking. Choosing a
+    // theme before the app has asked a single question about why they
+    // installed it is a first run telling you what it thinks it is.
+    await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
     const text = document.body.textContent || "";
-    for (const name of ["Fog", "Aurora", "Dawn", "Drift", "Linen", "None", "Night Light"]) {
-      expect(text, name).toContain(name);
-    }
-    expect(screen.getByLabelText(/hue/i)).toBeTruthy();
+    expect(text).not.toMatch(/make it yours/i);
+    for (const name of ["Aurora", "Night Light"]) expect(text).not.toContain(name);
+    expect(screen.queryByLabelText(/hue/i)).toBeNull();
   });
 
-  it("shows the choice on the setup screens themselves, not just in a swatch", async () => {
+  it("still runs the real backdrop behind setup, at whatever the theme already is", async () => {
     const { default: App } = await import("../src/App");
     render(React.createElement(App));
-    const start = await waitFor(() =>
+    await waitFor(() =>
       screen.getAllByRole("button").find((b) => /set me up/i.test(b.textContent || ""))!
     );
-    fireEvent.click(start);
-    await waitFor(() => expect(document.body.textContent).toMatch(/make it yours/i));
-    // The real backdrop is running behind the wizard, so picking one is a
-    // preview of the app rather than a description of it.
     expect(backdropEl()).toBeTruthy();
   });
-
-  it("still reaches the pack picker afterwards", async () => {
-    // The appearance step was inserted ahead of five existing ones, all of
-    // which had hard-coded indices. This is the test that the renumbering held.
-    const { default: App } = await import("../src/App");
-    render(React.createElement(App));
-    const start = await waitFor(() =>
-      screen.getAllByRole("button").find((b) => /set me up/i.test(b.textContent || ""))!
-    );
-    fireEvent.click(start);
-    const cont = await waitFor(() =>
-      screen.getAllByRole("button").find((b) => /^continue$/i.test((b.textContent || "").trim()))!
-    );
-    fireEvent.click(cont);
-    await waitFor(() => expect(document.body.textContent).toMatch(/what do you want to track/i));
-  });
 });
+
