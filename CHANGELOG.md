@@ -1,5 +1,127 @@
 # Changelog
 
+## 1.17.0
+
+### One tap is a whole day
+
+A journal that demands a seven-screen survey gets abandoned in a fortnight. A
+journal that takes one tap gets a year of data, and a year of one honest number
+is worth more than a fortnight of forty.
+
+Today now opens with the **Daily Pulse**: the main number, ten large targets,
+and the tap *is* the save. No button, no confirmation, no screen. Tapping the
+same number again clears it, which is the gesture every other scale in the app
+already uses.
+
+The line under it is derived from the journal on every render, never from the
+fact that a tap happened. Until the number is in the entry it says "Nothing
+recorded yet", and once it is there it says which end of the scale it is at —
+because a 7 means opposite things on "severity" and on "sleep quality", and an
+app that says "Saved" because a handler fired is an app that will eventually
+lie about somebody's medical history.
+
+### The detail comes after, and only if it is worth asking for
+
+Once the day is rated, three to five optional follow-ups appear, chosen for the
+score. A hard day is asked about the other symptoms, what was taken, and what
+it looks like — the things a clinician will ask about. A calm day is asked
+about sleep and what was different, because those are what might explain it.
+Offering "photograph the rash" on a 2 is noise.
+
+Nothing already answered is offered. A deliberate skip still counts as
+unanswered — it was a decision, not a value. A photo is only asked for on a bad
+day or after a week without one. The note is always last, because it is the one
+that needs typing. Each one answers inline, with the app's own input for that
+question, so an answer given here and one given in the survey are the same act.
+
+### Two destinations and one verb
+
+Five tabs made the app a filing cabinet. Today, Log, Diary, Insights and
+Calendar were three ways of asking "what happened before now" plus two ways of
+writing something down, and every visit charged the same tax: work out which
+shelf the thing lives on first. That tax is paid most often by the person
+feeling worst.
+
+The bar is **Today**, **+**, **History**.
+
+The + is the only control in the app that is a verb, so it is the only one
+drawn as a solid. One tap from anywhere opens everything a day can hold —
+check-in, food, routine, photo, note, bowel movement, measurement — and lands
+on Today, which is the day it adds to. Note and Measurement are new doors onto
+things that used to require the whole survey: a note is a sheet with a
+textarea, and a measurement goes straight to the keypad, skipping the picker
+entirely when a setup has only one number in it.
+
+History is the month, the last fortnight in words with each day's number at the
+size it deserves, and the two doors the old tabs led to: Insights and the
+Diary. Settings left the bar for the header.
+
+### Setup asks about the illness, not the wallpaper
+
+The second screen of first-run setup used to be a theme picker — asked before
+the app had put a single question to somebody about why they had installed it.
+A first run that opens with decoration has told you what it thinks it is.
+
+Setup is now: what are you tracking, which number matters most, the questions,
+the photo spots, and then the first entry.
+
+**The main number** is new and load-bearing. Every pack ships an opinion about
+which of its questions matters most, and for most people it is right — but it
+is an opinion, and that number becomes the one-tap question on Today, the hero
+on Insights and the first figure a clinician reads in an appointment pack.
+Somebody whose eczema is manageable but whose sleep is wrecked can say so on
+day one instead of finding out three months later that the app has been
+charting the wrong thing about their life.
+
+And setup no longer ends on a summary. It ends with the thing the app is for,
+done once — because the difference between an app somebody configured and an
+app somebody uses is one tap, and this is the best moment it will ever have to
+ask for it.
+
+### A finish that tells the truth
+
+Skipping every question used to end in confetti, a save chime and a streak
+count. The app was congratulating somebody for a blank day, and teaching them
+that the number on the front of it means nothing.
+
+The celebration is now earned by at least one value, note or photo. In its
+place: "Nothing logged yet" — what happened, said plainly, with the way back to
+the questions and the main number right there, because one tap is enough to
+make it untrue. Record something and the celebration appears the moment it
+becomes honest. There is no Undo on that screen, deliberately: nothing was
+written, so there is nothing to undo.
+
+Two things underneath it were the same lie one layer down, and both are fixed.
+A day used to exist as soon as the survey wrote a null, so skipping everything
+put a dot on the calendar, a day on the streak and a row in the export for a
+day nobody logged; an entry is now created only when something is recorded. And
+Skip used to erase — it wrote a null over every question in the batch,
+including ones already answered from Today's pulse or an earlier visit. Skip
+means "don't ask me these" now, and leaves answers alone. It is the one kind of
+data loss a journal must never do casually.
+
+### Quick Add learns, and Again does everything
+
+Quick Add shipped as a fixed grid in a fixed order, which is right for the
+first week and wrong forever after. Somebody logging four meals a day and a
+cream twice a day does not need Bowel in the top-left corner every morning.
+
+The tiles sort themselves by frequency decayed by recency — a use counts half
+as much after ten days, so two taps yesterday outrank a hundred last spring.
+Anything never used keeps the catalogue's order rather than shuffling on every
+render. Arranging the tiles by hand switches the learning off, and moving one
+*is* that decision: no switch has to be found first.
+
+**Again** is now every kind of repeat rather than only food. The second time
+you log a thing is the tap worth saving, and it does not matter whether it is
+the porridge you have every morning, the cream you use twice a day, the arm you
+photograph on Sundays or the weight you record on Mondays — they compete on one
+score, so the row is your own week in your own order. A favourite outranks the
+arithmetic, because marking one is an explicit "I will want this again". A
+photograph works the other way round on purpose: the longer it has been, the
+higher it climbs. Nothing already answered today is offered, nothing that has
+never been done is invented, and a journal with no habits yet gets no row.
+
 ## 1.16.0
 
 ### The appointment pack

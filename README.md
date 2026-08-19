@@ -34,6 +34,13 @@ everything else working exactly as it does now:
 because the point of tracking food is logging it while you eat. Add as many named times as suit
 your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
 
+**Setup asks about your health, not your wallpaper.** First run is: what are you tracking, which
+number matters most, which questions to keep, which spots to photograph — and then the first
+number, recorded on the last screen with one tap. There is no theme step; the look lives in
+Settings, where a preference belongs. The main number you pick is what Today asks for every day,
+what the streak counts, and the first figure in an appointment pack; it is changeable whenever
+you like.
+
 **Build your own survey.** Start from a question pack — Eczema/Skin, Carnivore/Diet, POTS,
 IBS, Migraine, Allergy/MCAS, Fatigue/Long COVID, Autoimmune, Thyroid, Joint Pain, General
 Wellness, Wearable — mix several, switch individual questions off, add your own, and reorder
@@ -111,13 +118,33 @@ observable attributes from a photo — Bristol type, colour, consistency, form, 
 It will not tell you what anything means, and the photo stays on your device unless you
 explicitly choose that analysis.
 
-**Open it, log it, close it.** The first screen answers one question — what do I do now — and
-it fits on one phone screen. **Quick Add** is the first thing under the date: four tiles that
-open a check-in, a meal, a bowel movement or the camera, with the day's routine directly under
-them. **Again** is the row under it, and it
-is the shortest path in the app: your most-logged foods, one tap each, straight onto today.
-**Today's Logs** is one timeline carrying check-ins, meals, bowel movements, doses and photos in
-the order they happened.
+**One tap is a whole day.** Today opens with the **Daily Pulse**: your main number, ten large
+targets, and the tap *is* the save — no button, no confirmation, no screen. The line under it is
+read back out of the journal rather than asserted, so it says "Nothing recorded yet" until the
+number is actually there, and it says which end of the scale the number is at. Tapping the same
+number again clears it. For most people on most days this is the entire interaction, and a year
+of one honest number beats a fortnight of forty.
+
+**Detail comes after, never in front.** Once the day is rated, three to five optional follow-ups
+appear, chosen for the score: a hard day is asked about the other symptoms, what you took and
+what it looks like; a calm day is asked about sleep and what was different. Nothing already
+answered is offered, a photo is only asked for on a bad day or after a week without one, and the
+note is last because it is the one that needs typing. Each answers inline with the app's own
+input for that question. "Add more detail" keeps the full check-in one tap away.
+
+**Two destinations and one verb.** The navigation is **Today**, a **+**, and **History**. The +
+is one tap from anywhere and opens everything a day can hold — check-in, food, routine, photo,
+note, bowel movement, measurement — landing on Today, which is the day it adds to. History is
+the month, the last fortnight in words, and the two doors out of it: Insights and the Diary.
+Settings lives in the header, because a preference is not a destination.
+
+**Open it, log it, close it.** **Quick Add** sits under the pulse and *learns*: the tiles sort
+themselves by what you actually tap, frequency decayed by recency, and arranging them by hand
+switches that off for good. **Again** is the row under it, and it is the shortest path in the
+app — your most-logged foods, the doses you take daily, the spot you photograph, the number you
+record, one tap each, ranked together so it is your own week in your own order. **Today's Logs**
+is one timeline carrying check-ins, meals, bowel movements, doses and photos in the order they
+happened.
 
 Logging is optimistic and reversible. Sheets close on the tap, the row is on the timeline
 before the next frame, and the receipt arrives as a toast with an **Undo** in it — which beats a
@@ -247,6 +274,14 @@ calculated patterns stay exactly as they were and keep working with no key at al
 **Photo progress.** In-app camera with a self-timer, per-body-area tracking, thumbnails, an
 A/B comparison slider, and baseline pinning. Photos are blobs in local storage — they never
 upload.
+
+**A finish that tells the truth.** Skipping every question in a check-in used to end in
+confetti and a streak count — the app congratulating somebody for a blank day. The celebration
+is now earned by an actual value, note or photo; without one you get "Nothing logged yet", the
+way back, and the main number right there, because one tap is enough to make it untrue. A day
+with nothing in it is not written to the journal at all, so it never appears on the calendar, in
+a streak, or in an export. And Skip no longer erases: it means "don't ask me these", not "delete
+what I already answered".
 
 **Weekly and monthly reports.** Swipe to choose which card types you want, then browse any
 period with arrows or a horizontal swipe. Save up to 24 reports to history, share one as an
@@ -559,6 +594,8 @@ health-journal/
 │   │   ├── distribution.ts     # days per score, the three middles, hard/calm counts
 │   │   ├── episodes.ts         # the flare model + every number one can be asked for
 │   │   ├── appointmentPack.ts  # the printable summary: figures, floors, what it refuses
+│   │   ├── pulse.ts            # the one-tap day, and which details to offer next
+│   │   ├── quickActions.ts     # learned ordering + one-tap repeats, scored
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
 │   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors
 │   │   ├── exports.ts          # typed CSV / wide-table generation
@@ -589,7 +626,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 896 tests across 38 suites
+└── tests/                      # 955 tests across 43 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

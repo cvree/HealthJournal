@@ -515,6 +515,60 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-19 addendum 19 — 1.17: the fast daily experience.**
+> **Two new pure modules.** `src/lib/pulse.ts` (`pulseState` — what counts as recorded;
+> `dayKind`/`badness` on the same 7/3 thresholds as `distribution.ts`; `followUps(ctx)` — the
+> three-to-five optional details, ranked by whether the day is hard or calm, filtered by what is
+> already answered, capped at five, `scoreWord`). `src/lib/quickActions.ts` (`scoreOf` =
+> frequency × `recencyWeight`, half-life 10 days; `rankIds(ids, stats, today, mode)` — a *stable*
+> sort so unused ids keep catalogue order, and `"manual"` returns them untouched; `noteUse`;
+> `sanitizeActionStats` bounded at 60 keys; `repeatSuggestions` across foods, routine items,
+> photo fields, number fields and the note). Both clock-free.
+>
+> **Today.** `DailyPulse` + `PulseScale` sit above Quick Add and write through `onPatch`
+> (`upsertEntry`) directly — the dashboard now takes `onPatch`. The saved line is derived from
+> `entries` on every render; nothing about it is local state. `FollowUpCard` renders the app's own
+> `FieldInput`, so an answer given there is identical to one given in the survey.
+>
+> **Navigation.** `NAV` is `[dashboard, add(action), history]`. The + is not a screen: it sets
+> `addSheet` in App and jumps to Today, which owns every sheet it can open (`AddSheet`,
+> `NoteSheet`, `MeasurementSheet` — which skips its own picker when a setup has one number —, and
+> `RoutineQuickSheet`, which reuses `RoutineChecklist`). New screen `history`
+> (`HistoryScreen`) embeds `CalendarScreen embedded` plus recent-day rows and the two doors
+> (Insights, Diary). `showHeader` now also excludes `history`; the shared header gained a gear.
+> **Nine test call sites navigated via the old tabs** and were rewritten to go through History.
+>
+> **Truthfulness.** `patchHasContent`/`entryValueCount` are the one definition of "logged".
+> `upsertEntry` refuses to *create* an entry from a patch with no content (an existing entry still
+> accepts a null — that is clearing an answer). `GuidedQuickLog` shows `NothingLogged` instead of
+> `FinishCelebration` when the day has no value, and `skipBatch` no longer writes nulls over
+> answers that already exist.
+>
+> **Onboarding.** `ONBOARD_STEPS` is welcome / focus / **metric** / questions / photos / body /
+> **first** — the appearance step is gone (all of it was already in Settings' `AppearanceCard`).
+> New `profile.keyMetric`, honoured by `computeProfileTemplate` only while it names an enabled
+> 1–10 field, chosen in setup and editable in `EditSetupScreen`. `onComplete(profile, dest,
+> firstEntry)` — the first entry is written by App, because the profile it belongs to does not
+> exist until that call.
+>
+> **Quick Add.** `resolveQuickAdd(profile, {hasPhotoField, stats, today})` ranks;
+> `profile.quickAddOrder` ("auto" | "manual") and `profile.actionStats` are new profile fields,
+> sanitised in `migrateDb` and synced with the profile. Every Quick Add and + action is wrapped in
+> `track(id, fn)` so a new action cannot forget to be counted. `RepeatRow` (food-only) is
+> superseded by `QuickRepeats`, fed by `repeatSuggestions`.
+>
+> **Gotchas.** The nav's `aria-label="Add to today"` collided with the food sheet's "Add to
+> breakfast" in one test query — accessible names in this app are close enough together that
+> screen-level regexes need anchoring. The viewer renders `ViewerLanding` before any nav exists,
+> so a nav assertion there has to go through "browse example data" first.
+>
+> Tests: **955 across 43 suites** (was 936/42) — `tests/pulse.test.ts` (14),
+> `tests/pulseUi.test.tsx` (7), `tests/navigation.test.tsx` (14), `tests/completion.test.tsx` (7),
+> `tests/quickActions.test.ts` (15); `onboarding` and `appearance` rewritten for the health-first
+> flow.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
