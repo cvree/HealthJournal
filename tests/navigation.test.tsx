@@ -149,3 +149,52 @@ describe("History", () => {
     expect(await screen.findByRole("heading", { name: "Trend" }, { timeout: 10000 })).toBeTruthy();
   });
 });
+
+describe("Quick Add learns", () => {
+  it("moves what somebody actually taps to the front, and remembers it", async () => {
+    await mountApp();
+    const tiles = () => [...document.querySelectorAll(".fhj-tile")].map((t) => t.textContent!.trim());
+    expect(tiles()[0]).toMatch(/^Check-in/);
+
+    // Three taps on Bowel — the sheet is closed again each time.
+    for (let i = 0; i < 3; i++) {
+      fireEvent.click([...document.querySelectorAll(".fhj-tile")].find((t) => /^Bowel/.test(t.textContent!))!);
+      const close = screen.queryByRole("button", { name: /close/i });
+      if (close) fireEvent.click(close);
+    }
+
+    await waitFor(() => expect(saved().profile.actionStats?.bowel?.n).toBe(3));
+    await waitFor(() => expect(tiles()[0]).toMatch(/^Bowel/));
+  });
+
+  it("stops learning the moment somebody arranges the tiles themselves", async () => {
+    await mountApp((db) => {
+      db.profile.actionStats = { bowel: { n: 20, at: "2026-08-19" } };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Edit which Quick Add buttons/ }));
+    // Moving a tile is the decision; no switch has to be found first.
+    fireEvent.click((await screen.findAllByRole("button", { name: /Move .* down/ }))[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(saved().profile.quickAddOrder).toBe("manual"));
+  });
+});
+
+describe("one tap, again", () => {
+  it("offers the foods and doses the journal already knows", async () => {
+    await mountApp();
+    const row = await screen.findByRole("list", { name: "Do something again" });
+    expect(within(row).getAllByRole("listitem").length).toBeGreaterThan(0);
+  });
+
+  it("repeats a routine dose without opening anything", async () => {
+    await mountApp();
+    const row = await screen.findByRole("list", { name: "Do something again" });
+    const dose = within(row).getAllByRole("listitem").find((b) => /CeraVe/.test(b.textContent!));
+    if (!dose) return; // a demo journal without routine history has nothing to repeat
+    const before = saved().routine.length;
+    fireEvent.click(dose);
+    await waitFor(() => expect(saved().routine.length).toBe(before + 1));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

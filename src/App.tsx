@@ -80,6 +80,9 @@ import {
 import AppointmentPackView from "./components/AppointmentPackView";
 import { followUps, pulseState, scoreWord } from "./lib/pulse";
 import {
+  noteUse, rankIds, repeatSuggestions, sanitizeActionStats,
+} from "./lib/quickActions";
+import {
   PACK_SECTIONS, sanitizePackPrefs, buildAppointmentPack,
   candidateNotes, rangeOfDays, rangeSinceAppointment, rangeCustom, pageLabel,
   coverageLabel,
@@ -12952,11 +12955,19 @@ function sanitizeQuickAdd(list) {
   return out;
 }
 
-/** The ids to draw, after the user's choice and what their setup can actually
-    support are both accounted for. */
-function resolveQuickAdd(profile, { hasPhotoField }) {
+/** The ids to draw, after the user's choice, what their setup can actually
+    support, and what they actually use are all accounted for.
+
+    Learned ordering is the default and manual arrangement always beats it:
+    dragging a tile into place is a decision, and an app that re-sorts the
+    screen afterwards has overruled somebody about their own thumb. Choosing
+    the order in the editor sets `quickAddOrder: "manual"`; the switch there
+    hands it back. */
+function resolveQuickAdd(profile, { hasPhotoField, stats, today }) {
   const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD;
-  return chosen.filter((id) => (id === "photo" ? hasPhotoField : true));
+  const usable = chosen.filter((id) => (id === "photo" ? hasPhotoField : true));
+  return rankIds(usable, stats || {}, today || todayStr(),
+    profile?.quickAddOrder === "manual" ? "manual" : "auto");
 }
 
 function QuickAdd({ ids, checkedIn, actions }) {
@@ -12996,17 +13007,28 @@ function QuickAdd({ ids, checkedIn, actions }) {
     question list in Edit Setup already works — this app has one reordering
     idiom and it is this one. Nothing is applied until Save, so a fiddle that
     goes wrong costs a Cancel rather than a repair. */
-function QuickAddEditor({ profile, hasPhotoField, onSave, onClose }) {
-  const [order, setOrder] = useState(
-    () => sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD
-  );
+function QuickAddEditor({ profile, hasPhotoField, stats, onSave, onClose }) {
+  const [manual, setManual] = useState(profile?.quickAddOrder === "manual");
+  const [order, setOrder] = useState(() => {
+    const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD;
+    /* Opened while the order is learned, the list shows what is actually on
+       screen — otherwise the first thing somebody does here is drag a tile
+       that was already in that position, and the arrows appear broken. */
+    return profile?.quickAddOrder === "manual"
+      ? chosen
+      : rankIds(chosen, stats || {}, todayStr(), "auto");
+  });
   const available = QUICK_ADD_TILES.filter((t) => (t.id === "photo" ? hasPhotoField : true));
   const off = available.filter((t) => !order.includes(t.id));
 
+  /* Moving a tile *is* the decision to arrange them by hand. Making somebody
+     find a switch first, and then discover their arrangement was ignored
+     because they hadn't, is the worst of both. */
   const move = (i, dir) => {
     const j = i + dir;
     if (j < 0 || j >= order.length) return;
     feedback("tap");
+    setManual(true);
     setOrder((prev) => {
       const next = [...prev];
       [next[i], next[j]] = [next[j], next[i]];
@@ -13019,8 +13041,20 @@ function QuickAddEditor({ profile, hasPhotoField, onSave, onClose }) {
   return (
     <Modal title="Edit Quick Add" onClose={onClose}>
       <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: C.sub }}>
-        Pick the buttons you want on the dashboard, in the order you want them.
+        Pick the buttons you want on the dashboard. Left alone, they arrange themselves by what you
+        use most — or take the arrows and put them exactly where you want them.
       </p>
+
+      <SwitchRow on={!manual}
+        onChange={(v) => {
+          feedback("select");
+          setManual(!v);
+          if (v) setOrder((prev) => rankIds(prev, stats || {}, todayStr(), "auto"));
+        }}
+        label="Order by what I use most"
+        desc={manual
+          ? "Off — your arrangement below is kept exactly as it is."
+          : "On — the ones you tap most often move to the front."} />
 
       <div className="fhj-eyebrow mb-1.5">On the dashboard</div>
       {order.length === 0 ? (
@@ -13098,7 +13132,7 @@ function QuickAddEditor({ profile, hasPhotoField, onSave, onClose }) {
         </Button>
         <div className="flex-1" />
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button onClick={() => { feedback("save"); onSave(order); }}>Save</Button>
+        <Button onClick={() => { feedback("save"); onSave(order, manual ? "manual" : "auto"); }}>Save</Button>
       </div>
     </Modal>
   );
@@ -13286,6 +13320,50 @@ function greetingFor(d = new Date()) {
     Frequency beats recency here on purpose. "Recent" puts the one-off you
     logged yesterday at the front; "frequent" puts the coffee you have every
     morning there, which is the thing a repeat button is for. */
+/* One tap, again.
+
+   The second time somebody logs a thing is the tap this row exists to save,
+   and it does not care what kind of thing it is: the porridge they have every
+   morning, the cream they put on twice a day, the arm they photograph on
+   Sundays, the weight they record on Mondays. They are ranked against each
+   other by the same score (see src/lib/quickActions.ts), so this is the
+   person's own week in their own order rather than a menu of everything the
+   app can do. */
+function QuickRepeats({ items, onRun, onOpenPicker }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <div className="fhj-section mt-6 fhj-cat-symptom">
+        <h2 className="fhj-section-title">Again</h2>
+        {onOpenPicker && (
+          <button type="button" onClick={onOpenPicker}
+            className="text-[11px] font-semibold" style={{ color: C.accentText }}>
+            All foods
+          </button>
+        )}
+      </div>
+      <div className="fhj-scroller" role="list" aria-label="Do something again">
+        {items.map((item) => (
+          <button key={item.id} type="button" role="listitem"
+            onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); onRun(item); }}
+            aria-label={`${item.kind === "food" ? "Log" : item.kind === "photo" ? "Take" : "Add"} ${item.label} again`}
+            className={"fhj-repeat fhj-pop " + REPEAT_CAT[item.kind]}>
+            <span className="fhj-repeat-name">
+              <Icon name={item.icon} size={12} color="currentColor" /> {item.label}
+            </span>
+            <span className="fhj-repeat-meta">{item.sub}</span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+const REPEAT_CAT = {
+  food: "fhj-cat-food", routine: "fhj-cat-routine", photo: "fhj-cat-photo",
+  measurement: "fhj-cat-symptom", note: "fhj-cat-symptom",
+};
+
 function RepeatRow({ library, onLog, onOpenPicker }) {
   const items = useMemo(() => {
     /* Everything the library knows, most-logged first — including a food
@@ -13745,7 +13823,7 @@ function DailyPulse({
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -13772,28 +13850,90 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
      handlers are kept apart on purpose — a tile with no handler here simply
      doesn't render, so the viewer build and a setup without photo questions
      both drop the tiles they can't honour without any extra conditionals. */
-  const quickAddIds = resolveQuickAdd(profile, { hasPhotoField: photoFields.length > 0 });
+  const stats = useMemo(() => sanitizeActionStats(profile.actionStats), [profile.actionStats]);
+  const quickAddIds = resolveQuickAdd(profile, {
+    hasPhotoField: photoFields.length > 0, stats, today: todayStr(),
+  });
+
+  /* Every tap on an action is a vote about tomorrow's ordering. Recorded here,
+     once, around whatever the action itself does — so a new action added later
+     cannot forget to be counted. */
+  const track = (id, fn) => (...args) => { onUseAction?.(id); return fn?.(...args); };
+
+  /* What the journal already knows how to repeat: the foods and doses with a
+     count behind them, the body spots photographed before, the numbers
+     recorded before, and the note. */
+  const repeats = useMemo(() => {
+    const t0 = todayStr();
+    const lastPhoto = {};
+    const lastNumber = {};
+    for (const e of entries) {
+      for (const [k, p] of Object.entries(e.photos || {})) {
+        if (p?.photoId && (!lastPhoto[k] || e.date > lastPhoto[k])) lastPhoto[k] = e.date;
+      }
+      for (const f of numberFields) {
+        const v = e.answers?.[f.k];
+        if (typeof v === "number" && (!lastNumber[f.k] || e.date > lastNumber[f.k].at)) {
+          lastNumber[f.k] = { at: e.date, v };
+        }
+      }
+    }
+    return repeatSuggestions({
+      today: t0,
+      foods,
+      routineItems,
+      photoFields: photoFields.map((f) => ({ k: f.k, label: f.label, lastAt: lastPhoto[f.k] })),
+      numberFields: numberFields.map((f) => ({
+        k: f.k, label: f.label, unit: f.unit,
+        lastValue: lastNumber[f.k]?.v ?? null, lastAt: lastNumber[f.k]?.at,
+      })),
+      hasNoteToday: !!(today?.notes || "").trim(),
+      hasEverNoted: entries.some((e) => (e.notes || "").trim()),
+      stats,
+      max: 8,
+    });
+  }, [entries, foods, routineItems, photoFields, numberFields, today, stats]);
+
+  const runRepeat = (item) => {
+    onUseAction?.(item.id);
+    if (item.kind === "food") {
+      const food = foods.find((f) => f.id === item.refId);
+      if (!food) return;
+      const time = localTime();
+      onSaveFood(logFromFoodItem(food, { date: todayStr(), time, meal: mealForTime(time), servings: 1 }));
+      return;
+    }
+    if (item.kind === "routine") {
+      const rItem = routineItems.find((r) => r.id === item.refId);
+      if (!rItem) return;
+      onSaveRoutine(logFromItem(rItem, { date: todayStr(), slot: slotForTime(localTime()) }));
+      return;
+    }
+    if (item.kind === "photo") return openLog(todayStr(), { photos: true });
+    if (item.kind === "measurement") return setMeasureSheet(item.refId);
+    if (item.kind === "note") return setNoteSheet(true);
+  };
   const quickAddActions = {
-    checkin: () => openLog(todayStr()),
-    food: () => setFoodPicker(mealForTime(localTime())),
-    drink: () => setFoodPicker("drink"),
-    bowel: () => setBowelSheet({}),
-    routine: goRoutine || null,
-    photo: photoFields.length > 0 ? () => openLog(todayStr(), { photos: true }) : null,
-    diary: goFood || null,
+    checkin: track("checkin", () => openLog(todayStr())),
+    food: track("food", () => setFoodPicker(mealForTime(localTime()))),
+    drink: track("drink", () => setFoodPicker("drink")),
+    bowel: track("bowel", () => setBowelSheet({})),
+    routine: goRoutine ? track("routine", goRoutine) : null,
+    photo: photoFields.length > 0 ? track("photo", () => openLog(todayStr(), { photos: true })) : null,
+    diary: goFood ? track("diary", goFood) : null,
   };
 
   /* What the + button in the navigation bar can do. Same handlers as Quick
      Add where they overlap — there is one way to log a meal in this app, and
      both doors open onto it. */
   const addActions = viewer ? {} : {
-    checkin: () => openLog(todayStr()),
-    food: () => setFoodPicker(mealForTime(localTime())),
-    routine: () => setRoutineListSheet(true),
-    photo: photoFields.length > 0 ? () => openLog(todayStr(), { photos: true }) : null,
-    note: () => setNoteSheet(true),
-    bowel: () => setBowelSheet({}),
-    measurement: () => setMeasureSheet(true),
+    checkin: track("checkin", () => openLog(todayStr())),
+    food: track("food", () => setFoodPicker(mealForTime(localTime()))),
+    routine: track("routine", () => setRoutineListSheet(true)),
+    photo: photoFields.length > 0 ? track("photo", () => openLog(todayStr(), { photos: true })) : null,
+    note: track("note", () => setNoteSheet(true)),
+    bowel: track("bowel", () => setBowelSheet({})),
+    measurement: track("measurement", () => setMeasureSheet(true)),
   };
 
   /* One tap on a checklist row. Ticking writes a log; un-ticking removes the
@@ -13875,13 +14015,8 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             </button>
           )}
 
-          <RepeatRow
-            library={foods}
-            onOpenPicker={() => setFoodPicker(mealForTime(localTime()))}
-            onLog={(item) => {
-              const time = localTime();
-              onSaveFood(logFromFoodItem(item, { date: todayStr(), time, meal: mealForTime(time), servings: 1 }));
-            }} />
+          <QuickRepeats items={repeats} onRun={runRepeat}
+            onOpenPicker={foods.length ? () => setFoodPicker(mealForTime(localTime())) : null} />
 
           {/* The routine sits directly under Quick Add because it is the other
               thing this screen is for: Quick Add is what happened, this is
@@ -13974,7 +14109,11 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           onClose={() => setNoteSheet(false)} />
       )}
       {measureSheet && (
-        <MeasurementSheet fields={numberFields} answers={today?.answers || {}}
+        <MeasurementSheet
+          fields={typeof measureSheet === "string"
+            ? numberFields.filter((f) => f.k === measureSheet)
+            : numberFields}
+          answers={today?.answers || {}}
           ghosts={recentAnswers(numberFields, entries, todayStr())} date={todayStr()}
           onSave={(k, v) => onPatch(profile.id, todayStr(), { answers: { [k]: v } }, "quick")}
           onClose={() => setMeasureSheet(false)} />
@@ -13991,7 +14130,8 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
         <QuickAddEditor
           profile={profile}
           hasPhotoField={photoFields.length > 0}
-          onSave={(ids) => { onUpdateQuickAdd?.(ids); setQuickAddEditor(false); }}
+          stats={stats}
+          onSave={(ids, order) => { onUpdateQuickAdd?.(ids, order); setQuickAddEditor(false); }}
           onClose={() => setQuickAddEditor(false)} />
       )}
     </div>
@@ -14883,6 +15023,10 @@ function migrateDb(data) {
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
   if (d.profile.quickAdd !== undefined) d.profile.quickAdd = sanitizeQuickAdd(d.profile.quickAdd);
+  /* Which actions this person actually uses, and when they last did. Bounded
+     and repaired on load: it grows one key per repeatable thing and arrives
+     from hand-editable backups like everything else. */
+  d.profile.actionStats = sanitizeActionStats(d.profile.actionStats);
   /* The appointment pack's settings — which sections print, the questions
      somebody has been collecting since the last visit, and when that visit was.
      Same reasoning as the rest: this reaches us from a hand-editable backup as
@@ -15695,14 +15839,31 @@ export default function App({ viewer = false }) {
     },
   }));
 
-  const setQuickAdd = (ids) => setDb((prev) => ({
+  const setQuickAdd = (ids, order) => setDb((prev) => ({
     ...prev,
     profile: {
       ...prev.profile,
       quickAdd: sanitizeQuickAdd(ids) ?? DEFAULT_QUICK_ADD,
+      /* "manual" is set by arranging the tiles by hand, and cleared by the
+         switch in the editor. Anything else means the ordering is learned. */
+      quickAddOrder: order === "manual" ? "manual" : "auto",
       updatedAt: new Date().toISOString(),
     },
   }));
+
+  /* One vote per tap, stored on the profile so the ordering somebody has built
+     up travels with their journal to a new device rather than starting over. */
+  const noteActionUse = (id) => {
+    if (viewer || !id) return;
+    setDb((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        actionStats: noteUse(sanitizeActionStats(prev.profile.actionStats), id, todayStr()),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
 
   const todayProps = {
     profile, entries, openLog: goToLog, viewer, onPatch: upsertEntry,
@@ -15716,7 +15877,7 @@ export default function App({ viewer = false }) {
     goSettings: () => setScreen("settings"), goSetup: () => setScreen("setup"),
     goFood: () => setScreen("food"), goRoutine: () => setScreen("routine"),
     goInsights: () => setScreen("insights"),
-    onUpdateQuickAdd: setQuickAdd, ai: db.ai, syncStatus,
+    onUpdateQuickAdd: setQuickAdd, onUseAction: noteActionUse, ai: db.ai, syncStatus,
   };
 
   const insightsProps = {

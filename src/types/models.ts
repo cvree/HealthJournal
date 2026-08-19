@@ -129,6 +129,13 @@ export interface TrackingSetup {
       "never chosen" and gets the default four; an empty array is a real
       choice and hides the section. */
   quickAdd?: string[];
+  /** "manual" once somebody has arranged the tiles by hand — their order is
+      then kept exactly. Anything else means the order is learned from use.
+      See src/lib/quickActions.ts. */
+  quickAddOrder?: "auto" | "manual";
+  /** Use count and last-used date per action id, which is what the learned
+      ordering and the one-tap repeats are ranked on. */
+  actionStats?: Record<string, { n: number; at?: string }>;
   /** ISO timestamp of the last restorable backup the user downloaded. */
   lastBackupAt?: string;
   createdAt?: string;
