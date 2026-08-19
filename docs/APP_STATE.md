@@ -410,6 +410,65 @@
 > screen-reader pass not done.
 
 
+> **2026-08-19 addendum 17 — 1.15: Insights rebuilt; episodes are a first-class record.**
+> **Four new pure modules, none of which draws anything.** `src/lib/distribution.ts` (buckets,
+> mean/median/mode with ties broken toward the median, population SD → `steady|mixed|swinging`,
+> hard/calm counts against `HARD_AT=7`/`CALM_AT=3` on the *badness* scale so `dir` decides which
+> end is which). `src/lib/episodes.ts` (the `HealthEpisode` model, `sanitizeEpisodes`,
+> `startFlare`/`endFlare`/`updateEpisode`/`removeEpisode`, `episodeStats`, `episodeYear`,
+> `compareEpisodeYears`, `episodeBands`). `src/lib/longterm.ts` (`monthlyAverages`, `yearLines`,
+> `sameMonthLastYear`, `extremeMonths`, `longestStableRun`, `seasonalAverages`, with
+> `MIN_DAYS_PER_MONTH=6` and `MIN_YEARS_FOR_SEASON=2` exported so the UI can print *why* a thing
+> is hidden). `src/lib/relationships.ts` (`pairUp` with lag, `ranks` with ties averaged,
+> `spearman`, `strengthOf` gated on n, `MIN_PAIRS=12`/`SOLID_PAIRS=30`, and `RELATIONSHIP_COPY`
+> as the single object the causal-language audit reads). All four are clock-free — every caller
+> passes `today`.
+>
+> **Episodes through the database.** `AppDatabase.episodes`, re-exported `HealthEpisode` from
+> `types/models`, `sanitizeEpisodes` in `migrateDb`, an `episodes` branch in `validateDatabase`,
+> `"episode"` added to `RecordKind` + `COLLECTIONS` + `FIELD_OF` in `sync/project`, and
+> `episodes` in `buildFullBackup`/`restoreBackup`. Deletes go through `addTombstone` like every
+> other collection.
+>
+> **`InsightsScreen` replaced wholesale.** New order: range selector → hero → four `SummaryCard`s
+> → `MainTrendChart` → `EpisodesSection` → `YearHeatmap` (+ `LongTermView` in a Disclosure) →
+> `ScoreDistribution` → `MetricComparison` → `RelationshipExplorer` → the pre-existing
+> PatternsSection/reports/photos/recent/backup/export tail. `INSIGHT_RANGES` carries both `label`
+> (the control) and `prose` (the same window in a sentence) — without the second one every line
+> read "3 months average".
+>
+> **Pinned metrics** live on `profile.pinnedMetrics` (max 4) and are written on every toggle via
+> `pinMetrics`. `MetricPicker`'s label on this screen is now **"Pinned metrics"**, which broke
+> `tests/metricPicker.test.tsx`'s App-level query (the component's own default is unchanged).
+>
+> **Deleted:** `MultiMetricChart`, `MetricChart`, `seriesFor` — all three fixed at 30 days,
+> superseded by `MainTrendChart` (range-aware, episode bands) + `components/MetricComparison`
+> (ratings share one 1–10 axis; every other unit gets its own small chart, synchronised by
+> recharts `syncId`). `seriesBetween` is the range-aware `seriesFor`.
+>
+> **New screen `episode`** (`EpisodeDetailScreen`), reached from the flare card or the timeline,
+> with `episodeId` held in App state. Its chart deliberately draws ±14 days around the flare.
+>
+> **Gotchas, all found in a real browser:**
+> · An `<Area>` sharing a `dataKey` with a `<Line>` prints the value twice in the tooltip —
+>   fixed with `tooltipType="none"` on every Area (three charts).
+> · The Insights range selector is a `radiogroup`, so `tests/aiWizard.test.tsx`'s unscoped
+>   `getAllByRole("radio")` started picking it up through the wizard sheet; the query is now
+>   scoped with `within(dialog)`.
+> · Group-comparison bar values were printed *over* the fill and had to clear contrast against
+>   fill and track in two themes; they are outside the track now.
+> · A native `<select>` with the platform arrow stripped reads as a heading, not a control — one
+>   chevron fixes it.
+> · The demo journal is ~33 days, so the 3-month range has no previous period; the "vs previous"
+>   line correctly becomes "no earlier period to compare with", and the test pins that.
+>
+> Tests: **852 across 36 suites** (was 747/31) — `tests/distribution.test.ts` (14),
+> `tests/episodes.test.ts` (33), `tests/longterm.test.ts` (20), `tests/relationships.test.ts`
+> (20), `tests/insightsUi.test.tsx` (18).
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User

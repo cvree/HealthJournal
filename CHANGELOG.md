@@ -1,5 +1,169 @@
 # Changelog
 
+## 1.15.0
+
+### Insights, rebuilt around the questions people actually ask
+
+Insights was a pile. A headline number, a chart, some cards, patterns,
+reports, photos, entries. Everything on it was worth having and none of it was
+in an order, so "how am I doing" was somewhere in five screens of scrolling and
+the reader had to assemble the answer themselves.
+
+It now runs down the questions in the order they get asked:
+
+1. **Over what period?** — a range selector at the very top: 30 days, 3 months,
+   12 months, all. It is first because it changes everything below it, and
+   everything below it really does re-read the same window. Nothing on the page
+   is quietly still showing thirty days.
+2. **How am I right now?** — the hero, with the day's number, the streak, and
+   the range average underneath it.
+3. **How does that compare?** — four figures and no charts among them: average
+   with its change against the previous window, days logged out of days in
+   range, hard days, calm days. These are the numbers you read *before* you look
+   at anything, so they are not inside a chart.
+4. **What has it been doing?** — one trend chart, the first pinned metric, over
+   the chosen range, with any flare shaded behind it.
+5. **How bad were the bad bits?** — flares.
+6. **What does a year look like?** — the heatmap, with the whole monthly history
+   folded underneath it.
+7. **What kind of days are they?** — the spread.
+8. **Does anything move with it?** — honest side-by-side charts.
+9. **Is anything related?** — the explorer.
+
+One primary chart is visible at a time. Week by week, the years overlaid,
+seasonal averages and the scatter each sit behind a labelled expansion control,
+so the page reads as nine short answers rather than as fourteen charts.
+
+**Pinned metrics.** Up to four, saved to the journal rather than held in screen
+state — the entire point of pinning is that they are still there tomorrow. The
+first one is what the hero, the trend chart, the year block and the spread are
+all about.
+
+### The spread of days
+
+An average of 5.2 is the same number for somebody who scores 5 every single day
+and somebody who alternates 2 and 8, and those are not the same life. The trend
+chart cannot tell them apart either — it draws both, and the eye reads the
+second as noise around the first.
+
+So: ten columns, one per score, each carrying its own count above it, in the
+same colour ramp as the year block. Under them, the four things that count
+actually tells you — the typical day, the most common day, the spread in one
+word (*steady*, *mixed*, *swinging*), and how many days were hard. "How many
+days were actually bad" is a count, not a curve, and no amount of staring at a
+line gives it to you.
+
+### Flares
+
+A chronic condition is not a smooth line with a slope. It is long stretches of
+"fine, mostly" broken by weeks that reorganise your life, and the second kind is
+what you remember, what you book an appointment about, and what every question
+you bring to it is really asking.
+
+**Start a flare. End a flare.** That is the whole interface. Nothing is detected
+automatically, and that is a decision rather than a gap: a run of 7s is not
+always a flare, a flare does not always show up as a run of 7s, and an app that
+invents medical events in somebody's history and then reports statistics about
+them has done something worse than nothing. You say when it started. The app
+does the arithmetic.
+
+The arithmetic is: how long it ran, how much of it you logged, the average, the
+middle day, the peak and its date, how many hard days, the fortnight before it,
+the fortnight after it, and how many clear days there were since the last one.
+Then a year of them — how many, how many flare days, the average length, the
+longest — against the same figures for the year before. A flare that crosses New
+Year is counted in both years, in the right proportions.
+
+**Each flare has its own screen**, and its chart is not the one on Insights: it
+draws a fortnight either side of the flare with the flare shaded, because a
+flare drawn from its own first day to its own last day always looks like a
+flare, and drawn with the fortnight before it, it looks like what happened.
+Under the chart, the things that make it a memory rather than a statistic — what
+you wrote, what you photographed, what you were taking, and the day-by-day
+record.
+
+### The long view
+
+Folded under the year block: one point per calendar month across the whole
+journal, this month against the same month last year, the best month, the
+hardest month, the longest unbroken calm stretch, the years overlaid, and
+seasonal averages.
+
+This is the section with the most ways to mislead, so it has the most floors. A
+month built on fewer than six logged days is not plotted. A same-month
+comparison needs both sides solid or it does not appear. Seasonal averages stay
+hidden until most months of the year have two years behind them, because
+"your Januaries average 7.2" computed from one January is just that January with
+a grander name on it. A calm run counts only days logged back to back — a gap
+ends it, because not writing anything down is not evidence of a good day.
+
+Where something is hidden, the reason is printed. Somebody who logs irregularly
+should learn what the app needs, not conclude the feature is broken.
+
+### Comparisons that don't lie about the axis
+
+The old chart put every selected metric on one pair of axes and, when the units
+did not match, printed a note underneath asking the reader to "compare shapes,
+not heights". That note was doing work the chart should have done. With severity
+on 1–10 and a step count in the thousands, the severity line is flat against the
+bottom edge and any relationship between them is invisible. Worse: weight in kg
+and severity 1–10 land in the *same* numeric range, so the chart looks perfectly
+reasonable and is completely meaningless.
+
+Metrics that genuinely share a scale — the 1–10 ratings — now share one chart
+with a fixed 1–10 axis, which is the only honest overlay in this app. Anything
+with its own unit gets its own small chart underneath, same width, same dates,
+its own axis. One crosshair moves across all of them at once, so the thing an
+overlay was *for* — "what was happening on the day that spiked" — still works,
+and now works truthfully.
+
+### Possible relationships
+
+Pick something you're tracking and something you suspect. The screen compares
+the days both were logged, same-day or with a one-day lag, and reports how often
+they moved together.
+
+This is the most dangerous screen in the app, and the danger was never that the
+arithmetic might be wrong. It is that somebody managing a condition, looking at
+a chart the app drew, reads "dairy 0.42" as "dairy is doing this to me" and
+changes what they eat on the strength of eleven days. So the restraint is in the
+code rather than in a disclaimer at the bottom:
+
+- **Nothing appears below twelve paired days.** Not greyed out — absent, with a
+  line saying how many more days it needs and why.
+- **The sample size is printed above the result**, not below it. It is the thing
+  that decides whether the result means anything.
+- **Spearman's rank correlation, not Pearson's.** These are 1–10 ratings a
+  person assigned to their own body; the intervals between them are not equal,
+  and rank correlation is the one that doesn't pretend otherwise. Ties are
+  averaged, because 1–10 ratings are almost entirely ties.
+- **"Strong" is unavailable below thirty paired days**, however large the
+  coefficient. A 0.7 on twelve days is not a strong relationship, it is twelve
+  days.
+- **The default shape is a grouped comparison, not the scatter.** "On the days
+  you logged more of this, that averaged 6.8 rather than 5.4" is a sentence
+  somebody can act on carefully. A cloud of dots with a coefficient is a
+  sentence they will act on confidently, which is worse. The scatter is one tap
+  away for anyone who wants it.
+- **"Not proof that one causes the other" is on screen at all times**, not
+  folded away.
+
+Every phrase the feature can produce lives in one object that the
+causal-language audit reads, so there is no second place for a stray "causes" to
+hide.
+
+### Underneath
+
+Four new pure modules — `distribution`, `episodes`, `longterm`, `relationships`
+— none of which draws anything, all of which are tested without a DOM or a
+clock. Direction is load-bearing in all four: a 2 is a good day for a rash and a
+poor one for sleep, so no threshold anywhere assumes high is bad.
+
+Episodes are a first-class record: typed model, migration with a sanitiser that
+repairs dates the wrong way round, runtime validation, a sync record kind, and a
+place in full backups. `MultiMetricChart`, `MetricChart` and `seriesFor` are
+gone — all three were fixed at thirty days and are superseded.
+
 ## 1.14.0
 
 ### Your year, on one screen

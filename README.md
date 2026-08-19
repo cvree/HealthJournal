@@ -124,13 +124,62 @@ before the next frame, and the receipt arrives as a toast with an **Undo** in it
 confirmation step, because it charges only the people who actually made a mistake. Deleting a
 log keeps its photo until the Undo has expired, so an Undo never brings a meal back without it.
 
-**See what's happening.** **Insights** is the second tab and the other half of the old
-dashboard: the day's headline number, a 30-day chart comparing up to four metrics at once,
-weekly bars, week-over-week cards, **Possible Patterns**, reports, photo progress and recent
-entries. Food and bowel logs join the chart as derived daily metrics (calories, macros, movement
-count, average Bristol type, urgency, straining, discomfort). Possible-pattern cards need at
-least six paired days before they'll say anything. Every chartable metric is reachable in the
-trend picker — it scrolls, it says so, and it works from a keyboard.
+**See what's happening.** **Insights** is the second tab, and it runs down the questions in the
+order people ask them: *over what period* (a range selector at the very top — 30 days, 3 months,
+12 months, all — which everything below it genuinely re-reads), *how am I right now* (the hero),
+*how does that compare* (four figures and no charts among them), *what has it been doing* (one
+trend chart), *how bad were the bad bits* (flares), *what does a year look like* (the heatmap),
+*what kind of days are they* (the spread), *does anything move with it* (side by side), and *is
+anything related* (the explorer). One primary chart is visible at a time; week by week, the years
+overlaid, seasonal averages and the scatter each sit behind a labelled expansion control. Pin up
+to four metrics and they're still there tomorrow — the first one is what the whole screen is
+about. Food and bowel logs join as derived daily metrics (calories, macros, movement count,
+average Bristol type, urgency, straining, discomfort).
+
+**The spread of days.** An average of 5.2 is the same number for someone who scores 5 every day
+and someone who alternates 2 and 8, and those are not the same life. Ten columns, one per score,
+each carrying its own count, in the year block's colour ramp — then the typical day, the most
+common day, the spread in one word (*steady*, *mixed*, *swinging*), and how many days were hard.
+"How many days were actually bad" is a count, not a curve.
+
+**Flares, marked by you.** A chronic condition is not a smooth line with a slope; it is long
+stretches of "fine, mostly" broken by weeks that reorganise your life. Start a flare, end a
+flare — that is the whole interface, and **nothing is detected automatically**, which is a
+decision rather than a gap: a run of 7s is not always a flare, and an app that invents medical
+events in your history and then reports statistics about them has done something worse than
+nothing. The app does the arithmetic: length, coverage, average, median, peak and its date, hard
+days, the fortnight before, the fortnight after, and the clear days since the last one — then a
+year of them against the year before, with a flare crossing New Year counted in both. Each flare
+has its own screen, and its chart draws a fortnight either side, because a flare drawn from its
+own first day to its own last day always looks like a flare, and drawn with the fortnight before
+it, it looks like what happened.
+
+**The long view**, folded under the year block: a point per calendar month across the whole
+journal, this month against the same month last year, best and hardest month, the longest
+unbroken calm run, the years overlaid, and seasonal averages. This is the section with the most
+ways to mislead, so it has the most floors — a thin month is not plotted, a comparison needs both
+sides solid, seasons stay hidden until most months have two years behind them, and a calm run
+counts only days logged back to back. Where something is hidden, the reason is printed.
+
+**Comparisons that don't lie about the axis.** Metrics that genuinely share a scale — the 1–10
+ratings — share one chart with a fixed 1–10 axis. Anything with its own unit gets its own small
+chart underneath: same width, same dates, its own axis, one crosshair moving across all of them
+at once. The old chart put severity and step count on one pair of axes and printed a note asking
+the reader to "compare shapes, not heights"; worse, weight in kg and severity 1–10 land in the
+same numeric range, so that chart looked perfectly reasonable and was meaningless.
+
+**Possible relationships.** Pick something you're tracking and something you suspect; the screen
+compares the days both were logged, same-day or with a one-day lag. This is the most dangerous
+screen in the app, and the danger was never bad arithmetic — it is reading "dairy 0.42" as "dairy
+is doing this to me" and changing what you eat on the strength of eleven days. So the restraint
+is in the code: nothing appears below twelve paired days (absent, not greyed out, with a line
+saying how many more it needs); the sample size is printed *above* the result; it is Spearman's
+rank correlation with ties averaged, not Pearson's, because these are ratings a person assigned
+to their own body and the intervals between them are not equal; "strong" is unavailable below
+thirty pairs however large the coefficient; the default shape is a grouped comparison rather than
+a scatter, because "on the days you logged more of this, that averaged 6.8 rather than 5.4" is a
+sentence you can act on carefully and a cloud of dots with a coefficient is one you will act on
+confidently; and "not proof that one causes the other" is on screen at all times.
 
 **Your year, on one screen.** Under the 30-day chart sits the whole last twelve months of the
 selected 1–10 metric: one row per month, one square per day, a distinct shade for every score
@@ -475,7 +524,9 @@ health-journal/
 │   ├── App.tsx                 # the app (migrated single-file artifact)
 │   ├── components/             # ambient backdrop, appearance panel, lock,
 │   │                           #   recovery, viewer landing, metric picker,
-│   │                           #   year heatmap
+│   │                           #   year heatmap, score distribution, episode
+│   │                           #   timeline, small-multiple comparisons,
+│   │                           #   relationships explorer, long-term view
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving
@@ -486,6 +537,10 @@ health-journal/
 │   │   ├── routine.ts          # meds/supplements/creams/products: items, doses, checklist
 │   │   ├── metrics.ts          # the one registry of chartable derived metrics
 │   │   ├── heatmap.ts          # the 12-month year grid, summaries and colour ramp
+│   │   ├── distribution.ts     # days per score, the three middles, hard/calm counts
+│   │   ├── episodes.ts         # the flare model + every number one can be asked for
+│   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
+│   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
 │   │   ├── answers.ts          # type-safe answer read/write
@@ -514,7 +569,7 @@ health-journal/
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
 ├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 747 tests across 31 suites
+└── tests/                      # 852 tests across 36 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token
