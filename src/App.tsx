@@ -2688,6 +2688,61 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
   );
 }
 
+/* What "logged" means, in one place.
+
+   Three surfaces need the same answer — the completion screen, the day-exists
+   rule in `upsertEntry`, and anything that asks whether today has been
+   written. A null answer is not a value: it is the survey's record that the
+   question was asked and declined, which is worth keeping and is not worth
+   celebrating. */
+function patchHasContent(patch) {
+  if (!patch) return false;
+  if (Object.values(patch.answers || {}).some((v) => v != null)) return true;
+  if (typeof patch.notes === "string" && patch.notes.trim()) return true;
+  return Object.values(patch.photos || {}).some((p) => p?.photoId);
+}
+
+function entryValueCount(entry) {
+  if (!entry) return 0;
+  let n = Object.values(entry.answers || {}).filter((v) => v != null).length;
+  if ((entry.notes || "").trim()) n += 1;
+  n += Object.values(entry.photos || {}).filter((p) => p?.photoId).length;
+  return n;
+}
+
+/* The other half of the celebration: what to show when there is nothing to
+   celebrate.
+
+   Skipping every question used to end in confetti and a streak count, which
+   is the app congratulating somebody for a blank day — and worse, teaching
+   them that the number on the front is not to be trusted. This says what
+   happened, and offers the one tap that would make it untrue. There is no
+   Undo here on purpose: nothing was written, so there is nothing to undo. */
+function NothingLogged({ tpl, keyField, onSet, onBack }) {
+  return (
+    <div className="mt-2">
+      <Card className="text-center py-7">
+        <div className="fhj-eyebrow">Today</div>
+        <div className="font-display text-2xl leading-tight mt-1.5">Nothing logged yet</div>
+        <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
+          Every question was skipped, so there is nothing to save and nothing on the record for
+          today. That is a perfectly good answer — but the day stays blank.
+        </p>
+      </Card>
+      {keyField && keyField.type === "scale" && (
+        <Card className="mt-2">
+          <div className="fhj-eyebrow mb-1">One tap is enough</div>
+          <div className="text-sm font-semibold mb-2.5">{keyField.label}</div>
+          <PulseScale field={keyField} value={null} onSet={(n, el) => onSet(keyField.k, n, el)} />
+        </Card>
+      )}
+      <button onClick={onBack} className="fhj-btn fhj-btn-secondary fhj-btn-block mt-3">
+        Back to the questions
+      </button>
+    </div>
+  );
+}
+
 function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabel = "Finish Quick Log" }) {
   const fields = useMemo(() => tpl.fields.filter((f) => f.quick !== false && f.type !== "photo" && !f.dependsOn), [tpl]);
   const chunks = useMemo(() => {
@@ -2726,7 +2781,17 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
   const skipField = (k) => setSkippedKeys((prev) => new Set(prev).add(k));
   const goNext = () => setPage((p) => Math.min(p + 1, totalPages));
   const goBack = () => { feedback("tap"); setPage((p) => Math.max(p - 1, 0)); };
-  const skipBatch = () => { feedback("tap"); for (const f of chunks[page]) set(f.k, null); goNext(); };
+  /* Skip means "don't ask me these", not "erase what is there". It used to
+     write a null over every field in the batch, which quietly deleted an
+     answer given on Today, or on an earlier visit to this same day — the one
+     kind of data loss a journal must never do casually. Unanswered fields are
+     marked skipped in session state; answered ones are left exactly as they
+     are. */
+  const skipBatch = () => {
+    feedback("tap");
+    for (const f of chunks[page]) if (answers[f.k] == null) skipField(f.k);
+    goNext();
+  };
 
   const cardRefs = useRef({});
   const actionsRef = useRef(null);
@@ -2756,6 +2821,20 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
 
   if (page >= totalPages) {
     if (celebrating) {
+      /* Derived from the journal, on every render. Recording something from
+         the "nothing logged" screen therefore turns it into the celebration
+         the moment the value lands — which is the only moment it is true. */
+      if (entryValueCount(entryOn(entries, date)) === 0) {
+        return (
+          <NothingLogged tpl={tpl} keyField={getField(tpl, tpl.keyMetric)}
+            onSet={(k, v, el) => {
+              feedback("quickadd", { el });
+              place("scale", v, 10);
+              set(k, v);
+            }}
+            onBack={() => { feedback("nav"); setCelebrating(false); setPage(0); }} />
+        );
+      }
       return <FinishCelebration streak={calcStreak(entries)} tint={tpl.color} onDone={onDone} />;
     }
     return (
@@ -2804,9 +2883,12 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
             )}
           </Card>
         )}
+        {/* The sound is part of the claim: a day with nothing in it does not
+            get the save chime either. */}
         <button onClick={() => {
+          const wrote = entryValueCount(entryOn(entries, date)) > 0;
           const s = calcStreak(entries);
-          feedback(s > 0 && s % 7 === 0 ? "milestone" : "save");
+          feedback(!wrote ? "tap" : s > 0 && s % 7 === 0 ? "milestone" : "save");
           setCelebrating(true);
         }} className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
           {doneLabel}
@@ -15008,6 +15090,13 @@ export default function App({ viewer = false }) {
       const now = new Date().toISOString();
       const entries = [...prev.entries];
       const i = entries.findIndex((e) => e.profileId === profileId && e.date === date);
+      /* A day exists in this journal because something was recorded on it.
+         Skipping every question writes nulls — which is how the survey marks
+         "asked and declined" — and creating a day out of nothing but declines
+         would put a dot on the calendar, a day on the streak and a row in the
+         export for a day nobody logged. An existing day still accepts a null:
+         that is clearing an answer, which is a real edit. */
+      if (i < 0 && !patchHasContent(patch)) return prev;
       const mergePhotos = (existing) => {
         if (!patch.photos) return existing || {};
         const merged = { ...(existing || {}), ...patch.photos };
