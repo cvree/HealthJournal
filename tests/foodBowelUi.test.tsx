@@ -332,7 +332,8 @@ describe("the timeline", () => {
     expect(glance.textContent).toContain("600");
     expect(glance.textContent).toContain("kcal");
 
-    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Insights" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "History" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Insights/ }));
     await waitFor(() => expect(document.body.textContent).toContain("Food today"));
   });
 });
@@ -488,7 +489,7 @@ describe("the one-tap loop", () => {
     const dlg = await pickerDialog();
     fireEvent.click(within(dlg).getByText("Oats")); // opens the serving stepper
     fireEvent.click(await screen.findByRole("button", { name: "more servings" }));
-    fireEvent.click(screen.getByRole("button", { name: /Add to/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Add to (breakfast|lunch|dinner|snack|drink)/i }));
 
     await waitFor(() => expect(screen.queryByPlaceholderText("Search your foods")).toBeNull());
     // 300 from the original log + 450 from 1.5 servings.
@@ -523,7 +524,8 @@ describe("the one-tap loop", () => {
 
 describe("the food diary", () => {
   const goToDiary = async () => {
-    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Diary" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "History" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Diary/ }));
     await screen.findByRole("button", { name: "previous day" });
   };
 

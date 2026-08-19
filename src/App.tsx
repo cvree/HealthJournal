@@ -1237,6 +1237,7 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     drink: <g><path {...p} d="M6 4h12l-1.4 15.2a2 2 0 0 1-2 1.8H9.4a2 2 0 0 1-2-1.8z" /><path {...p} d="M6.6 10h10.8" /></g>,
     camera: <g><path {...p} d="M4 8h3l1.4-2h7.2L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle {...p} cx="12" cy="13.5" r="3.4" /></g>,
     clock: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M12 7.2V12l3.2 2" /></g>,
+    note: <path {...p} d="M6 3h8l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M8.5 13h7M8.5 16.5h4.5" />,
     edit: <path {...p} d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17zM13.5 6.5l3 3" />,
     minus: <path {...p} d="M5 12h14" />,
     star: <path {...p} d="M12 4.2l2.35 4.76 5.25.77-3.8 3.7.9 5.23L12 16.2l-4.7 2.46.9-5.23-3.8-3.7 5.25-.77z" />,
@@ -5391,7 +5392,7 @@ function EpisodeDetailScreen({
    Calendar screen
    ============================================================ */
 
-function CalendarScreen({ profile, entries, openLog }) {
+function CalendarScreen({ profile, entries, openLog, embedded = false }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const [offset, setOffset] = useState(0);
@@ -5409,6 +5410,7 @@ function CalendarScreen({ profile, entries, openLog }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   if (entries.length === 0) {
+    if (embedded) return null;
     return (
       <div className="px-4 pb-8 pt-4">
         <EmptyState icon="calendar" title="Nothing logged yet"
@@ -5419,7 +5421,7 @@ function CalendarScreen({ profile, entries, openLog }) {
   }
 
   return (
-    <div className="px-4 pb-8 pt-3">
+    <div className={embedded ? "pt-4" : "px-4 pb-8 pt-3"}>
       <Card>
         <div className="flex items-center justify-between mb-3">
           <button onClick={() => { feedback("nav"); setOffset(offset - 1); }} aria-label="previous month"
@@ -5483,6 +5485,131 @@ function CalendarScreen({ profile, entries, openLog }) {
         </div>
         <div className="text-xs mt-2" style={{ color: C.sub }}>Tap any past day to view or edit its entry.</div>
       </Card>
+    </div>
+  );
+}
+
+/* ============================================================
+   History
+   ============================================================
+
+   The second of the two tabs. Today is what you are writing; this is
+   everything you have written — the month at a glance, the last fortnight in
+   words, and the two doors out of it: the trends, and the day-by-day diary.
+
+   It exists because the five-tab bar was a filing cabinet. Calendar, Diary and
+   Insights were three separate destinations that all answered one question —
+   "what happened before now" — and asking somebody to remember which shelf a
+   thing lived on is a tax charged on every single visit. */
+
+function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen }) {
+  const v = keyField ? entry.answers?.[keyField.k] : null;
+  const marks = [];
+  if (food.some((f) => f.date === entry.date)) marks.push("meals");
+  if (routine.some((r) => r.date === entry.date && !r.skipped)) marks.push("routine");
+  if (bowel.some((b) => b.date === entry.date)) marks.push("bowel");
+  if (entry.photos && Object.values(entry.photos).some((p) => p?.photoId)) marks.push("photo");
+  if ((entry.notes || "").trim()) marks.push("note");
+  const answered = Object.values(entry.answers || {}).filter((x) => x != null).length;
+
+  return (
+    <button type="button" onClick={() => { feedback("nav"); onOpen(entry.date); }}
+      className="fhj-hist-row">
+      <span className="fhj-hist-dot" style={{
+        background: v != null ? colorFor(v, keyField?.dir) : "transparent",
+        border: v != null ? "none" : `1.5px solid ${C.lineStrong}`,
+        color: v != null ? readableInk(colorFor(v, keyField?.dir)) : C.subtle,
+      }}>
+        {v != null ? v : "–"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{fmtNice(entry.date)}</span>
+        <span className="block text-[11.5px] truncate" style={{ color: C.subtle }}>
+          {(entry.notes || "").trim()
+            ? entry.notes.trim()
+            : marks.length
+              ? marks.join(" · ").replace(/^./, (c) => c.toUpperCase())
+              : `${answered} ${answered === 1 ? "answer" : "answers"}`}
+        </span>
+      </span>
+      <Icon name="right" size={14} color={C.subtle} />
+    </button>
+  );
+}
+
+function HistoryScreen({
+  profile, entries, food = [], bowel = [], routine = [],
+  openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, viewer, syncStatus,
+}) {
+  const tpl = getProfileTemplate(profile);
+  const keyField = getField(tpl, tpl.keyMetric);
+  const recent = useMemo(() => [...entries].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14), [entries]);
+
+  return (
+    <div className="px-4 pb-10">
+      {/* A tab screen draws its own header, and Settings lives in it — the
+          fifth tab it used to occupy is gone, and a preference is not a
+          destination somebody navigates to every day. */}
+      <div className="flex items-start justify-between gap-3 pt-5 pb-1">
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-medium" style={{ color: C.subtle }}>
+            {entries.length} {entries.length === 1 ? "day" : "days"} on the record
+          </div>
+          <h1 className="font-display text-[1.75rem] leading-tight mt-0.5">History</h1>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 mt-1">
+          <SyncAlert status={syncStatus} onOpen={goSettings} />
+          <button onClick={goSetup} aria-label="edit survey setup" className="fhj-icon-btn">
+            <Icon name="sliders" size={18} color={C.sub} />
+          </button>
+          <button onClick={goSettings} aria-label="settings" className="fhj-icon-btn">
+            <Icon name="gear" size={19} color={C.sub} />
+          </button>
+        </div>
+      </div>
+
+      {/* The two things people come here to do that aren't "find a day". */}
+      <div className="fhj-hist-doors mt-4">
+        <button type="button" onClick={() => { feedback("nav"); goInsights(); }}
+          className="fhj-hist-door fhj-pop fhj-cat-symptom">
+          <span className="fhj-tile-icon"><Icon name="trends" size={18} color="currentColor" /></span>
+          <span>
+            <span className="fhj-tile-label block">Insights</span>
+            <span className="fhj-tile-sub block">Trends and flares</span>
+          </span>
+        </button>
+        <button type="button" onClick={() => { feedback("nav"); goDiary(); }}
+          className="fhj-hist-door fhj-pop fhj-cat-food">
+          <span className="fhj-tile-icon"><Icon name="food" size={18} color="currentColor" /></span>
+          <span>
+            <span className="fhj-tile-label block">Diary</span>
+            <span className="fhj-tile-sub block">Meals and doses</span>
+          </span>
+        </button>
+      </div>
+
+      <CalendarScreen profile={profile} entries={entries} openLog={openLog} embedded />
+
+      {recent.length > 0 && (
+        <>
+          <div className="fhj-section mt-6 fhj-cat-symptom">
+            <h2 className="fhj-section-title">Recent days</h2>
+          </div>
+          <Card className="!p-0 mt-1" style={{ padding: 0 }}>
+            {recent.map((e, i) => (
+              <div key={e.id || e.date} style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none" }}>
+                <HistoryDayRow entry={e} tpl={tpl} keyField={keyField}
+                  food={food} bowel={bowel} routine={routine} onOpen={openLog} />
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+
+      <div className="flex gap-2 mt-4">
+        <Button variant="outline" block icon="camera" onClick={goGallery}>Photos</Button>
+        <Button variant="outline" block icon="download" onClick={goExport}>Export</Button>
+      </div>
     </div>
   );
 }
@@ -13135,6 +13262,146 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
 }
 
 /* ============================================================
+   The + sheet
+   ============================================================
+
+   One button in the middle of the navigation bar, and everything a day can
+   hold behind it. This is the half of the navigation rebuild that matters:
+   five tabs made the app a filing cabinet you had to know your way around,
+   where "log a meal" and "log a dose" lived on different shelves. There is one
+   verb — add — and it is always in the same place, always one tap from
+   anywhere, and it says what it can do rather than making somebody remember.
+
+   Everything here is a thing you *add to today*. Reading what is already
+   there is Today and History; this sheet only ever writes. */
+
+const ADD_ACTIONS = [
+  { id: "checkin", label: "Check-in", sub: "The day's questions", icon: "log", cat: "fhj-cat-symptom" },
+  { id: "food", label: "Food", sub: "Meal, snack or drink", icon: "food", cat: "fhj-cat-food" },
+  { id: "routine", label: "Routine", sub: "Meds and creams", icon: "pill", cat: "fhj-cat-routine" },
+  { id: "photo", label: "Photo", sub: "Progress shot", icon: "camera", cat: "fhj-cat-photo" },
+  { id: "note", label: "Note", sub: "A line about today", icon: "note", cat: "fhj-cat-symptom" },
+  { id: "bowel", label: "Bowel", sub: "Bristol, colour, more", icon: "bowel", cat: "fhj-cat-bowel" },
+  { id: "measurement", label: "Measurement", sub: "Weight, steps", icon: "target", cat: "fhj-cat-symptom" },
+];
+
+function AddSheet({ actions, onClose }) {
+  const tiles = ADD_ACTIONS.filter((a) => actions[a.id]);
+  return (
+    <Modal title="Add to today" eyebrow="What happened?" onClose={onClose}>
+      <div className="fhj-add-grid">
+        {tiles.map((a) => (
+          <button key={a.id} type="button"
+            onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); onClose(); actions[a.id](); }}
+            className={`fhj-add-tile fhj-pop ${a.cat}`}>
+            <span className="fhj-tile-icon"><Icon name={a.icon} size={18} color="currentColor" /></span>
+            <span>
+              <span className="fhj-tile-label block">{a.label}</span>
+              <span className="fhj-tile-sub block">{a.sub}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+/** A line about today, on its own, without the survey around it. */
+function NoteSheet({ initial, suggestions = [], onSave, onClose }) {
+  const [text, setText] = useState(initial || "");
+  return (
+    <Modal title="Note" eyebrow="Today" onClose={onClose}
+      footer={
+        <Button block disabled={!text.trim()}
+          onClick={() => { feedback("save"); onSave(text.trim()); }}>
+          Save note
+        </Button>
+      }>
+      <textarea rows={4} autoFocus value={text} onChange={(e) => setText(e.target.value)}
+        aria-label="Note for today"
+        placeholder="Anything worth remembering about today…"
+        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none resize-none"
+        style={{ background: C.faint, border: `1px solid ${C.line}` }} />
+      {suggestions.length > 0 && !text && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {suggestions.map((n) => (
+            <button key={n} type="button" onClick={() => { feedback("tap"); setText(n); }}
+              className="px-3 py-1.5 rounded-full text-xs" style={{ background: C.faint, color: C.sub }}>
+              “{n.length > 34 ? n.slice(0, 34) + "…" : n}”
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** Weight, steps, water — the numbers in a setup, straight to the keypad.
+
+    Which numbers exist is the person's own setup, so this lists them rather
+    than assuming weight; with exactly one it skips the list entirely, because
+    a menu of one is a tap somebody had to make for no reason. */
+function MeasurementSheet({ fields, answers, ghosts, date, onSave, onClose }) {
+  const [picked, setPicked] = useState(() => (fields.length === 1 ? fields[0] : null));
+  if (picked) {
+    return (
+      <NumberPadSheet field={picked} value={answers[picked.k]} ghost={ghosts?.[picked.k]}
+        onCommit={(v) => { onSave(picked.k, v); onClose(); }}
+        onClose={() => (fields.length === 1 ? onClose() : setPicked(null))} />
+    );
+  }
+  return (
+    <Modal title="Measurement" eyebrow={date === todayStr() ? "Today" : fmtNice(date)} onClose={onClose}>
+      {fields.length === 0 ? (
+        <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+          No number questions in your setup yet — add one in Edit Setup and it will show up here.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          {fields.map((f, i) => (
+            <button key={f.k} type="button" onClick={() => { feedback("tap"); setPicked(f); }}
+              className="flex items-center justify-between gap-3 py-3 text-left"
+              style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none" }}>
+              <span>
+                <span className="block text-sm font-semibold">{f.label}</span>
+                {f.unit && <span className="block text-[11px]" style={{ color: C.subtle }}>in {f.unit}</span>}
+              </span>
+              <span className="text-sm tabular-nums" style={{ color: answers[f.k] != null ? C.ink : C.subtle }}>
+                {answers[f.k] != null ? `${answers[f.k]}${f.unit ? ` ${f.unit}` : ""}` : "—"}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** Today's routine, in a sheet, for when the + button is how somebody got
+    here. Same checklist component as Today and the Diary — one list, one set
+    of rules about what a tick means. */
+function RoutineQuickSheet({ items, logs, date, onToggle, onAdjust, onLogRows, onLogAsNeeded, onManage, onClose }) {
+  const progress = routineProgress(items, logs, date);
+  return (
+    <Modal title="Routine" eyebrow={progress.total ? `${progress.done} of ${progress.total} done` : "Today"}
+      onClose={onClose}
+      footer={<Button variant="secondary" block onClick={() => { onClose(); onManage(); }}>Manage your routine</Button>}>
+      <div className="fhj-cat-routine">
+        {progress.total === 0 && asNeededItems(items).length === 0 ? (
+          <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+            Nothing in your routine yet. Add what you take or use and it becomes a one-tap
+            checklist here and on Today.
+          </p>
+        ) : (
+          <RoutineChecklist items={items} logs={logs} date={date} compact
+            onToggle={onToggle} onAdjust={onAdjust} onLogRows={onLogRows} onLogAsNeeded={onLogAsNeeded} />
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================
    The Daily Pulse
    ============================================================
 
@@ -13350,7 +13617,7 @@ function DailyPulse({
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -13364,6 +13631,12 @@ function DashboardScreen({ profile, entries, openLog, onPatch, goSettings, goSet
   const [bowelSheet, setBowelSheet] = useState(null);
   const [routineSheet, setRoutineSheet] = useState(null); // { item, slot, log } being adjusted
   const [quickAddEditor, setQuickAddEditor] = useState(false);
+  /* The three sheets the + button can open that nothing else on this screen
+     owned yet. Everything else it offers already had a home here. */
+  const [noteSheet, setNoteSheet] = useState(false);
+  const [measureSheet, setMeasureSheet] = useState(false);
+  const [routineListSheet, setRoutineListSheet] = useState(false);
+  const numberFields = useMemo(() => tpl.fields.filter((f) => f.type === "number"), [tpl]);
   const aiEnabled = !!ai?.enabled && !viewer;
   const aiAuto = aiEnabled && ai?.auto === true;
 
@@ -13380,6 +13653,19 @@ function DashboardScreen({ profile, entries, openLog, onPatch, goSettings, goSet
     routine: goRoutine || null,
     photo: photoFields.length > 0 ? () => openLog(todayStr(), { photos: true }) : null,
     diary: goFood || null,
+  };
+
+  /* What the + button in the navigation bar can do. Same handlers as Quick
+     Add where they overlap — there is one way to log a meal in this app, and
+     both doors open onto it. */
+  const addActions = viewer ? {} : {
+    checkin: () => openLog(todayStr()),
+    food: () => setFoodPicker(mealForTime(localTime())),
+    routine: () => setRoutineListSheet(true),
+    photo: photoFields.length > 0 ? () => openLog(todayStr(), { photos: true }) : null,
+    note: () => setNoteSheet(true),
+    bowel: () => setBowelSheet({}),
+    measurement: () => setMeasureSheet(true),
   };
 
   /* One tap on a checklist row. Ticking writes a log; un-ticking removes the
@@ -13550,6 +13836,28 @@ function DashboardScreen({ profile, entries, openLog, onPatch, goSettings, goSet
           onSkip={(log) => { onSaveRoutine(log); setRoutineSheet(null); }}
           onUnlog={(log) => { onDeleteRoutine(log); setRoutineSheet(null); }}
           onClose={() => setRoutineSheet(null)} />
+      )}
+      {addOpen && !viewer && (
+        <AddSheet actions={addActions} onClose={onCloseAdd} />
+      )}
+      {noteSheet && (
+        <NoteSheet initial={today?.notes || ""} suggestions={recentNotes(entries)}
+          onSave={(text) => { onPatch(profile.id, todayStr(), { notes: text }, "quick"); setNoteSheet(false); }}
+          onClose={() => setNoteSheet(false)} />
+      )}
+      {measureSheet && (
+        <MeasurementSheet fields={numberFields} answers={today?.answers || {}}
+          ghosts={recentAnswers(numberFields, entries, todayStr())} date={todayStr()}
+          onSave={(k, v) => onPatch(profile.id, todayStr(), { answers: { [k]: v } }, "quick")}
+          onClose={() => setMeasureSheet(false)} />
+      )}
+      {routineListSheet && (
+        <RoutineQuickSheet items={routineItems} logs={routine} date={todayStr()}
+          onToggle={toggleRoutine} onAdjust={(row) => { setRoutineListSheet(false); setRoutineSheet(row); }}
+          onLogRows={onLogRoutineRows}
+          onLogAsNeeded={(item) => onSaveRoutine(logFromItem(item, { date: todayStr(), slot: slotForTime(localTime()) }))}
+          onManage={goRoutine}
+          onClose={() => setRoutineListSheet(false)} />
       )}
       {quickAddEditor && (
         <QuickAddEditor
@@ -14256,15 +14564,19 @@ function OnboardingWizard({ onComplete, onLoadSample }) {
    lives at the foot of Insights and in Settings — two places, both of them
    where someone would go looking for it — and the tab it vacated went to the
    screen that earns a daily visit. */
+/* Two destinations and one verb.
+
+   The five-tab bar (Today, Log, Diary, Insights, Calendar) asked somebody to
+   know which shelf a thing lived on before they could put anything on it —
+   a tax charged on every visit, paid most often by the person feeling worst.
+   What is left is the only division that survives contact with a bad day:
+   what is happening now, what has happened, and *add*. Everything the old
+   tabs led to is one tap from one of the three (see the + sheet and History),
+   and Settings moved into the header where a preference belongs. */
 const NAV = [
   { id: "dashboard", label: "Today", icon: "home" },
-  { id: "log", label: "Log", icon: "log" },
-  /* One tab for the whole day — meals *and* the routine. "Food" stopped being
-     true the moment the checklist moved in, and a tab whose label undersells
-     what is behind it is a tab people stop opening. */
-  { id: "food", label: "Diary", icon: "food" },
-  { id: "insights", label: "Insights", icon: "trends" },
-  { id: "calendar", label: "Calendar", icon: "calendar" },
+  { id: "add", label: "Add", icon: "plus", action: true },
+  { id: "history", label: "History", icon: "calendar" },
 ];
 
 /* Forward migration — safe to run on every load; only fills gaps. */
@@ -14418,6 +14730,9 @@ export default function App({ viewer = false }) {
      pack screen's own state would silently reset every time somebody went back
      to change it. */
   const [packParams, setPackParams] = useState({ range: null });
+  /* The + sheet is opened from the navigation bar, which lives in the shell,
+     and answered by Today, which owns every sheet it can open. */
+  const [addSheet, setAddSheet] = useState(false);
   /* Which flare the detail screen is showing. Kept here rather than in the URL
      for the same reason every other screen's parameter is: this app has no
      router, and a deep link into a record that may have been deleted on another
@@ -15161,7 +15476,7 @@ export default function App({ viewer = false }) {
 
   let content = null;
   if (screen === "dashboard") {
-    content = <DashboardScreen {...todayProps} />;
+    content = <DashboardScreen {...todayProps} addOpen={addSheet} onCloseAdd={() => setAddSheet(false)} />;
   } else if (screen === "insights") {
     content = <InsightsScreen {...insightsProps} />;
   } else if (screen === "settings") {
@@ -15221,6 +15536,16 @@ export default function App({ viewer = false }) {
     );
   } else if (screen === "calendar") {
     content = <CalendarScreen profile={profile} entries={entries} openLog={goToLog} />;
+  } else if (screen === "history") {
+    content = (
+      <HistoryScreen
+        profile={profile} entries={entries}
+        food={db.food || []} bowel={db.bowel || []} routine={db.routine || []}
+        openLog={goToLog} viewer={viewer} syncStatus={syncStatus}
+        goInsights={() => setScreen("insights")} goDiary={() => setScreen("food")}
+        goExport={() => setScreen("export")} goGallery={() => setScreen("gallery")}
+        goSettings={() => setScreen("settings")} goSetup={() => setScreen("setup")} />
+    );
   } else if (screen === "fitbit") {
     content = <FitbitImportScreen db={db} setDb={setDb} goBack={() => setScreen("settings")} />;
   } else if (screen === "gallery") {
@@ -15228,7 +15553,7 @@ export default function App({ viewer = false }) {
   } else if (screen === "report") {
     content = <ReportScreen db={db} setDb={setDb} params={reportParams} goBack={goHome} />;
   } else {
-    content = <DashboardScreen {...todayProps} />;
+    content = <DashboardScreen {...todayProps} addOpen={addSheet} onCloseAdd={() => setAddSheet(false)} />;
   }
 
   /* The tab-level screens draw their own heading, so the shared header would
@@ -15237,14 +15562,15 @@ export default function App({ viewer = false }) {
      56px on the longest page in the app to say "Diary" twice. Every other
      screen is somewhere you navigated *into* and wants the title and the way
      back. */
-  const showHeader = screen !== "dashboard" && screen !== "insights" && screen !== "food";
+  const showHeader = screen !== "dashboard" && screen !== "insights" && screen !== "food"
+    && screen !== "history";
   /* Every screen id that can reach here needs an entry. "food" and "fitbit"
      were missing, which rendered the header with an empty <h1> and the survey
      name orphaned underneath it. */
   const screenTitle = {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
-    routine: "Your Routine", episode: "Flare", pack: "Appointment Pack",
+    routine: "Your Routine", episode: "Flare", pack: "Appointment Pack", history: "History",
     fitbit: "Import Health Data",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
   }[screen] || APP_NAME;
@@ -15310,6 +15636,15 @@ export default function App({ viewer = false }) {
                 </button>
               </div>
             )}
+            {/* Settings is in the header now, on every screen that has one —
+                it used to be a tab, and a preference is not somewhere you go
+                every day. */}
+            {screen !== "settings" && !viewer && (
+              <button onClick={() => setScreen("settings")} aria-label="settings" className="fhj-icon-btn shrink-0"
+                style={{ width: "2.5rem", height: "2.5rem" }}>
+                <Icon name="gear" size={18} color={C.sub} />
+              </button>
+            )}
             {viewer && <span className="fhj-badge fhj-badge-neutral">Read-only</span>}
           </header>
         )}
@@ -15328,7 +15663,19 @@ export default function App({ viewer = false }) {
           <div className="max-w-md mx-auto px-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
             <div className="flex rounded-2xl overflow-hidden"
               style={{ background: C.card, border: `1px solid ${C.line}`, boxShadow: C.shadowLg }}>
-              {(viewer ? NAV.filter((n) => n.id !== "log") : NAV).map((n) => {
+              {(viewer ? NAV.filter((n) => !n.action) : NAV).map((n) => {
+                /* The + is not a destination and never shows as one — it opens
+                   the add sheet over whatever screen you are on, and lands you
+                   on Today, which is the day it adds to. */
+                if (n.action) {
+                  return (
+                    <button key={n.id} aria-label="Add to today" aria-haspopup="dialog"
+                      onClick={() => { feedback("nav"); setScreen("dashboard"); setAddSheet(true); }}
+                      className="flex-1 flex items-center justify-center" style={{ minHeight: 56 }}>
+                      <span className="fhj-nav-add"><Icon name="plus" size={22} color={C.onAccent} /></span>
+                    </button>
+                  );
+                }
                 const active = screen === n.id;
                 const color = active ? C.accentText : C.sub;
                 return (

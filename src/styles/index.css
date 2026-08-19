@@ -3179,6 +3179,102 @@ button.fhj-section:disabled {
 }
 
 /* ============================================================
+   Navigation: two destinations and one verb
+   ============================================================ */
+
+/* The + is the most-tapped control in the app and the only one that is a
+   *verb*, so it is the only thing in the bar drawn as a solid. It sits proud
+   of the bar rather than inside it — a filled circle among two quiet icons is
+   unmistakable at a glance, which is the whole job. */
+.fhj-nav-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.5));
+  border: var(--fhj-bw) solid var(--fhj-bw-color, transparent);
+  transition: transform 90ms var(--fhj-out), box-shadow 90ms var(--fhj-out);
+}
+button:active > .fhj-nav-add {
+  transform: translate(var(--fhj-press), var(--fhj-press));
+  box-shadow: none;
+}
+
+/* The + sheet: everything a day can hold, two across. */
+.fhj-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.fhj-add-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  min-height: 4rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  color: var(--fhj-ink, #ecebe7);
+}
+
+/* History: the two doors out of it, and the day rows under the month. */
+.fhj-hist-doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.fhj-hist-door {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  min-height: 4rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-hist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  min-height: var(--fhj-tap);
+  text-align: left;
+  transition: background var(--fhj-quick) ease;
+}
+@media (hover: hover) {
+  .fhj-hist-row:hover {
+    background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  }
+}
+
+/* The day's number, at the size it is worth: this column is how somebody
+   finds the week they want without reading a single date. */
+.fhj-hist-dot {
+  flex: none;
+  width: 2.125rem;
+  height: 2.125rem;
+  border-radius: var(--fhj-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
    The Daily Pulse
    ============================================================
    The one control on Today that has to be legible, reachable and unambiguous

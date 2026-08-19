@@ -35,7 +35,8 @@ async function mountInsights(mutate?: (db: any) => void) {
     async list() { return { keys: [...kv.keys()] }; },
   };
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: "History" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Insights/ }, { timeout: 10000 }));
   await screen.findByRole("heading", { name: "Trend" }, { timeout: 10000 });
   return db;
 }

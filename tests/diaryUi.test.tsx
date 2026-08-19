@@ -54,7 +54,8 @@ async function openDiary(patch: (db: any) => any = (d) => d) {
   const kv = mockStorage({ fhj_v1: JSON.stringify(db) });
   const utils = render(<App />);
   await screen.findByText(/Quick Add/);
-  fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Diary" }));
+  fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "History" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Diary/ }));
   await screen.findByRole("button", { name: "previous day" });
   return { ...utils, kv };
 }

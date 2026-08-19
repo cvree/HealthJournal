@@ -193,7 +193,7 @@ export function followUps(ctx: FollowUpContext): FollowUp[] {
       hint: kind === "calm" ? "what was different today?"
         : kind === "hard" ? "what happened?"
           : "anything worth remembering",
-      icon: "edit",
+      icon: "note",
     });
   }
 

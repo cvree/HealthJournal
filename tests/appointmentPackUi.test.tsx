@@ -38,7 +38,8 @@ async function mountExport(mutate?: (db: any) => void) {
     async list() { return { keys: [...kv.keys()] }; },
   };
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: "History" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Insights/ }, { timeout: 10000 }));
   fireEvent.click(await screen.findByRole("button", { name: /Export data/i }, { timeout: 10000 }));
   await screen.findByRole("heading", { name: "Prepare an Appointment Pack" }, { timeout: 10000 });
   return db;
@@ -153,7 +154,8 @@ describe("the questions", () => {
     // Same journal, opened fresh: the question is still in the pack.
     cleanup();
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
+    fireEvent.click(await screen.findByRole("button", { name: "History" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Insights/ }, { timeout: 10000 }));
     fireEvent.click(await screen.findByRole("button", { name: /Export data/i }, { timeout: 10000 }));
     await openPack();
     expect(screen.getByText("Should I stay on this cream?")).toBeTruthy();

@@ -46,7 +46,8 @@ async function mountApp(entryCount?: number, aiEnabled = false) {
     async list() { return { keys: [...kv.keys()] }; },
   };
   const r = render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: "History" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Insights/ }, { timeout: 10000 }));
   return r;
 }
 

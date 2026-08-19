@@ -147,7 +147,8 @@ describe("the Insights screen offers every chartable metric", () => {
     render(<App />);
     // Trends — and so the picker — live on the Insights tab now; the first
     // screen is for logging.
-    fireEvent.click(await screen.findByRole("button", { name: "Insights" }, { timeout: 10000 }));
+    fireEvent.click(await screen.findByRole("button", { name: "History" }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Insights/ }, { timeout: 10000 }));
     const group = await screen.findByRole("group", { name: "Pinned metrics" }, { timeout: 10000 });
 
     const db = JSON.parse(kv.get("fhj_v1")!);
