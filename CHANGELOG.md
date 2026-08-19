@@ -2,6 +2,41 @@
 
 ## 1.18.0
 
+### The trend chart draws what you pinned
+
+Insights let you pin four metrics and then drew one of them. The other three
+changed a chip's colour and nothing else, and the comparison they were pinned
+for lived in a second card — "Side by side" — three screens further down, under
+a heatmap and a distribution. Two cards, one chart's worth of information, and
+the one at the top of the screen was the one that answered nothing.
+
+There is now one chart, at the top, and it is the comparison. Ratings share the
+single honest 1–10 axis. Anything with its own unit — weight, doses, hours of
+sleep, a percentage — gets its own chart underneath at the same width and on
+the same dates, with its own axis, and one crosshair crosses all of them at
+once. The metric the screen is about still leads: heaviest line, tallest chart,
+its 7-day average dashed in behind it, and the flares you marked shaded behind
+every chart in the stack.
+
+"Side by side" is gone as a section, because it is now the thing you were
+already looking at. A metric with fewer than three days in the window says so
+in place of drawing a line out of two points.
+
+### The pickers under "Possible relationships" are the app's own
+
+They were native `<select>` elements. On a phone that is a wheel and defensible;
+on a laptop it drops an unstyleable list over a dark card, in the browser's
+font, with two dozen metrics in one flat alphabetical run, no units, no
+grouping, and unselected rows greyed nearly to the page colour. It was the one
+control in the app that looked like it belonged to a different app.
+
+They are now the same sheet every other choice here opens in — grabber,
+heading, scrim, drag to dismiss. Ratings are grouped apart from things measured
+their own way, each option carries its unit, the current answer is filled and
+drawn rather than merely ticked, and past nine options there is a filter field.
+Keyboard throughout: arrows move, Enter chooses, Escape closes, and focus comes
+back to the trigger you left.
+
 ### The first thirty seconds
 
 Somebody installing a health journal is not shopping. Something is wrong, or

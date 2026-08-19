@@ -617,6 +617,51 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-19 addendum 21 — 1.18: the trend chart *is* the comparison; the app's own select.**
+> **`MetricComparison` absorbed `MainTrendChart`.** Insights let you pin four metrics and drew
+> one; the comparison lived in a separate "Side by side" card three sections down. That card is
+> gone and `MainTrendChart` is deleted. `components/MetricComparison` gained `primaryKey` (the
+> lead series: heaviest line, `mainHeight` rather than `subHeight`, dots when the window is ≤62
+> days), `avgKey` (defaults to `"avg"` — the primary's trailing 7-day average, drawn dashed in
+> `C.avgLine` on whichever of the two chart kinds the primary lives on), `note` (printed under
+> the primary's own chart), and `renderEmpty` so App can pass its own `ChartEmpty`. The ratings
+> chart is a `ComposedChart` now, not a `LineChart`, because it has to carry the fade and the
+> average. A series with fewer than 3 points in the window is not drawn: its key is faded and,
+> when nothing else shares that chart, an empty state says how many days it has.
+>
+> **`comparisonData` in `InsightsScreen`** now also carries `avg` — the same 7-day trailing mean
+> `seriesBetween` computed, over the pinned primary — so the chart takes one `data` array.
+> `seriesBetween` itself stays: `EpisodeDetailScreen` still uses it.
+>
+> **`src/components/FieldSelect.tsx` (new)** replaces the two native `<select>`s in
+> `RelationshipExplorer`. Select-only combobox pattern: a `<button role="combobox">` trigger, and
+> the list rendered through `createPortal` into `document.body` as the app's standard
+> `.fhj-scrim` + `.fhj-sheet` with `role="listbox"` on the scrolling body. Options are grouped
+> "Rated 1–10" / "Measured its own way"; ratings deliberately print no per-row unit (the group
+> title says it once). A filter field appears at ≥9 options and resets on every open. Keyboard:
+> ↑/↓/Home/End move `active`, Enter/Space commits, Escape closes, focus returns to the trigger.
+> It calls `lockPageScroll()` from `lib/motion` itself, so Lenis does not scroll the page behind
+> it — `Modal` in App.tsx is not reachable from `components/`.
+>
+> **Gotchas:** a `<button>` needs an explicit `role="combobox"` or Testing Library's
+> `getByRole("combobox")` never finds it; the global `input:focus-visible` outline out-specifies
+> a class-level `outline: none`, so the filter needed its own `:focus-visible` rule (the wrapper
+> already lights up); the active-row lookup walks `[data-k]` nodes rather than building a
+> selector, because field keys are user-authored.
+>
+> **CSS.** `.fhj-select*`, `.fhj-sel-*`, `.fhj-opt*` replace `.fhj-rel-choose/.fhj-rel-select*`;
+> `.fhj-cmp-key*` is the chart key shared by both chart kinds; `.fhj-rel-pickers` goes two-up
+> above 34rem.
+>
+> **Verified in a browser:** dark and light, single pin and four pins, a rating primary and an
+> own-unit primary, the sheet open, filtered, and empty.
+>
+> Tests: **978 across 45 suites** (was 967/44) — `tests/fieldSelect.test.tsx` (10);
+> `insightsUi` swapped its two `<select>` assertions for the combobox/listbox and now pins that
+> every pinned metric reaches the trend chart.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 

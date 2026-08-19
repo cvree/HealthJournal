@@ -8,6 +8,10 @@
    saying how many more days it needs. A greyed-out chart would still be a
    chart, and people read charts.
 
+   The two pickers are the app's own control (components/FieldSelect), not a
+   native select: this list is two dozen metrics long, and it wants grouping,
+   units and a filter — none of which a <select> can carry.
+
    The default shape is the grouped comparison, not the scatter. "On the days
    you logged more of this, that averaged 6.8 instead of 4.1" is a sentence a
    person can act on carefully; a cloud of dots with a correlation coefficient
@@ -18,6 +22,7 @@ import {
   CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { C } from "../lib/theme";
+import FieldSelect from "./FieldSelect";
 import {
   MIN_PAIRS, needsLine, relationship, RELATIONSHIP_COPY, STRENGTH_COPY,
   type Entryish, type RelationshipResult,
@@ -46,33 +51,6 @@ type Props = {
 };
 
 const fmt1 = (x: number | null) => (x == null ? "–" : (Math.round(x * 10) / 10).toString());
-
-/** A native select, deliberately. Two dozen metrics in a chip strip is a
-    scrolling puzzle; this is the control the platform already made for
-    "choose one of many", and it opens as a wheel on a phone. */
-function Choose({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void; options: ExplorerField[];
-}) {
-  return (
-    <label className="fhj-rel-choose" style={{ background: C.faint, borderColor: C.line }}>
-      <span className="fhj-eyebrow">{label}</span>
-      <span className="fhj-rel-selectwrap">
-        <select value={value} onChange={(e) => onChange(e.target.value)}
-          className="fhj-rel-select" style={{ color: C.ink }}>
-          {options.map((f) => (
-            <option key={f.k} value={f.k}>{f.label}</option>
-          ))}
-        </select>
-        {/* A native select with the platform arrow stripped looks like text.
-            One chevron is the difference between "a heading" and "a control". */}
-        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ color: C.sub }}>
-          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-    </label>
-  );
-}
 
 function GroupBars({ result, tint, outcomeLabel }: {
   result: RelationshipResult; tint: string; outcomeLabel: string;
@@ -150,10 +128,12 @@ export default function RelationshipExplorer({
       </p>
 
       <div className="fhj-rel-pickers">
-        <Choose label="I want to look at" value={outcome.k} options={outcomes}
-          onChange={(v) => { onFeedback?.("select"); setOutcomeKey(v); }} />
-        <Choose label="Compared with" value={factor.k} options={factorOptions}
-          onChange={(v) => { onFeedback?.("select"); setFactorKey(v); }} />
+        <FieldSelect label="I want to look at" value={outcome.k} options={outcomes}
+          tint={tint} hint="Ratings only — this is the thing being explained."
+          onChange={setOutcomeKey} onFeedback={onFeedback} />
+        <FieldSelect label="Compared with" value={factor.k} options={factorOptions}
+          hint="Anything else you log a number or a yes/no for."
+          onChange={setFactorKey} onFeedback={onFeedback} />
       </div>
 
       <div className="fhj-segmented mt-2.5" role="radiogroup" aria-label="When to compare">

@@ -47,10 +47,10 @@ const saved = () => JSON.parse(kv.get("fhj_v1")!);
 beforeEach(() => cleanup());
 
 describe("the order it asks its questions in", () => {
-  it("runs range, hero, four figures, trend, flares, year, spread, side by side, relationships", async () => {
+  it("runs range, hero, four figures, trend, flares, year, spread, relationships", async () => {
     await mountInsights();
     const headings = [...document.querySelectorAll("h2.fhj-section-title")].map((n) => n.textContent);
-    const wanted = ["Trend", "Flares", "Your year", "Spread of days", "Side by side", "Possible relationships"];
+    const wanted = ["Trend", "Flares", "Your year", "Spread of days", "Possible relationships"];
     // Every named section is present, in this order, before the older ones.
     const seen = headings.filter((h) => wanted.includes(h!));
     expect(seen).toEqual(wanted);
@@ -134,15 +134,19 @@ describe("pinned metrics", () => {
     expect(pressed).toHaveLength(2);
   });
 
-  it("only compares side by side once a second metric is pinned", async () => {
+  /* The pins and the chart under them used to disagree: pinning four metrics
+     drew one line, and the comparison lived in a second card further down. */
+  it("draws every pinned metric in the trend chart, not just the first", async () => {
     await mountInsights();
-    expect(document.body.textContent).toContain("Pin a second metric above");
+    const keys = () => [...document.querySelectorAll(".fhj-cmp-key")].map((n) => n.textContent);
+    expect(keys()).toHaveLength(1);
     const group = screen.getByRole("group", { name: "Pinned metrics" });
     const chips = within(group).getAllByRole("button")
       .filter((b) => b.getAttribute("aria-pressed") !== null);
+    const second = chips[1].textContent!;
     fireEvent.click(chips[1]);
-    await waitFor(() =>
-      expect(document.body.textContent).not.toContain("Pin a second metric above"));
+    await waitFor(() => expect(keys()).toHaveLength(2));
+    expect(keys().join(" ")).toContain(second);
   });
 });
 
@@ -208,14 +212,38 @@ describe("the spread of days", () => {
 });
 
 describe("possible relationships", () => {
+  const chosen = (name: RegExp) =>
+    screen.getByRole("combobox", { name })
+      .querySelector(".fhj-select-value")!.textContent!.trim();
+
   it("offers an outcome and a factor, and never the same metric as both", async () => {
     await mountInsights();
-    const outcome = screen.getByLabelText(/I want to look at/i) as HTMLSelectElement;
-    const factor = screen.getByLabelText(/Compared with/i) as HTMLSelectElement;
-    expect(outcome.value).toBeTruthy();
-    expect(factor.value).not.toBe(outcome.value);
-    const factorKeys = [...factor.options].map((o) => o.value);
-    expect(factorKeys).not.toContain(outcome.value);
+    expect(chosen(/I want to look at/i)).toBeTruthy();
+    expect(chosen(/Compared with/i)).not.toBe(chosen(/I want to look at/i));
+
+    fireEvent.click(screen.getByRole("combobox", { name: /Compared with/i }));
+    const list = await screen.findByRole("listbox", { name: /Compared with/i });
+    const offered = within(list).getAllByRole("option").map((o) => o.textContent);
+    expect(offered.length).toBeGreaterThan(1);
+    expect(offered.some((o) => o!.startsWith(chosen(/I want to look at/i)))).toBe(false);
+  });
+
+  /* The old control was a native <select>: unstyleable, ungroupable, and the
+     one thing on this screen that looked like a different app. */
+  it("chooses from the app's own sheet, grouped and filterable", async () => {
+    await mountInsights();
+    fireEvent.click(screen.getByRole("combobox", { name: /I want to look at/i }));
+    const list = await screen.findByRole("listbox", { name: /I want to look at/i });
+    const before = chosen(/I want to look at/i);
+    const options = within(list).getAllByRole("option");
+    expect(options.some((o) => o.getAttribute("aria-selected") === "true")).toBe(true);
+
+    const other = options.find((o) => o.getAttribute("aria-selected") !== "true")!;
+    const wanted = other.querySelector(".fhj-opt-name")!.textContent!;
+    fireEvent.click(other);
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(chosen(/I want to look at/i)).toBe(wanted);
+    expect(chosen(/I want to look at/i)).not.toBe(before);
   });
 
   it("prints the sample size before the result, and says it is not proof", async () => {

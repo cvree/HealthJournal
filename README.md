@@ -167,11 +167,10 @@ order people ask them: *over what period* (a range selector at the very top — 
 12 months, all — which everything below it genuinely re-reads), *how am I right now* (the hero),
 *how does that compare* (four figures and no charts among them), *what has it been doing* (one
 trend chart), *how bad were the bad bits* (flares), *what does a year look like* (the heatmap),
-*what kind of days are they* (the spread), *does anything move with it* (side by side), and *is
-anything related* (the explorer). One primary chart is visible at a time; week by week, the years
-overlaid, seasonal averages and the scatter each sit behind a labelled expansion control. Pin up
-to four metrics and they're still there tomorrow — the first one is what the whole screen is
-about. Food and bowel logs join as derived daily metrics (calories, macros, movement count,
+*what kind of days are they* (the spread), and *is anything related* (the explorer). Week by
+week, the years overlaid, seasonal averages and the scatter each sit behind a labelled expansion
+control. Pin up to four metrics and they're still there tomorrow — the first one is what the
+whole screen is about, and every one of them is drawn in the trend chart. Food and bowel logs join as derived daily metrics (calories, macros, movement count,
 average Bristol type, urgency, straining, discomfort).
 
 **The spread of days.** An average of 5.2 is the same number for someone who scores 5 every day
@@ -199,15 +198,24 @@ ways to mislead, so it has the most floors — a thin month is not plotted, a co
 sides solid, seasons stay hidden until most months have two years behind them, and a calm run
 counts only days logged back to back. Where something is hidden, the reason is printed.
 
-**Comparisons that don't lie about the axis.** Metrics that genuinely share a scale — the 1–10
-ratings — share one chart with a fixed 1–10 axis. Anything with its own unit gets its own small
-chart underneath: same width, same dates, its own axis, one crosshair moving across all of them
-at once. The old chart put severity and step count on one pair of axes and printed a note asking
-the reader to "compare shapes, not heights"; worse, weight in kg and severity 1–10 land in the
-same numeric range, so that chart looked perfectly reasonable and was meaningless.
+**The trend chart is the comparison.** Metrics that genuinely share a scale — the 1–10 ratings
+— share one chart with a fixed 1–10 axis. Anything with its own unit gets its own chart
+underneath: same width, same dates, its own axis, one crosshair moving across all of them at
+once. The metric the screen is about leads — heaviest line, tallest chart, its 7-day average
+dashed in behind it — and the flares you marked are shaded behind every chart in the stack. The
+old chart put severity and step count on one pair of axes and printed a note asking the reader
+to "compare shapes, not heights"; worse, weight in kg and severity 1–10 land in the same numeric
+range, so that chart looked perfectly reasonable and was meaningless. The version before this
+one had the opposite fault: a picker that let you pin four metrics above a chart that drew one,
+with the comparison exiled to a second card further down the screen. Pinning is now visible
+where you pin.
 
 **Possible relationships.** Pick something you're tracking and something you suspect; the screen
-compares the days both were logged, same-day or with a one-day lag. This is the most dangerous
+compares the days both were logged, same-day or with a one-day lag. The two pickers are the
+app's own control rather than a native `<select>` — the list runs to two dozen metrics, so it
+opens in the same sheet everything else in the app opens in, with ratings grouped apart from
+things measured their own way, each option saying what it is measured in, and a filter field
+once the list stops being scannable at a glance. This is the most dangerous
 screen in the app, and the danger was never bad arithmetic — it is reading "dairy 0.42" as "dairy
 is doing this to me" and changing what you eat on the strength of eleven days. So the restraint
 is in the code: nothing appears below twelve paired days (absent, not greyed out, with a line
@@ -588,8 +596,9 @@ health-journal/
 │   ├── App.tsx                 # the app (migrated single-file artifact)
 │   ├── components/             # ambient backdrop, appearance panel, lock,
 │   │                           #   recovery, viewer landing, metric picker,
+│   │                           #   field select (the app's own dropdown),
 │   │                           #   year heatmap, score distribution, episode
-│   │                           #   timeline, small-multiple comparisons,
+│   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
 │   │                           #   first run (the four acts)

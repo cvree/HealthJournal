@@ -3242,10 +3242,10 @@ function ChartEmpty({ title, height = 210 }) {
 }
 
 /* MultiMetricChart and MetricChart lived here. Both were fixed 30-day charts,
-   and both were replaced when Insights gained a range selector: MainTrendChart
-   draws the primary metric over any window with its flares shaded behind it,
-   and components/MetricComparison draws the rest as honest small multiples
-   rather than overlaying incompatible units on one axis. `seriesFor` went with
+   and both were replaced when Insights gained a range selector:
+   components/MetricComparison draws every pinned metric over any window, with
+   flares shaded behind them, ratings sharing the one honest 1–10 axis and
+   anything with its own unit on a chart of its own. `seriesFor` went with
    them; `seriesBetween` is its range-aware replacement. */
 
 
@@ -4398,54 +4398,11 @@ function avgBetween(entries, key, start, end) {
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 }
 
-/* The primary chart: one metric, its 7-day average, and any flare shaded
-   behind it. Range-aware, unlike the fixed 30-day chart it replaces. */
-function MainTrendChart({ entries, field, color, start, end, bands = [] }) {
-  const data = seriesBetween(entries, field.k, start, end);
-  const isScale = field.type === "scale";
-  const numeric = data.filter((p) => p.v != null).length;
-  if (numeric < 3) {
-    return (
-      <ChartEmpty title={numeric === 0
-        ? `No “${field.label}” answers in this range.`
-        : `Only ${numeric} day${numeric === 1 ? "" : "s"} logged — the trend line appears at 3.`} />
-    );
-  }
-  const fadeId = `fhjMain_${String(field.k).replace(/\W/g, "_")}`;
-  return (
-    <div className="fhj-cmp-plot" style={{ height: 214 }}>
-      <ChartBands data={data} bands={bands} inset={{ left: 34, right: 8 }} />
-      <ResponsiveContainer>
-        <ComposedChart data={data} margin={{ top: 10, right: 8, left: -2, bottom: 0 }}>
-          <ChartFade id={fadeId} color={color} />
-          <CartesianGrid stroke={C.grid} vertical={false} strokeDasharray="2 5" />
-          <XAxis dataKey="d" tickFormatter={fmtShort} minTickGap={34}
-            tick={axisTick()} axisLine={false} tickLine={false} tickMargin={8} />
-          <YAxis domain={isScale ? [1, 10] : ["auto", "auto"]} ticks={isScale ? [1, 4, 7, 10] : undefined}
-            tick={axisTick()} axisLine={false} tickLine={false} width={34} />
-          <Tooltip labelFormatter={(d) => fmtNice(d)}
-            formatter={(v, name) => [
-              field.unit ? `${v} ${field.unit}` : v,
-              name === "v" ? field.label : "7-day avg",
-            ]}
-            {...tooltipProps()} />
-          {/* tooltipType="none": the line below already reports this
-              series, and the fill would print it a second time. */}
-          <Area type="monotone" dataKey="v" stroke="none" fill={`url(#${fadeId})`}
-            tooltipType="none" connectNulls {...chartAnim()} />
-          <Line type="monotone" dataKey="avg" stroke={C.avgLine} strokeWidth={1.5} strokeOpacity={0.85}
-            strokeDasharray="4 5" dot={false} connectNulls {...chartAnim()} />
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2.5}
-            strokeLinecap="round" strokeLinejoin="round"
-            /* A dot per day is fine over a month and is 365 marks over a year. */
-            dot={data.length <= 62 ? { r: 2, fill: color, strokeWidth: 0 } : false}
-            activeDot={{ r: 5, fill: color, stroke: C.card, strokeWidth: 2.5 }}
-            connectNulls {...chartAnim()} />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
+/* MainTrendChart lived here. It drew the primary metric and nothing else,
+   under a picker that let you pin four — so three of the four pins changed
+   nothing you could see until you scrolled to a second card further down.
+   components/MetricComparison draws all of them now, with the primary heaviest
+   and its 7-day average dashed behind it, which is what this was for. */
 
 /** One of the four figures under the hero. No chart, on purpose: these are the
     numbers you read before you look at anything. */
@@ -4749,20 +4706,32 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
     });
   }, [entries, metricField, t0]);
 
+  /* One row per day in the window, every pinned metric on it, plus the
+     primary's trailing 7-day average — the dashed line the trend chart draws
+     behind the metric this screen is about. */
   const comparisonData = useMemo(() => {
     const byDate = new Map(chartEntries.map((e) => [e.date, e]));
     const rows = [];
     for (let d = range.start; d <= range.end; d = addDays(d, 1)) {
       const answers = byDate.get(d)?.answers || {};
-      const row = { d };
+      const row = { d, avg: null };
       for (const f of selFields) {
         const v = answers[f.k];
         row[f.k] = typeof v === "number" ? v : null;
       }
       rows.push(row);
     }
+    if (primaryKey) {
+      for (let i = 0; i < rows.length; i++) {
+        const win = rows.slice(Math.max(0, i - 6), i + 1)
+          .map((r) => r[primaryKey]).filter((v) => v != null);
+        // Two days is the least that can average to something other than itself.
+        rows[i].avg = win.length >= 2
+          ? Math.round((win.reduce((a, b) => a + b, 0) / win.length) * 10) / 10 : null;
+      }
+    }
     return rows;
-  }, [chartEntries, selFields, range.start, range.end]);
+  }, [chartEntries, selFields, primaryKey, range.start, range.end]);
 
   /* What the explorer is allowed to offer. Outcomes are 1–10 ratings only —
      "how did your steps relate to your weight" is a question this screen has no
@@ -4907,12 +4876,19 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
         <div className="fhj-caption mb-2.5">
           Pinned for next time. The first one is what this screen is about.
         </div>
-        <MainTrendChart entries={chartEntries} field={metricField} color={tpl.color}
-          start={range.start} end={range.end} bands={bands} />
-        <div className="fhj-caption mt-2">
-          Solid line: daily · dashed line: 7-day average
-          {bands.length > 0 && " · shaded: a flare you marked"}
-        </div>
+        {/* Every pinned metric, not just the first: ratings share the one
+            honest 1–10 axis, anything with its own unit gets its own chart
+            underneath, and one crosshair crosses all of them. */}
+        <MetricComparison
+          fields={selFields} data={comparisonData} palette={CHART_PALETTE(tpl.color)}
+          primaryKey={primaryKey} mainHeight={214} bands={bands}
+          tooltipProps={tooltipProps} axisTick={axisTick} chartAnim={chartAnim}
+          fmtShort={fmtShort} fmtNice={fmtNice}
+          renderEmpty={(title, height) => <ChartEmpty title={title} height={height} />}
+          note={<>
+            Solid line: daily · dashed line: 7-day average of {metricField.label.toLowerCase()}
+            {bands.length > 0 && " · shaded: a flare you marked"}
+          </>} />
         <Disclosure className="mt-3.5" label="Week by week"
           summary="The same metric, averaged into weeks">
           <WeeklyBars entries={chartEntries} field={metricField} color={tpl.color} />
@@ -4972,23 +4948,13 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
         )}
       </Card>
 
-      {/* 8 — does anything move with it */}
-      <SectionTitle>Side by side</SectionTitle>
-      <Card>
-        {selFields.length > 1 ? (
-          <MetricComparison
-            fields={selFields} data={comparisonData} palette={CHART_PALETTE(tpl.color)}
-            tooltipProps={tooltipProps} axisTick={axisTick} chartAnim={chartAnim}
-            fmtShort={fmtShort} fmtNice={fmtNice} bands={bands} />
-        ) : (
-          <div className="text-sm leading-relaxed" style={{ color: C.sub }}>
-            Pin a second metric above and it appears here next to {metricField.label.toLowerCase()} —
-            on the same dates, with its own axis if it has its own units.
-          </div>
-        )}
-      </Card>
-
-      {/* 9 — is anything related */}
+      {/* 8 — is anything related.
+          There used to be a "Side by side" card here, drawing the pinned
+          metrics next to each other while Trend drew only the first one. Two
+          cards, one chart's worth of information, and the one at the top of
+          the screen was the one that answered nothing. Trend draws them all
+          now, and this section goes back to being the only thing below it
+          that asks a different question. */}
       <SectionTitle>{RELATIONSHIP_COPY.heading}</SectionTitle>
       <Card>
         <RelationshipExplorer
