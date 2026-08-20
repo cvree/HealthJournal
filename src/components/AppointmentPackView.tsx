@@ -73,6 +73,16 @@ function Figure({ label, value, caption }: {
   );
 }
 
+/** "3h 20m" — the pack prints hours because a clinician thinks in them and
+    "200 min" makes somebody do arithmetic in a consultation. */
+function hoursLabel(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+
 function Section({ title, action, children, className = "" }: {
   title: string; action?: React.ReactNode; children: React.ReactNode; className?: string;
 }) {
@@ -212,6 +222,64 @@ export default function AppointmentPackView({
               </li>
             ))}
           </ul>
+        </Section>
+      )}
+
+      {/* Measurements. The one section on this page whose numbers somebody else
+          took, which is why the range printed under each row is the
+          laboratory's own and why a result that never carried one prints no
+          verdict at all. */}
+      {pack.labs.length > 0 && (
+        <Section title="Measurements">
+          <ul className="fhj-pack-list">
+            {pack.labs.map((lab) => (
+              <li key={lab.test}>
+                <span className="fhj-pack-list-name">{lab.name}</span>
+                <span className="fhj-pack-list-meta">
+                  {lab.series}
+                  {lab.points[lab.points.length - 1].status
+                    ? ` · ${lab.points[lab.points.length - 1].status}`
+                    : ""}
+                  {lab.points[lab.points.length - 1].fasting ? " · fasting" : ""}
+                  {" · "}
+                  {lab.points.map((p) => p.date).join(", ")}
+                  {lab.range ? ` · ${lab.range}` : ""}
+                  {lab.provider ? ` · ${lab.provider}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="fhj-pack-note">
+            Reference ranges are the ones printed on each report. A result recorded without one is shown
+            without a verdict.
+          </p>
+        </Section>
+      )}
+
+      {/* Time outside, and the estimate — printed as two different kinds of
+          number, in two different rows, with the note that says which is
+          which. On paper, next to a real laboratory value, an unlabelled IU
+          figure is the most misreadable thing this app could produce. */}
+      {pack.sun && (
+        <Section title="Time outside">
+          <div className="fhj-pack-figs">
+            <Figure label="Total" value={hoursLabel(pack.sun.minutes)}
+              caption={`across ${pack.sun.days} ${pack.sun.days === 1 ? "day" : "days"}`} />
+            <Figure label="On a day outside" value={`${pack.sun.averageMinutes} min`}
+              caption={`${pack.sun.sessions} ${pack.sun.sessions === 1 ? "session" : "sessions"} recorded`} />
+          </div>
+          {pack.sun.estimatedHigh >= 100 && (
+            <ul className="fhj-pack-list">
+              <li>
+                <span className="fhj-pack-list-name">Estimated vitamin D from sunlight</span>
+                <span className="fhj-pack-list-meta">
+                  ~{pack.sun.estimatedLow.toLocaleString("en-US")}–
+                  {pack.sun.estimatedHigh.toLocaleString("en-US")} IU over the period
+                </span>
+              </li>
+            </ul>
+          )}
+          <p className="fhj-pack-note">{pack.sun.estimateNote}</p>
         </Section>
       )}
 

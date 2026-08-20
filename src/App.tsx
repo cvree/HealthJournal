@@ -18,6 +18,7 @@ import { validateDatabase } from "./lib/validate";
 import {
   serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped,
   buildFoodTable, buildBowelTable, buildRoutineTable, buildRoutineItemsTable, logsInRange,
+  buildLabsTable, buildSunTable, buildContextTable,
 } from "./lib/exports";
 import { playSound, setSoundEnabled, suspendSound, resumeSound } from "./lib/sound";
 import {
@@ -103,6 +104,35 @@ import {
   PROVIDERS, providerOf, OPENAI_NOTE,
   analyseFood, analyseBowelPhoto, summariseFoodRequest,
 } from "./lib/ai";
+/* ---------- the 1.21 systems ----------
+
+   Five new modules, all pure or nearly so, all sanitised on load like every
+   other collection here. The screens they drive live in ./components; this
+   file owns the data, the routing and the one piece of glue that makes them
+   feel like one product rather than five features: `lit`, the set of dates a
+   finding is currently illuminating everywhere at once. */
+import {
+  dayLight, nextVitaminDWindow, durationLabel as minutesLabel,
+} from "./lib/solar";
+import { sanitizeSunProfile, sanitizeSunSessions, sunDay } from "./lib/sun";
+import { EXPOSURE_LEVELS, SKIN_TYPES } from "./lib/solar";
+import {
+  DEFAULT_CONSENT, coarse, contextLine, contextObservations, contextOn, fetchContext,
+  formatTemp, mergeContexts, needsRefresh, sanitizeConsent, sanitizeContexts,
+} from "./lib/context";
+import {
+  labSeries, labSummaryLine, newLabResult, sanitizeLabResults, testsHeld,
+} from "./lib/labs";
+import {
+  availableStarters, highlightDates, newExperiment, runAll, sanitizeExperiments,
+  suggestExperiments,
+} from "./lib/experiments";
+import { variables as seriesVariables } from "./lib/series";
+import SunScreen from "./components/SunScreen";
+import ExperimentsScreen from "./components/ExperimentsScreen";
+import EvidenceMeter from "./components/EvidenceMeter";
+import LabsScreen from "./components/LabsScreen";
+import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./components/DayContext";
 
 /* ============================================================
    Health Journal
@@ -114,7 +144,7 @@ import {
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.18.0";
+export const APP_VERSION = "1.21.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -4656,7 +4686,52 @@ function EpisodesSection({
   );
 }
 
-function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [], onStartFlare, onEndFlare, onOpenEpisode, onPinMetrics, onChartView }) {
+/* Environmental coincidences, in the app's own careful voice.
+
+   `contextObservations` produces at most three, each a count of the person's
+   own days, and every one of them is tappable — which is where the cross-
+   feature promise gets kept. Tap "8 of your 10 hardest days were above 29°C"
+   and you land on those eight days, in History, with their weather drawn
+   behind them. That is the difference between an app that says something
+   interesting and an app that shows you where it got it. */
+function ContextSection({ entries, context = [], keyField, units, onHighlight }) {
+  const observations = useMemo(
+    () => (keyField && context.length
+      ? contextObservations(
+          entries,
+          context,
+          { key: keyField.k, label: keyField.label, dir: keyField.dir },
+          units === "imperial" ? "imperial" : "metric",
+          3
+        )
+      : []),
+    [entries, context, keyField, units]
+  );
+  if (!observations.length) return null;
+
+  return (
+    <>
+      <SectionTitle>What the weather was doing</SectionTitle>
+      <div className="grid gap-2">
+        {observations.map((o) => (
+          <button key={o.id} type="button" className="w-full text-left"
+            onClick={() => onHighlight?.(o.dates, o.headline)}>
+            <Card tappable>
+              <div className="text-[15px] leading-snug font-display">{o.headline}</div>
+              <div className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.sub }}>{o.detail}</div>
+              <div className="text-[11px] mt-2 flex items-center gap-1" style={{ color: C.accentText }}>
+                Light up {o.dates.length} {o.dates.length === 1 ? "day" : "days"}
+                <Icon name="right" size={12} color={C.accentText} />
+              </div>
+            </Card>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [], onStartFlare, onEndFlare, onOpenEpisode, onPinMetrics, onChartView, context = [], sun = [], labs = [], onHighlight, goSun, goLabs, goExperiments }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const t0 = todayStr();
@@ -5073,6 +5148,17 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
           tooltipProps={tooltipProps} axisTick={axisTick}
           onFeedback={feedback} />
       </Card>
+
+      {/* ---------- What the weather was doing ----------
+          Coincidences between the person's key metric and the environment
+          around it. Every one of them is a count of their own days, tappable,
+          and lights those days up everywhere else in the app. */}
+      <ContextSection
+        entries={entries}
+        context={context}
+        keyField={keyField}
+        units={profile.context?.units}
+        onHighlight={onHighlight} />
 
       {/* ---------- Possible Patterns ----------
           The other half of the same idea: what the app noticed without being
@@ -5670,7 +5756,7 @@ function CalendarScreen({ profile, entries, openLog, embedded = false }) {
    "what happened before now" — and asking somebody to remember which shelf a
    thing lived on is a tax charged on every single visit. */
 
-function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen }) {
+function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen, ctx, washing, isLit }) {
   const v = keyField ? entry.answers?.[keyField.k] : null;
   const marks = [];
   if (food.some((f) => f.date === entry.date)) marks.push("meals");
@@ -5682,7 +5768,12 @@ function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen }) {
 
   return (
     <button type="button" onClick={() => { feedback("nav"); onOpen(entry.date); }}
-      className="fhj-hist-row">
+      className={"fhj-hist-row" + (isLit ? " fhj-lit" : "")}
+      style={{ position: "relative" }}>
+      {/* The weather, living behind the day. It is drawn first, under
+          everything, and its loudness comes from how unusual the day was —
+          see contextWash in components/DayContext. */}
+      <ContextWash ctx={ctx} scale={washing} />
       <span className="fhj-hist-dot" style={{
         background: v != null ? colorFor(v, keyField?.dir) : "transparent",
         border: v != null ? "none" : `1.5px solid ${C.lineStrong}`,
@@ -5700,6 +5791,12 @@ function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen }) {
               : `${answered} ${answered === 1 ? "answer" : "answers"}`}
         </span>
       </span>
+      {ctx && (
+        <span className="fhj-hist-ctx" title={contextLineFor(ctx)}>
+          <SkyGlyph code={ctx.weatherCode} size={14} />
+          {ctx.tempMax !== undefined && <span>{Math.round(ctx.tempMax)}°</span>}
+        </span>
+      )}
       <Icon name="right" size={14} color={C.subtle} />
     </button>
   );
@@ -5707,11 +5804,29 @@ function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen }) {
 
 function HistoryScreen({
   profile, entries, food = [], bowel = [], routine = [],
-  openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, viewer, syncStatus,
+  openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, goSun, goLabs,
+  goExperiments, viewer, syncStatus, context = [], sun = [], labs = [], lit, onClearLit,
 }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
-  const recent = useMemo(() => [...entries].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14), [entries]);
+  /* When a finding is illuminating a set of days, History shows those days
+     rather than the last fortnight. That is the whole cross-feature promise:
+     tapping "8 of your 10 hardest days were above 29°C" and arriving on the
+     eight days themselves, in order, with their weather behind them. */
+  const recent = useMemo(() => {
+    const sorted = [...entries].sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (lit?.dates?.size) {
+      const hits = sorted.filter((e) => lit.dates.has(e.date));
+      if (hits.length) return hits.slice(0, 60);
+    }
+    return sorted.slice(0, 14);
+  }, [entries, lit]);
+  const washing = useMemo(() => washScale(context), [context]);
+  const ctxByDate = useMemo(() => new Map(context.map((c) => [c.date, c])), [context]);
+  const traceRows = useMemo(
+    () => context.slice(-45),
+    [context]
+  );
 
   return (
     <div className="px-4 pb-10">
@@ -5736,7 +5851,23 @@ function HistoryScreen({
         </div>
       </div>
 
-      {/* The two things people come here to do that aren't "find a day". */}
+      {lit?.dates?.size ? (
+        <div className="fhj-lit-bar mt-3" role="status" aria-label="Illuminated days">
+          <span>
+            <strong>{lit.dates.size} {lit.dates.size === 1 ? "day" : "days"} lit</strong> · {lit.label}
+          </span>
+          <button type="button" className="fhj-linkish" onClick={onClearLit}>Clear</button>
+        </div>
+      ) : null}
+
+      {traceRows.length > 4 && (
+        <div className="fhj-hist-trace mt-4">
+          <div className="fhj-eyebrow">The weather behind your days</div>
+          <TempTrace rows={traceRows} highlight={lit?.dates} markDate={todayStr()} />
+        </div>
+      )}
+
+      {/* The things people come here to do that aren't "find a day". */}
       <div className="fhj-hist-doors mt-4">
         <button type="button" onClick={() => { feedback("nav"); goInsights(); }}
           className="fhj-hist-door fhj-pop fhj-cat-symptom">
@@ -5754,6 +5885,34 @@ function HistoryScreen({
             <span className="fhj-tile-sub block">Meals and doses</span>
           </span>
         </button>
+        <button type="button" onClick={() => { feedback("nav"); goSun(); }}
+          className="fhj-hist-door fhj-pop fhj-cat-symptom">
+          <span className="fhj-tile-icon" aria-hidden>☀</span>
+          <span>
+            <span className="fhj-tile-label block">Sun</span>
+            <span className="fhj-tile-sub block">
+              {sun.length ? `${sun.length} ${sun.length === 1 ? "session" : "sessions"}` : "Time outside"}
+            </span>
+          </span>
+        </button>
+        <button type="button" onClick={() => { feedback("nav"); goLabs(); }}
+          className="fhj-hist-door fhj-pop fhj-cat-symptom">
+          <span className="fhj-tile-icon" aria-hidden>◎</span>
+          <span>
+            <span className="fhj-tile-label block">Labs</span>
+            <span className="fhj-tile-sub block">
+              {labs.length ? `${testsHeld(labs).length} tracked` : "Blood work"}
+            </span>
+          </span>
+        </button>
+        <button type="button" onClick={() => { feedback("nav"); goExperiments(); }}
+          className="fhj-hist-door fhj-pop fhj-cat-symptom">
+          <span className="fhj-tile-icon" aria-hidden>⌁</span>
+          <span>
+            <span className="fhj-tile-label block">Experiments</span>
+            <span className="fhj-tile-sub block">Ask a question</span>
+          </span>
+        </button>
       </div>
 
       <CalendarScreen profile={profile} entries={entries} openLog={openLog} embedded />
@@ -5761,13 +5920,14 @@ function HistoryScreen({
       {recent.length > 0 && (
         <>
           <div className="fhj-section mt-6 fhj-cat-symptom">
-            <h2 className="fhj-section-title">Recent days</h2>
+            <h2 className="fhj-section-title">{lit?.dates?.size ? "Lit days" : "Recent days"}</h2>
           </div>
           <Card className="!p-0 mt-1" style={{ padding: 0 }}>
             {recent.map((e, i) => (
               <div key={e.id || e.date} style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none" }}>
                 <HistoryDayRow entry={e} tpl={tpl} keyField={keyField}
-                  food={food} bowel={bowel} routine={routine} onOpen={openLog} />
+                  food={food} bowel={bowel} routine={routine} onOpen={openLog}
+                  ctx={ctxByDate.get(e.date)} washing={washing} isLit={!!lit?.dates?.has(e.date)} />
               </div>
             ))}
           </Card>
@@ -5934,9 +6094,12 @@ function AppointmentPackScreen({ db, setDb, params, goBack, viewer }) {
     today: t0, range, entries, primary, metrics,
     episodes: db.episodes || [],
     routineItems: db.routineItems || [], routineLogs: db.routine || [],
+    /* Two of the three things a clinician opens with are now in the journal:
+       what the bloods said, and how much daylight somebody actually got. */
+    labs: db.labs || [], sun: db.sun || [],
     sections: prefs.sections, noteDates: prefs.noteDates, questions: prefs.questions,
     photo,
-  }), [t0, range.start, range.end, entries, primary, metrics, db.episodes, db.routineItems, db.routine, prefs, photo]);
+  }), [t0, range.start, range.end, entries, primary, metrics, db.episodes, db.routineItems, db.routine, db.labs, db.sun, prefs, photo]);
 
   const onCount = PACK_SECTIONS.filter((sec) => pack.sections[sec.key] !== false).length;
 
@@ -6196,6 +6359,9 @@ function ExportScreen({ db, setDb, goPack }) {
   const foodInRange = logsInRange(db.food || [], bounds.start, bounds.end);
   const bowelInRange = logsInRange(db.bowel || [], bounds.start, bounds.end);
   const routineInRange = logsInRange(db.routine || [], bounds.start, bounds.end);
+  const labsInRange = logsInRange(db.labs || [], bounds.start, bounds.end);
+  const sunInRange = logsInRange(db.sun || [], bounds.start, bounds.end);
+  const contextInRange = logsInRange(db.context || [], bounds.start, bounds.end);
   const routineItems = db.routineItems || [];
   const count = inRange.length;
   const stamp = `${bounds.start === "0000-01-01" ? "all-time" : bounds.start + "_to_" + bounds.end}`;
@@ -6228,6 +6394,9 @@ function ExportScreen({ db, setDb, goPack }) {
       ["Bowel", "One row per bowel movement. ai_* columns are what a model suggested from a photo, kept separate from what you recorded"],
       ["Routine", "One row per dose taken or skipped — medications, supplements, creams, products. Names and doses are what you wrote at the time"],
       ["Routine items", "What you track and how often it is asked for — the plan behind the Routine sheet"],
+      ["Measurements", "Blood work and measurements somebody else took. lab_reference_* columns are the range your laboratory printed, not this app's"],
+      ["Time outside", "One row per sun session. vitamin_d_estimated_iu_* is a research-model estimate of production, not a blood level — see the column that says so"],
+      ["Weather", "One row per day of environmental context, if you switched it on. Coordinates are the coarse ones the app stored, rounded to about a kilometre"],
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(readme), "README");
 
@@ -6287,6 +6456,28 @@ function ExportScreen({ db, setDb, goPack }) {
         : XLSX.utils.aoa_to_sheet([["Nothing in your routine yet."]]),
       "Routine items");
 
+    /* Three sheets rather than columns on Entries, because none of the three
+       is one-value-per-day: several measurements can land on one date, so can
+       several sun sessions, and the weather is a different *kind* of row from
+       both. */
+    const labsTbl = buildLabsTable(labsInRange);
+    XLSX.utils.book_append_sheet(wb,
+      labsTbl.rows.length ? XLSX.utils.aoa_to_sheet([labsTbl.header, ...labsTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No measurements recorded in this date range."]]),
+      "Measurements");
+
+    const sunTbl = buildSunTable(sunInRange);
+    XLSX.utils.book_append_sheet(wb,
+      sunTbl.rows.length ? XLSX.utils.aoa_to_sheet([sunTbl.header, ...sunTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No time outside recorded in this date range."]]),
+      "Time outside");
+
+    const contextTbl = buildContextTable(contextInRange);
+    XLSX.utils.book_append_sheet(wb,
+      contextTbl.rows.length ? XLSX.utils.aoa_to_sheet([contextTbl.header, ...contextTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No daily context in this date range. It's off by default — turn it on in Settings."]]),
+      "Weather");
+
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     download(new Blob([out], { type: "application/octet-stream" }),
       `health-journal_${stamp}.xlsx`);
@@ -6299,6 +6490,8 @@ function ExportScreen({ db, setDb, goPack }) {
       profile, entries: inRange,
       food: foodInRange, bowel: bowelInRange,
       routine: routineInRange, routineItems,
+      labs: labsInRange, sun: sunInRange, context: contextInRange,
+      experiments: db.experiments || [],
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
     };
     download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
@@ -6905,6 +7098,15 @@ async function buildFullBackup(db) {
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
     routine: db.routine || [], routineItems: db.routineItems || [],
     episodes: db.episodes || [],
+    /* The 1.21 collections. Sun sessions, lab results and experiments are
+       journal content and travel like everything above. The environmental
+       context does too — it is a record of the days, and a restored journal
+       whose weather had silently vanished would break every observation built
+       on it. The *consent* rides along inside `profile`, which is right: it
+       describes what this journal is allowed to hold, not what a device is
+       allowed to send. */
+    sun: db.sun || [], labs: db.labs || [], experiments: db.experiments || [],
+    context: db.context || [],
     // Past AI observations travel with the journal, but the opt-in does not:
     // turning on a feature that talks to an external service is a decision
     // made per device, by the person holding it, not inherited from a file.
@@ -6949,6 +7151,8 @@ function validateBackup(obj) {
       food: Array.isArray(obj.food) ? obj.food.length : 0,
       bowel: Array.isArray(obj.bowel) ? obj.bowel.length : 0,
       routine: Array.isArray(obj.routine) ? obj.routine.length : 0,
+      sun: Array.isArray(obj.sun) ? obj.sun.length : 0,
+      labs: Array.isArray(obj.labs) ? obj.labs.length : 0,
       from: dates[0] || null, to: dates[dates.length - 1] || null,
       name: (obj.profile.name || "").trim(),
       exportedAt: obj.exportedAt || null,
@@ -8197,6 +8401,29 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
 
       <AiSettingsCard ai={db.ai} setAi={setAi} db={db} onSetupComplete={onAiSetupComplete} />
 
+      <DailyContextCard
+        profile={db.profile}
+        contextCount={(db.context || []).length}
+        onSave={(consent, opts) => setDb((prev) => ({
+          ...prev,
+          /* Deleting the days is part of the same writer as the switch, so
+             "turn it off and remove what it collected" is one decision with
+             one undo-free, unambiguous result. */
+          context: opts?.wipe ? [] : prev.context,
+          profile: {
+            ...prev.profile,
+            context: sanitizeConsent(consent),
+            updatedAt: new Date().toISOString(),
+          },
+        }))} />
+
+      <SunProfileCard
+        profile={db.profile}
+        onSave={(sun) => setDb((prev) => ({
+          ...prev,
+          profile: { ...prev.profile, sun: sanitizeSunProfile(sun), updatedAt: new Date().toISOString() },
+        }))} />
+
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-1.5">Report cards</div>
         <p className="text-[11.5px] leading-relaxed mb-2" style={{ color: C.subtle }}>
@@ -8288,6 +8515,208 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
           : "your data stays on this device."}
       </p>
     </div>
+  );
+}
+
+/* Daily context — the permission screen.
+
+   This is the only switch in the app that turns on an automatic outbound
+   request, so it is written to be read rather than skimmed: what is sent, what
+   comes back, what is stored, and what is deliberately not. The list is
+   specific enough that somebody could check it against the network tab, which
+   is the only kind of privacy copy worth writing.
+
+   The location choice is three-way rather than a toggle because "use my
+   location" and "I'll tell you roughly where I am" are genuinely different
+   answers, and an app that only offers the first one is telling somebody who
+   would rather not share a fix that the whole feature is closed to them. */
+function DailyContextCard({ profile, onSave, contextCount = 0 }) {
+  const consent = profile.context || DEFAULT_CONSENT;
+  const [place, setPlace] = useState(
+    consent.place ? `${consent.place.lat}, ${consent.place.lon}` : ""
+  );
+  const [msg, setMsg] = useState("");
+
+  const set = (patch) => onSave({ ...consent, ...patch });
+
+  const savePlace = () => {
+    const m = place.split(",").map((x) => Number(x.trim()));
+    if (m.length !== 2 || !Number.isFinite(m[0]) || !Number.isFinite(m[1])) {
+      setMsg("That doesn't look like a latitude and longitude.");
+      return;
+    }
+    const c = coarse({ lat: m[0], lon: m[1] });
+    set({ location: "manual", place: { ...c } });
+    setPlace(`${c.lat}, ${c.lon}`);
+    setMsg("Saved, rounded to about a kilometre.");
+  };
+
+  return (
+    <Card className="mt-3">
+      <div className="fhj-eyebrow mb-1.5">Daily context</div>
+      <p className="text-[12px] leading-relaxed mb-3" style={{ color: C.sub }}>
+        Attach the weather to each day automatically — temperature, humidity, pressure and its change,
+        UV, daylight, air quality and pollen where it's published. It stays behind your entries until it
+        has something to say about your own numbers.
+      </p>
+
+      <SwitchRow
+        on={!!consent.enabled}
+        onChange={(v) => set({ enabled: v, location: v && consent.location === "off" ? "device" : consent.location })}
+        label="Attach daily context"
+        desc={contextCount ? `${contextCount} days have it so far.` : "Off. Nothing is requested while this is off."}
+      />
+
+      {consent.enabled && (
+        <>
+          <div className="fhj-label mt-3">Where</div>
+          <Segmented
+            label="How to find your location"
+            value={consent.location === "off" ? "device" : consent.location}
+            onChange={(v) => set({ location: v })}
+            options={[
+              { value: "device", label: "Use this device" },
+              { value: "manual", label: "I'll set it" },
+            ]}
+          />
+
+          {consent.location === "manual" && (
+            <div className="mt-2">
+              <input
+                className="fhj-input"
+                value={place}
+                onChange={(e) => { setPlace(e.target.value); setMsg(""); }}
+                placeholder="51.51, -0.13"
+                aria-label="Latitude and longitude"
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <Button variant="outline" onClick={savePlace}>Save place</Button>
+                {msg && <span className="text-[11.5px]" style={{ color: C.subtle }}>{msg}</span>}
+              </div>
+            </div>
+          )}
+
+          <div className="fhj-label mt-3">Temperature</div>
+          <Segmented
+            label="Temperature units"
+            value={consent.units === "imperial" ? "imperial" : "metric"}
+            onChange={(v) => set({ units: v })}
+            options={[
+              { value: "metric", label: "°C" },
+              { value: "imperial", label: "°F" },
+            ]}
+          />
+        </>
+      )}
+
+      <Disclosure
+        label="What is sent, and what is kept"
+        className="mt-3"
+        summary="Two requests, a rounded latitude and longitude, nothing else."
+      >
+        <ul className="text-[12px] leading-relaxed grid gap-1.5" style={{ color: C.sub }}>
+          <li>
+            <strong style={{ color: C.ink }}>Sent:</strong> a latitude and longitude rounded to two
+            decimal places — about a kilometre — to Open-Meteo, which needs no account and no key. No
+            identifier, no name, and nothing at all from your journal.
+          </li>
+          <li>
+            <strong style={{ color: C.ink }}>Stored:</strong> one weather record per day. Temperature,
+            humidity, pressure, UV, daylight, air quality, pollen. That is a record of the sky, not of
+            where you were.
+          </li>
+          <li>
+            <strong style={{ color: C.ink }}>Not stored:</strong> a location history. Your precise fix is
+            rounded before it is used and never written down.
+          </li>
+          <li>
+            <strong style={{ color: C.ink }}>How often:</strong> at most once an hour while the app is
+            open, and only when today's record is missing or stale.
+          </li>
+          <li>
+            <strong style={{ color: C.ink }}>Turning it off</strong> stops the requests immediately. The
+            days already attached stay, and can be removed with the button below.
+          </li>
+        </ul>
+        {contextCount > 0 && (
+          <Button
+            variant="danger"
+            className="mt-3"
+            onClick={() => { onSave(consent, { wipe: true }); setMsg("Removed."); }}
+          >
+            Delete the {contextCount} days of context
+          </Button>
+        )}
+      </Disclosure>
+    </Card>
+  );
+}
+
+/* Sun & skin — the three answers the vitamin D estimate personalises on.
+
+   Skin type moves the estimate more than everything else here combined, which
+   is exactly why it is asked in the person's own words rather than as a roman
+   numeral, and why the card says what it is for. All three are refusable and
+   the estimate falls back to a middle value, saying so. */
+function SunProfileCard({ profile, onSave }) {
+  const sun = profile.sun || {};
+  const set = (patch) => onSave({ ...sun, ...patch });
+
+  return (
+    <Card className="mt-3">
+      <div className="fhj-eyebrow mb-1.5">Sun & skin</div>
+      <p className="text-[12px] leading-relaxed mb-3" style={{ color: C.sub }}>
+        Used to personalise the vitamin D estimate and the burn warning on a sun session. It is an
+        estimate either way — these make it a better one.
+      </p>
+
+      <div className="fhj-label">How your skin behaves in strong sun</div>
+      <div className="grid gap-1.5 mb-3">
+        {SKIN_TYPES.map((t) => (
+          <button
+            key={t.type}
+            type="button"
+            onClick={() => { feedback("select"); set({ skin: t.type }); }}
+            className="fhj-skin-row"
+            aria-pressed={sun.skin === t.type}
+            data-on={sun.skin === t.type ? "true" : undefined}
+          >
+            <span className="fhj-skin-swatch" data-type={t.type} aria-hidden />
+            <span>
+              <span className="block text-sm font-medium">{t.label}</span>
+              <span className="block text-[11.5px]" style={{ color: C.subtle }}>{t.desc}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="fhj-label">What you usually have out in the sun</div>
+      <div className="fhj-chip-row">
+        {EXPOSURE_LEVELS.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            className={"fhj-chip" + (sun.exposure === e.id ? " is-active" : "")}
+            onClick={() => { feedback("select"); set({ exposure: e.id }); }}
+          >
+            {e.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="fhj-label">When you usually wake</div>
+      <input
+        className="fhj-input"
+        type="time"
+        value={sun.wake || ""}
+        onChange={(e) => set({ wake: e.target.value || undefined })}
+        aria-label="Usual waking time"
+      />
+      <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+        Only used for one number: how long after waking you first got outside. Leave it blank and that
+        number simply isn't shown.
+      </p>
+    </Card>
   );
 }
 
@@ -13067,6 +13496,18 @@ const QUICK_ADD_TILES = [
     id: "diary", cat: "fhj-cat-food", icon: "calendar", label: "Diary",
     sub: "The whole day", desc: "The day's meals, totals and routine on one page",
   },
+  /* ---- 1.21 ----
+     Sun is the one tile in the row that starts something running rather than
+     recording something finished, which is why it says "Start" rather than
+     naming a quantity. */
+  {
+    id: "sun", cat: "fhj-cat-symptom", icon: "spark", label: "Sun",
+    sub: "Start a session", desc: "Time outside, with the sun's own arithmetic attached",
+  },
+  {
+    id: "lab", cat: "fhj-cat-symptom", icon: "target", label: "Lab result",
+    sub: "A measured number", desc: "Blood work, blood pressure, weight — anything measured",
+  },
 ];
 
 /* What each condition actually reaches for.
@@ -14310,8 +14751,94 @@ function DailyPulse({
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
+/* Today's context: the weather behind the day, the sun so far, and the one
+   thing worth acting on — when the next window is.
+
+   Absent entirely when daily context is off and nothing has been logged
+   outside, because a card that says "no data" every morning is a card people
+   learn to scroll past. */
+function TodayContextCard({ ctx, units, sun = [], coords, onOpenSun, viewer }) {
+  const day = sunDay(sun, todayStr());
+  const now = new Date();
+  const window = coords ? nextVitaminDWindow(now, coords) : null;
+  if (!ctx && !day.minutes && !window) return null;
+
+  return (
+    <>
+      <div className="fhj-section mt-6 fhj-cat-symptom">
+        <h2 className="fhj-section-title">Around today</h2>
+      </div>
+      <Card>
+        {ctx && <ContextStrip ctx={ctx} units={units} variant="full" />}
+
+        {(day.minutes || window) && (
+          <div className="fhj-today-sun" style={{ marginTop: ctx ? 14 : 0 }}>
+            <div>
+              <div className="fhj-eyebrow">Outside today</div>
+              <div className="fhj-today-sun-val">
+                {day.minutes ? minutesLabel(day.minutes) : "Nothing yet"}
+              </div>
+              {day.iuHigh >= 100 && (
+                <div className="fhj-sun-iu-note">
+                  ~{day.iuLow.toLocaleString("en-US")}–{day.iuHigh.toLocaleString("en-US")} IU estimated
+                  · not a measurement
+                </div>
+              )}
+              {!day.minutes && window && (
+                <div className="fhj-sun-iu-note">
+                  {window.start.toDateString() === now.toDateString()
+                    ? `Vitamin D window open until ${window.end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                    : `Next vitamin D window ${window.start.toLocaleDateString(undefined, { weekday: "long" })}`}
+                </div>
+              )}
+            </div>
+            {!viewer && onOpenSun && (
+              <button type="button" className="fhj-btn fhj-btn-outline fhj-btn-sm"
+                onClick={() => { feedback("nav"); onOpenSun(); }}>
+                {day.minutes ? "Sun" : "Go outside"}
+              </button>
+            )}
+          </div>
+        )}
+      </Card>
+    </>
+  );
+}
+
+/* One pinned experiment on Today. Deliberately the smallest possible version
+   of the card on the experiments screen: the title, the ladder, and the
+   sentence if there is one. No dots, no halves — this is a status, and the
+   screen it came from is one tap away. */
+function PinnedExperiment({ result, onOpen, onHighlight }) {
+  return (
+    <Card className="fhj-exp-mini">
+      <button type="button" className="fhj-exp-mini-head" onClick={onOpen}>
+        <span className="fhj-exp-title">{result.experiment.title}</span>
+        <Icon name="right" size={14} color={C.subtle} />
+      </button>
+      <EvidenceMeter evidence={result.evidence} compact />
+      {result.headline ? (
+        <button type="button" className="fhj-exp-mini-line"
+          onClick={() => onHighlight?.(highlightDates(result), result.experiment.title)}>
+          {result.headline}
+        </button>
+      ) : (
+        <p className="fhj-exp-subline">{result.subline}</p>
+      )}
+    </Card>
+  );
+}
+
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus, goSun, goLabs, goExperiments, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
+  /* Where to put the sun. A place set by hand wins over the last fetched one,
+     and both are absent when daily context is off — in which case every sun
+     surface quietly degrades to "minutes outside" and says nothing about UV. */
+  const sunCoords = profile.context?.enabled
+    ? (profile.context.place
+      ? { lat: profile.context.place.lat, lon: profile.context.place.lon }
+      : context[context.length - 1]?.coords || null)
+    : null;
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
   const streak = calcStreak(entries);
@@ -14458,6 +14985,8 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     note: track("note", () => setNoteSheet(true)),
     measurement: caps.number ? track("measurement", () => setMeasureSheet(true)) : null,
     diary: goFood ? track("diary", goFood) : null,
+    sun: goSun ? track("sun", goSun) : null,
+    lab: goLabs ? track("lab", goLabs) : null,
   };
 
   /* The two tiles that describe today rather than name a feature. */
@@ -14475,6 +15004,10 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     water: waterField && typeof today?.answers?.[waterField.k] === "number"
       ? { sub: `${amountWithUnit(today.answers[waterField.k], waterField.unit)} so far` }
       : null,
+    sun: (() => {
+      const day = sunDay(sun, todayStr());
+      return day.minutes ? { sub: `${minutesLabel(day.minutes)} today` } : null;
+    })(),
   };
 
   /* One tap on a checklist row. Ticking writes a log; un-ticking removes the
@@ -14606,6 +15139,38 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
 
       <GlanceCard tpl={tpl} keyField={keyField} entry={today} food={food}
         streak={streak} onOpen={goInsights} />
+
+      {/* ---------- the day around the day ----------
+          Weather, sun and whatever experiment somebody pinned. All three are
+          absent until they have something to say, which is most of the point:
+          this is context, not a dashboard. */}
+      <TodayContextCard
+        ctx={contextOn(context, todayStr())}
+        units={profile.context?.units}
+        sun={sun}
+        coords={sunCoords}
+        onOpenSun={goSun}
+        viewer={viewer} />
+
+      {pinnedExperiments.length > 0 && (
+        <>
+          <button type="button" onClick={() => { feedback("nav"); goExperiments?.(); }}
+            className="fhj-section mt-6 fhj-cat-symptom w-full text-left">
+            <h2 className="fhj-section-title">Running</h2>
+            <span className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+              All experiments
+              <Icon name="right" size={12} color={C.accentText} />
+            </span>
+          </button>
+          <div className="grid gap-2">
+            {pinnedExperiments.slice(0, 2).map((r) => (
+              <PinnedExperiment key={r.experiment.id} result={r}
+                onOpen={() => goExperiments?.()}
+                onHighlight={onHighlight} />
+            ))}
+          </div>
+        </>
+      )}
 
       {foodPicker && (
         <FoodPicker
@@ -15179,8 +15744,34 @@ const NAV = [
   { id: "history", label: "History", icon: "calendar" },
 ];
 
+/* One rounded fix, or nothing.
+
+   The browser's geolocation API is asked with `enableHighAccuracy: false`,
+   which is not a formality: it keeps the radio off, answers from the coarse
+   network fix, and is the only accuracy this feature ever wanted. Whatever it
+   returns is rounded by `coarse` before it is used or sent, so the precise
+   value exists only inside this function and only for as long as it takes to
+   round it. A refusal, a timeout and an unsupported browser are all the same
+   answer here: null, and the app carries on without weather. */
+/** One line of weather for a tooltip. A thin wrapper so the history row does
+    not have to know about the units preference living on the profile. */
+function contextLineFor(ctx, units = "metric") {
+  return contextLine(ctx, units);
+}
+
+function currentCoords() {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(coarse({ lat: pos.coords.latitude, lon: pos.coords.longitude })),
+      () => resolve(null),
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 30 * 60 * 1000 }
+    );
+  });
+}
+
 /* Forward migration — safe to run on every load; only fills gaps. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 /* Off, empty, nothing hidden. A journal that has never touched the AI feature
    and one that has had it switched back off look identical from here. */
 /* `auto` is deliberately alongside `enabled` rather than inside the profile:
@@ -15243,6 +15834,25 @@ function migrateDb(data) {
      dates the wrong way round would print negative weeks — sanitizeEpisodes
      repairs that rather than trusting the file. */
   d.episodes = sanitizeEpisodes(d.episodes);
+  /* Sun sessions, lab results and experiments — the three collections 1.21
+     added. Same rule as everything above: they arrive from local storage, a
+     restored backup and a sync pull, so they are repaired on every load rather
+     than trusted on any of them. */
+  d.sun = sanitizeSunSessions(d.sun);
+  d.labs = sanitizeLabResults(d.labs);
+  d.experiments = sanitizeExperiments(d.experiments);
+  /* Environmental context. This one is *fetched* rather than entered, which
+     makes it the collection most likely to be malformed — a provider changing
+     a field name would otherwise put NaN behind every day. */
+  d.context = sanitizeContexts(d.context);
+  /* Whether the person agreed to any of that. Deliberately in the journal
+     rather than beside it, unlike the AI switch: this describes what the
+     journal is allowed to *contain*, and restoring a backup should carry it.
+     The location fix itself is never stored — only the coarse place they set
+     by hand, if they set one. */
+  d.profile.context = sanitizeConsent(d.profile.context);
+  /* Skin type and usual exposure, which the vitamin D estimate reads. */
+  d.profile.sun = sanitizeSunProfile(d.profile.sun);
   if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
@@ -15349,6 +15959,16 @@ export default function App({ viewer = false }) {
      router, and a deep link into a record that may have been deleted on another
      device is a 404 waiting to happen. */
   const [episodeId, setEpisodeId] = useState(null);
+  /* The cross-feature glue: a set of dates a finding is currently
+     illuminating, and the sentence that says which finding. Tapping an insight,
+     an experiment half or a lab period fills it; every surface that draws a day
+     reads it. It lives here rather than in each screen because the whole point
+     is that it survives navigation — light up a fortnight on Insights, go to
+     History, and the same fortnight is lit. */
+  const [lit, setLit] = useState(null); // { dates: Set<string>, label: string }
+  /* Whether a context fetch is in flight, so the settings card can say so and
+     two effects can never race each other into the same window. */
+  const contextBusy = useRef(false);
   /* Bumped when the AI setup wizard finishes with "analyse". The dashboard
      watches it and runs immediately, so finishing setup and seeing a result
      are one action rather than two screens apart. */
@@ -15557,6 +16177,61 @@ export default function App({ viewer = false }) {
     }, 500);
     return () => clearTimeout(t);
   }, [db, viewer]);
+
+  /* ---------- daily environmental context ----------
+
+     The only effect in this app that makes a network request without being
+     asked to, which is why every guard is in front of it:
+
+     · `enabled` is false until somebody switches it on, and switching it off
+       stops this on the next render. There is no queue to drain.
+     · A location is asked for only when they chose `device`; a place they typed
+       is used as-is, already coarse.
+     · It runs at most once per app open per hour, and only when today's record
+       is actually missing or stale — a phone left open all day does not sit
+       there polling a weather service.
+     · Coordinates are rounded before the request is built (see `coarse`), so
+       the precise fix never leaves this function.
+
+     Failures are silent by design. A journal whose weather did not load is a
+     journal, and an error banner over somebody's health data because a
+     forecast API had a bad minute would be the tail wagging the dog. */
+  const contextRun = useRef(0);
+  useEffect(() => {
+    if (viewer || !db || !db.onboarded) return;
+    const consent = db.profile.context;
+    if (!consent?.enabled || consent.location === "off") return;
+    if (contextBusy.current) return;
+    /* Once an hour at most, per app open. */
+    if (Date.now() - contextRun.current < 3600 * 1000) return;
+
+    const today = todayStr();
+    const rows = db.context || [];
+    if (!needsRefresh(contextOn(rows, today), today, today)) return;
+
+    let cancelled = false;
+    contextBusy.current = true;
+    contextRun.current = Date.now();
+    (async () => {
+      try {
+        const place = consent.location === "manual"
+          ? (consent.place ? { lat: consent.place.lat, lon: consent.place.lon } : null)
+          : await currentCoords();
+        if (!place || cancelled) return;
+        /* How far back to fill: enough to cover the days this journal has but
+           the weather does not, capped at the provider's own window. */
+        const missing = entriesFor(db).filter((e) => !contextOn(rows, e.date)).length;
+        const { rows: fetched } = await fetchContext(place, Math.min(60, Math.max(7, missing)));
+        if (cancelled || !fetched.length) return;
+        setDb((prev) => ({ ...prev, context: mergeContexts(prev.context || [], fetched) }));
+      } catch (e) {
+        /* Offline, permission refused, provider down — all the same here. */
+      } finally {
+        contextBusy.current = false;
+      }
+    })();
+    return () => { cancelled = true; contextBusy.current = false; };
+  }, [viewer, db?.onboarded, db?.profile?.context?.enabled, db?.profile?.context?.location, db?.context?.length]);
 
   // Tapping the iOS widget opens straight to today's Quick Log (no-op on web).
   useEffect(() => {
@@ -16071,6 +16746,133 @@ export default function App({ viewer = false }) {
     ...prev, episodes: updateEpisode(prev.episodes || [], id, patch),
   }));
 
+  /* ---------- sun sessions ----------
+
+     A finished session is a record like any other log: written, toasted,
+     undoable. It never recomputes itself from today's profile afterwards —
+     see the header of lib/sun for why that rule is load-bearing. */
+
+  const saveSunSession = (session) => {
+    let before = null;
+    setDb((prev) => {
+      before = prev.sun || [];
+      return { ...prev, sun: [...before, session] };
+    });
+    feedback("save");
+    toast({
+      text: `${minutesLabel(session.minutes)} outside`,
+      cat: "fhj-cat-symptom",
+      undo: () => setDb((prev) => (before ? { ...prev, sun: before } : prev)),
+    });
+  };
+
+  const deleteSunSession = (id) => {
+    const deviceId = engineRef.current?.getDeviceId?.() || "local";
+    const row = (db.sun || []).find((s) => s.id === id);
+    setDb((prev) => addTombstone(
+      { ...prev, sun: (prev.sun || []).filter((s) => s.id !== id) }, "sun", id, deviceId
+    ));
+    engineRef.current?.noteDeleted?.("sun", id);
+    toast({
+      text: "Session removed",
+      icon: "trash",
+      cat: "fhj-cat-symptom",
+      undo: () => setDb((prev) => ({
+        ...prev,
+        sun: row ? [...(prev.sun || []), row] : prev.sun,
+        tombstones: (prev.tombstones || []).filter((t) => !(t.kind === "sun" && t.id === id)),
+      })),
+    });
+  };
+
+  /* ---------- labs ---------- */
+
+  const saveLab = (input) => {
+    const row = newLabResult(input);
+    let before = null;
+    setDb((prev) => {
+      before = prev.labs || [];
+      return { ...prev, labs: [...before, row] };
+    });
+    feedback("save");
+    const series = labSeries([...(db.labs || []), row], row.test);
+    const prevPoint = series.length > 1 ? series[series.length - 2] : null;
+    toast({
+      /* The toast says the *change*, because that is the thing somebody who
+         has just typed in a number wants confirmed. */
+      text: prevPoint
+        ? `${row.name}: ${prevPoint.value} → ${row.value} ${row.unit}`
+        : `${row.name} recorded`,
+      cat: "fhj-cat-symptom",
+      undo: () => setDb((prev) => (before ? { ...prev, labs: before } : prev)),
+    });
+  };
+
+  const deleteLab = (id) => {
+    const deviceId = engineRef.current?.getDeviceId?.() || "local";
+    const row = (db.labs || []).find((r) => r.id === id);
+    setDb((prev) => addTombstone(
+      { ...prev, labs: (prev.labs || []).filter((r) => r.id !== id) }, "lab", id, deviceId
+    ));
+    engineRef.current?.noteDeleted?.("lab", id);
+    toast({
+      text: "Result removed",
+      icon: "trash",
+      cat: "fhj-cat-symptom",
+      undo: () => setDb((prev) => ({
+        ...prev,
+        labs: row ? [...(prev.labs || []), row] : prev.labs,
+        tombstones: (prev.tombstones || []).filter((t) => !(t.kind === "lab" && t.id === id)),
+      })),
+    });
+  };
+
+  /* ---------- experiments ---------- */
+
+  const createExperiment = (input) => {
+    const exp = newExperiment(input);
+    setDb((prev) => ({ ...prev, experiments: [...(prev.experiments || []), exp] }));
+    feedback("save");
+    toast({ text: "Experiment started", cat: "fhj-cat-symptom" });
+  };
+
+  const archiveExperiment = (id) => {
+    let before = null;
+    setDb((prev) => {
+      before = prev.experiments || [];
+      return {
+        ...prev,
+        experiments: before.map((e) => (e.id === id ? { ...e, archived: true, updatedAt: new Date().toISOString() } : e)),
+      };
+    });
+    toast({
+      text: "Experiment archived",
+      icon: "trash",
+      undo: () => setDb((prev) => (before ? { ...prev, experiments: before } : prev)),
+    });
+  };
+
+  const pinExperiment = (id, pinned) => setDb((prev) => ({
+    ...prev,
+    experiments: (prev.experiments || []).map((e) =>
+      e.id === id ? { ...e, pinned, updatedAt: new Date().toISOString() } : e),
+  }));
+
+  /* ---------- illuminating days ----------
+
+     One function, called from everywhere a finding can be tapped. It sets the
+     lit set and drops the person on History, which is the surface where a set
+     of days is most legible. Everything else that draws a day picks the set up
+     on the way past. */
+
+  const illuminate = (dates, label) => {
+    if (!dates?.length) return;
+    setLit({ dates: new Set(dates), label });
+    feedback("select");
+    setScreen("history");
+  };
+  const clearLit = () => setLit(null);
+
   const dropEpisode = (ep) => {
     const deviceId = engineRef.current?.getDeviceId?.() || "local";
     setDb((prev) => addTombstone(
@@ -16140,6 +16942,58 @@ export default function App({ viewer = false }) {
     }));
   };
 
+  /* ---------- the shared derivations ----------
+
+     Everything the new screens compare against, computed once per render
+     rather than per screen. `seriesVariables` is the seam that lets an
+     experiment put a weather reading next to a symptom rating without either
+     side knowing about the other — see lib/series. */
+
+  const sunSessions = db.sun || [];
+  const contextRows = db.context || [];
+  const labRows = db.labs || [];
+  const todayContext = contextOn(contextRows, todayStr());
+  /* Where the sun is drawn from. A place typed by hand wins over the last
+     fetched fix, because it is the one somebody deliberately set. Absent when
+     context is off, and every sun surface degrades to "time outside" only. */
+  const activeCoords = profile.context?.enabled
+    ? (profile.context.place
+      ? { lat: profile.context.place.lat, lon: profile.context.place.lon }
+      : todayContext?.coords || contextRows[contextRows.length - 1]?.coords || null)
+    : null;
+
+  const seriesSource = {
+    entries,
+    fields: tpl.fields,
+    food: db.food || [],
+    bowel: db.bowel || [],
+    routine: db.routine || [],
+    routineItems: db.routineItems || [],
+    sun: sunSessions,
+    context: contextRows,
+    labs: labRows,
+  };
+  /* Deliberately not memoised, and deliberately not computed on every screen.
+
+     This block sits *below* the lock-flow early returns above, so a hook here
+     would be a conditional hook — the exact shape of the crash that took down
+     the first report screen in 1.0 (see the addendum in docs/APP_STATE.md).
+     Gating on the screen instead costs nothing and cannot introduce that bug:
+     Today only ever needs the experiments somebody pinned, and the rest of the
+     app needs none of it. */
+  const wantsExperiments = screen === "experiments" || screen === "dashboard";
+  const allVariables = wantsExperiments ? seriesVariables(seriesSource) : [];
+  const experimentResults = wantsExperiments
+    ? runAll(
+        (db.experiments || []).filter((e) => screen === "experiments" || e.pinned),
+        seriesSource
+      )
+    : [];
+  const experimentSuggestions = screen === "experiments"
+    ? suggestExperiments(seriesSource, { keyMetric: tpl.keyMetric, existing: db.experiments || [] })
+    : [];
+  const experimentStarters = screen === "experiments" ? availableStarters(seriesSource) : [];
+
   const todayProps = {
     profile, entries, openLog: goToLog, viewer, onPatch: upsertEntry,
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
@@ -16157,6 +17011,13 @@ export default function App({ viewer = false }) {
        two writers that Insights already had. Same functions — a flare started
        from a tile and one started from the chart are the same object. */
     episodes: db.episodes || [], onStartFlare: beginFlare, onEndFlare: finishFlare,
+    /* 1.21: the sun surface, the day's weather, and whichever experiments the
+       person pinned. Today shows them; it does not own any of them. */
+    sun: db.sun || [], context: db.context || [], labs: db.labs || [],
+    goSun: () => setScreen("sun"), goLabs: () => setScreen("labs"),
+    goExperiments: () => setScreen("experiments"),
+    pinnedExperiments: screen === "dashboard" ? experimentResults : [],
+    onHighlight: illuminate,
   };
 
   const insightsProps = {
@@ -16170,6 +17031,12 @@ export default function App({ viewer = false }) {
     episodes: db.episodes || [],
     onStartFlare: beginFlare, onEndFlare: finishFlare,
     onOpenEpisode: openEpisodeScreen, onPinMetrics: pinMetrics, onChartView: saveChartView,
+    /* 1.21: the environment behind the days, and the three new destinations
+       Insights can hand somebody off to. */
+    context: db.context || [], sun: db.sun || [], labs: db.labs || [],
+    onHighlight: illuminate,
+    goSun: () => setScreen("sun"), goLabs: () => setScreen("labs"),
+    goExperiments: () => setScreen("experiments"),
   };
 
   let content = null;
@@ -16232,6 +17099,57 @@ export default function App({ viewer = false }) {
         openLog={goToLog} goBack={() => setScreen("insights")}
         onEnd={finishFlare} onUpdate={patchEpisode} onDelete={dropEpisode} viewer={viewer} />
     );
+  } else if (screen === "sun") {
+    content = (
+      <SunScreen
+        coords={activeCoords}
+        today={todayStr()}
+        sessions={db.sun || []}
+        skin={profile.sun?.skin}
+        exposure={profile.sun?.exposure}
+        wake={profile.sun?.wake}
+        age={profileAge(profile) ?? undefined}
+        forecastUV={todayContext?.uvMax ?? null}
+        cloudCover={undefined}
+        viewer={viewer}
+        onSave={saveSunSession}
+        onDelete={viewer ? undefined : deleteSunSession}
+        onOpenSettings={() => setScreen("settings")}
+        onFeedback={feedback}
+        highlight={lit?.dates}
+      />
+    );
+  } else if (screen === "experiments") {
+    content = (
+      <ExperimentsScreen
+        results={experimentResults}
+        suggestions={experimentSuggestions}
+        starters={experimentStarters}
+        variables={allVariables}
+        viewer={viewer}
+        onCreate={createExperiment}
+        onArchive={archiveExperiment}
+        onPin={pinExperiment}
+        onHighlight={illuminate}
+        onFeedback={feedback}
+      />
+    );
+  } else if (screen === "labs") {
+    content = (
+      <LabsScreen
+        labs={db.labs || []}
+        sun={db.sun || []}
+        context={db.context || []}
+        episodes={db.episodes || []}
+        routineItems={db.routineItems || []}
+        today={todayStr()}
+        viewer={viewer}
+        onSave={saveLab}
+        onDelete={deleteLab}
+        onHighlight={illuminate}
+        onFeedback={feedback}
+      />
+    );
   } else if (screen === "calendar") {
     content = <CalendarScreen profile={profile} entries={entries} openLog={goToLog} />;
   } else if (screen === "history") {
@@ -16242,7 +17160,11 @@ export default function App({ viewer = false }) {
         openLog={goToLog} viewer={viewer} syncStatus={syncStatus}
         goInsights={() => setScreen("insights")} goDiary={() => setScreen("food")}
         goExport={() => setScreen("export")} goGallery={() => setScreen("gallery")}
-        goSettings={() => setScreen("settings")} goSetup={() => setScreen("setup")} />
+        goSettings={() => setScreen("settings")} goSetup={() => setScreen("setup")}
+        goSun={() => setScreen("sun")} goLabs={() => setScreen("labs")}
+        goExperiments={() => setScreen("experiments")}
+        context={contextRows} sun={sunSessions} labs={labRows}
+        lit={lit} onClearLit={clearLit} />
     );
   } else if (screen === "fitbit") {
     content = <FitbitImportScreen db={db} setDb={setDb} goBack={() => setScreen("settings")} />;
@@ -16261,7 +17183,7 @@ export default function App({ viewer = false }) {
      screen is somewhere you navigated *into* and wants the title and the way
      back. */
   const showHeader = screen !== "dashboard" && screen !== "insights" && screen !== "food"
-    && screen !== "history";
+    && screen !== "history" && screen !== "experiments" && screen !== "labs";
   /* Every screen id that can reach here needs an entry. "food" and "fitbit"
      were missing, which rendered the header with an empty <h1> and the survey
      name orphaned underneath it. */
@@ -16270,6 +17192,7 @@ export default function App({ viewer = false }) {
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
     routine: "Your Routine", episode: "Flare", pack: "Appointment Pack", history: "History",
     fitbit: "Import Health Data",
+    sun: "Sun & Outdoor Light", experiments: "Experiments", labs: "Labs & Measurements",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
   }[screen] || APP_NAME;
 
@@ -16424,4 +17347,10 @@ export const __internals = {
   QUICK_ADD_TILES, DEFAULT_QUICK_ADD, defaultQuickAdd, quickAddTile, tileSupported,
   quickAddContext, resolveQuickAdd, firstRunQuickAdd, FIRST_RUN_EXTRAS, amountWithUnit,
   scaleHaptic, HAPTIC_PATTERNS, HAPTIC_SCALE, HAPTIC_LEVELS,
+  /* 1.21 — the parts the suites reach for directly. The screens themselves are
+     driven through the app, not mounted in isolation: the point of the release
+     is that the five systems talk to each other, and a test that mounts one of
+     them alone would pass while the wiring was broken. */
+  DailyContextCard, SunProfileCard, TodayContextCard, ContextSection, PinnedExperiment,
+  currentCoords, contextLineFor,
 };

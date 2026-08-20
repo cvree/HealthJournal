@@ -5,6 +5,10 @@
    incrementally (it still carries @ts-nocheck until fully migrated). */
 
 import type { HealthEpisode } from "../lib/episodes";
+import type { ContextConsent, DayContext } from "../lib/context";
+import type { Experiment } from "../lib/experiments";
+import type { LabResult } from "../lib/labs";
+import type { SunProfile, SunSession } from "../lib/sun";
 
 /* ---------- questions ---------- */
 
@@ -150,6 +154,12 @@ export interface TrackingSetup {
   /** Use count and last-used date per action id, which is what the learned
       ordering and the one-tap repeats are ranked on. */
   actionStats?: Record<string, { n: number; at?: string }>;
+  /** Whether daily environmental context is switched on, and how coarse the
+      place it uses is. Off until somebody says otherwise. See lib/context. */
+  context?: ContextConsent;
+  /** Skin type, usual exposure and waking time — the three answers the vitamin
+      D estimate personalises on. Asked once, all refusable. See lib/sun. */
+  sun?: SunProfile;
   /** ISO timestamp of the last restorable backup the user downloaded. */
   lastBackupAt?: string;
   createdAt?: string;
@@ -503,6 +513,15 @@ export interface AppDatabase extends OnboardingState {
   routine?: RoutineLog[];
   /** Flares and bad stretches, marked by the user. See src/lib/episodes.ts. */
   episodes?: HealthEpisode[];
+  /** Time outside, with the sun's own arithmetic attached. See src/lib/sun.ts. */
+  sun?: SunSession[];
+  /** Blood work and measurements somebody else took. See src/lib/labs.ts. */
+  labs?: LabResult[];
+  /** Running comparisons the person asked for. See src/lib/experiments.ts. */
+  experiments?: Experiment[];
+  /** One environmental record per day, fetched with permission. Weather, not
+      whereabouts — see the header of src/lib/context.ts. */
+  context?: DayContext[];
   schemaVersion?: number;
 }
 
@@ -514,3 +533,11 @@ export interface AppDatabase extends OnboardingState {
    re-exported here so `types/models` remains the one import for the data
    contract. */
 export type { HealthEpisode };
+
+/* Same reasoning for the five shapes 1.21 added: each lives next to the
+   arithmetic that reads it, and is re-exported here so `types/models` stays
+   the one import for the data contract. */
+export type { ContextConsent, DayContext };
+export type { Experiment };
+export type { LabResult };
+export type { SunProfile, SunSession };

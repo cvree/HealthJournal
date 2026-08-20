@@ -36,6 +36,7 @@ import {
   addDays, daySpan, episodeStats, lastDay,
   type EpisodeStats, type HealthEpisode,
 } from "./episodes";
+import { convertValue } from "./labs";
 import { asNeededItems, kindLabel, routineChecklist, routineOn } from "./routine";
 import type { RoutineItem, RoutineLog } from "../types/models";
 
@@ -63,7 +64,7 @@ export interface PackMetric {
 
 export type PackSectionKey =
   | "summary" | "scores" | "flares" | "changes"
-  | "routine" | "photos" | "notes" | "questions";
+  | "labs" | "sun" | "routine" | "photos" | "notes" | "questions";
 
 export interface PackSectionDef {
   key: PackSectionKey;
@@ -77,6 +78,11 @@ export const PACK_SECTIONS: PackSectionDef[] = [
   { key: "scores", label: "Best, hardest, usual", hint: "The shape of the days behind that average" },
   { key: "flares", label: "Flares", hint: "How many, how long they ran, how bad they got" },
   { key: "changes", label: "Biggest changes", hint: "The three metrics that moved the most" },
+  /* Labs come directly after the changes and before the routine, which is the
+     order the conversation actually runs in: how it's been, what moved, what
+     the bloods said, what you're taking. */
+  { key: "labs", label: "Measurements", hint: "Blood work and measurements, with the range your lab printed" },
+  { key: "sun", label: "Time outside", hint: "Daylight and sun, and the estimated vitamin D beside it" },
   { key: "routine", label: "Routine", hint: "What was taken or applied, against what the plan asks for" },
   { key: "photos", label: "Photos", hint: "One before-and-after pair" },
   { key: "notes", label: "Notes", hint: "The days you pick out yourself" },
@@ -316,6 +322,37 @@ export interface PackPhotoPair {
   apart: number;
 }
 
+/** One test's history, as the pack prints it. Everything here comes off the
+    stored result — including the reference range, which is the laboratory's own
+    and never this app's. */
+export interface PackLab {
+  test: string;
+  name: string;
+  unit: string;
+  /** Oldest first. */
+  points: { date: string; value: string; status: string; fasting?: boolean }[];
+  /** "24 → 31 → 38 ng/mL" */
+  series: string;
+  /** The lab's own range, printed once under the row. */
+  range?: string;
+  latestOn: string;
+  provider?: string;
+}
+
+/** Time outside across the range, and the estimate beside it — labelled, in
+    its own units, and never in the same column as a blood result. */
+export interface PackSun {
+  days: number;
+  sessions: number;
+  minutes: number;
+  /** Average minutes on the days there was a session at all. */
+  averageMinutes: number;
+  estimatedLow: number;
+  estimatedHigh: number;
+  /** The sentence that keeps the two kinds of number apart on paper. */
+  estimateNote: string;
+}
+
 export interface PackNote {
   date: string;
   text: string;
@@ -334,6 +371,8 @@ export interface AppointmentPack {
   scores: PackScores | null;
   flares: PackFlares | null;
   changes: PackChange[];
+  labs: PackLab[];
+  sun: PackSun | null;
   routine: PackRoutine | null;
   photo: PackPhotoPair | null;
   notes: PackNote[];
@@ -355,6 +394,15 @@ export interface PackInput {
   episodes?: HealthEpisode[];
   routineItems?: RoutineItem[];
   routineLogs?: RoutineLog[];
+  /** Lab results and sun sessions, already sanitised. Shapes are structural
+      rather than imported so this module keeps its "imports nothing heavy"
+      property — see the header. */
+  labs?: {
+    id: string; test: string; name: string; value: number; value2?: number;
+    unit: string; date: string; refLow?: number; refHigh?: number;
+    fasting?: boolean; provider?: string;
+  }[];
+  sun?: { date: string; minutes: number; iuLow: number; iuHigh: number }[];
   sections?: Partial<Record<PackSectionKey, boolean>>;
   /** Dates of the notes the person ticked. */
   noteDates?: string[];
@@ -617,6 +665,132 @@ export function candidateNotes(entries: PackEntry[], range: PackRange): PackNote
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
+/* ---------- labs ----------
+
+   The pack prints every test with a result in the range, plus the reading
+   immediately before the range where there is one — because "38, up from 31 in
+   March" is the sentence a clinician wants and "38" on its own is not.
+
+   The range printed under each row is the laboratory's own, carried on the
+   record. A test whose results never carried one prints no range and no
+   verdict, which is the honest output: this app does not know what normal is
+   for somebody else's assay. */
+
+export function buildLabs(input: PackInput): PackLab[] {
+  const rows = (input.labs || []).filter((r) => r && r.date <= input.range.end);
+  if (!rows.length) return [];
+  const byTest = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const list = byTest.get(r.test) || [];
+    list.push(r);
+    byTest.set(r.test, list);
+  }
+
+  const out: PackLab[] = [];
+  for (const [test, all] of byTest) {
+    const sorted = [...all].sort((a, b) => (a.date < b.date ? -1 : 1));
+    const inRange = sorted.filter((r) => r.date >= input.range.start);
+    if (!inRange.length) continue;
+    /* One reading of context from before the range, so a single new result is
+       still a comparison rather than a lone number. */
+    const before = sorted.filter((r) => r.date < input.range.start).slice(-1);
+    const shown = [...before, ...inRange];
+    /* Everything is put onto the most recent reading's unit — the one the
+       person is currently holding a report for — the same way the app's own
+       lab screen does it. A reading that cannot be converted is dropped rather
+       than printed at the wrong scale, which on paper next to a range would be
+       the worst kind of error this document could make. */
+    const unit = shown[shown.length - 1].unit;
+    const usable = shown
+      .map((r) => onUnit(test, r, unit))
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (!usable.length) continue;
+    const latest = usable[usable.length - 1];
+    out.push({
+      test,
+      name: latest.name,
+      unit,
+      points: usable.map((r) => ({
+        date: r.date,
+        value: r.value2 !== undefined ? `${trim(r.value)}/${trim(r.value2)}` : trim(r.value),
+        status: labStatus(r),
+        fasting: r.fasting,
+      })),
+      series: `${usable.map((r) => trim(r.value)).join(" → ")} ${unit}`.trim(),
+      range: rangeText(latest),
+      latestOn: latest.date,
+      provider: latest.provider,
+    });
+  }
+  return out.sort((a, b) => (a.latestOn < b.latestOn ? 1 : -1)).slice(0, 8);
+}
+
+const trim = (v: number): string => String(Math.round(v * 100) / 100);
+
+/** One result, expressed in `unit`, or null when that cannot be done honestly.
+    The laboratory's own range is converted with it — a value in ng/mL judged
+    against a range in nmol/L would be nonsense printed with confidence. */
+function onUnit<T extends { unit: string; value: number; value2?: number; refLow?: number; refHigh?: number }>(
+  test: string, r: T, unit: string
+): T | null {
+  if (r.unit === unit) return r;
+  const value = convertValue(test, r.value, r.unit, unit);
+  if (value == null) return null;
+  const conv = (v: number | undefined) =>
+    v === undefined ? undefined : convertValue(test, v, r.unit, unit) ?? undefined;
+  return {
+    ...r,
+    unit,
+    value,
+    value2: conv(r.value2),
+    refLow: conv(r.refLow),
+    refHigh: conv(r.refHigh),
+  };
+}
+
+function labStatus(r: { value: number; refLow?: number; refHigh?: number }): string {
+  if (r.refLow === undefined && r.refHigh === undefined) return "";
+  if (r.refLow !== undefined && r.value < r.refLow) return "below range";
+  if (r.refHigh !== undefined && r.value > r.refHigh) return "above range";
+  return "in range";
+}
+
+function rangeText(r: { unit: string; refLow?: number; refHigh?: number }): string | undefined {
+  if (r.refLow === undefined && r.refHigh === undefined) return undefined;
+  const lo = r.refLow !== undefined ? trim(r.refLow) : "–";
+  const hi = r.refHigh !== undefined ? trim(r.refHigh) : "–";
+  return `Your lab's range: ${lo}–${hi} ${r.unit}`;
+}
+
+/* ---------- time outside ----------
+
+   Two numbers a clinician can use — how much daylight somebody actually got,
+   and over how many days — and one they can't, printed as what it is. The
+   estimate note is not optional and not a footnote: on paper, next to a real
+   laboratory value, an unlabelled IU figure is the single most misreadable
+   thing this app could produce. */
+
+export const SUN_ESTIMATE_NOTE =
+  "Estimated from sun position, skin type and exposure — a research model, not a measurement. A blood level is the measurement; see Measurements above.";
+
+export function buildSun(input: PackInput): PackSun | null {
+  const rows = (input.sun || []).filter(
+    (s) => s && s.date >= input.range.start && s.date <= input.range.end
+  );
+  if (!rows.length) return null;
+  const days = new Set(rows.map((s) => s.date)).size;
+  const minutes = rows.reduce((a, s) => a + s.minutes, 0);
+  return {
+    days,
+    sessions: rows.length,
+    minutes,
+    averageMinutes: days ? Math.round(minutes / days) : 0,
+    estimatedLow: rows.reduce((a, s) => a + s.iuLow, 0),
+    estimatedHigh: rows.reduce((a, s) => a + s.iuHigh, 0),
+    estimateNote: SUN_ESTIMATE_NOTE,
+  };
+}
+
 /* ---------- the whole thing ---------- */
 
 export function buildAppointmentPack(input: PackInput): AppointmentPack {
@@ -647,6 +821,16 @@ export function buildAppointmentPack(input: PackInput): AppointmentPack {
     });
   }
 
+  const labs = want("labs") ? buildLabs(input) : [];
+  if (want("labs") && !labs.length) {
+    omitted.push({ key: "labs", reason: "No measurements recorded in this range." });
+  }
+
+  const sun = want("sun") ? buildSun(input) : null;
+  if (want("sun") && !sun) {
+    omitted.push({ key: "sun", reason: "No time outside recorded in this range." });
+  }
+
   const routine = want("routine") ? buildRoutine(input) : null;
   if (want("routine") && !routine) omitted.push({ key: "routine", reason: "Nothing in your routine to report on yet." });
 
@@ -667,7 +851,7 @@ export function buildAppointmentPack(input: PackInput): AppointmentPack {
     range: input.range,
     previous: previousWindow(input.range),
     sections,
-    headline, scores, flares, changes, routine, photo, notes, questions,
+    headline, scores, flares, changes, labs, sun, routine, photo, notes, questions,
     omitted,
   };
 }

@@ -8,7 +8,8 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_PACK_SECTIONS, MIN_CHANGE_DAYS, PACK_SECTIONS,
-  buildAppointmentPack, buildChanges, buildRoutine, candidateNotes,
+  buildAppointmentPack, buildChanges, buildLabs, buildRoutine, buildSun,
+  candidateNotes, SUN_ESTIMATE_NOTE,
   changeLabel, coverageLabel, estimateBlocks, pageEstimate,
   previousWindow, rangeCustom, rangeOfDays, rangeSinceAppointment,
   sanitizePackPrefs, verdictFor,
@@ -363,5 +364,142 @@ describe("the saved settings", () => {
     expect(sanitizePackPrefs(undefined)).toEqual({
       lastAppointment: null, sections: DEFAULT_PACK_SECTIONS, questions: [], noteDates: [], photoField: null,
     });
+  });
+});
+
+/* ---------- measurements and time outside ----------
+
+   The two sections added in 1.21, and the two places on this page where the
+   distinction between "somebody measured this" and "this app modelled it" has
+   to survive being printed on paper and read months later. */
+
+const lab = (over: Record<string, unknown> = {}) => ({
+  id: "l1", test: "vitamin_d", name: "Vitamin D (25-OH)", value: 38, unit: "ng/mL",
+  date: "2026-08-01", ...over,
+} as any);
+
+const sunSession = (date: string, over: Record<string, unknown> = {}) => ({
+  date, minutes: 40, iuLow: 700, iuHigh: 1300, ...over,
+} as any);
+
+describe("buildLabs", () => {
+  it("prints every test with a result in the range", () => {
+    const labs = buildLabs(input({ labs: [lab(), lab({ id: "l2", test: "ferritin", name: "Ferritin", value: 42, unit: "ng/mL", date: "2026-08-05" })] }));
+    expect(labs.map((l) => l.test).sort()).toEqual(["ferritin", "vitamin_d"]);
+  });
+
+  it("pulls in one earlier reading so a new result is a comparison, not a lone number", () => {
+    const labs = buildLabs(input({
+      labs: [lab({ id: "old", value: 24, date: "2026-02-01" }), lab({ value: 38 })],
+    }));
+    expect(labs[0].points.length).toBe(2);
+    expect(labs[0].series).toBe("24 → 38 ng/mL");
+  });
+
+  it("says nothing about a test with no result inside the range", () => {
+    expect(buildLabs(input({ labs: [lab({ date: "2026-01-01" })] }))).toEqual([]);
+  });
+
+  it("prints the laboratory's own range, described as theirs", () => {
+    const [l] = buildLabs(input({ labs: [lab({ refLow: 30, refHigh: 100 })] }));
+    expect(l.range).toBe("Your lab's range: 30–100 ng/mL");
+    expect(l.points[0].status).toBe("in range");
+  });
+
+  it("prints no range and no verdict when the report never carried one", () => {
+    const [l] = buildLabs(input({ labs: [lab()] }));
+    expect(l.range).toBeUndefined();
+    expect(l.points[0].status).toBe("");
+  });
+
+  it("keeps a paired value readable", () => {
+    const [l] = buildLabs(input({
+      labs: [lab({ test: "blood_pressure", name: "Blood pressure", value: 128, value2: 82, unit: "mmHg" })],
+    }));
+    expect(l.points[0].value).toBe("128/82");
+  });
+
+  it("puts a mixed-unit history onto the unit of the report somebody is holding", () => {
+    const [l] = buildLabs(input({
+      labs: [lab({ id: "old", value: 60, unit: "nmol/L", date: "2026-07-25" }), lab({ value: 38 })],
+    }));
+    expect(l.unit).toBe("ng/mL");
+    expect(l.points.length).toBe(2);
+    expect(l.series).toBe("24.04 → 38 ng/mL");
+  });
+
+  it("converts the lab's own range along with the value, never one against the other", () => {
+    const [l] = buildLabs(input({
+      labs: [
+        lab({ id: "old", value: 60, unit: "nmol/L", refLow: 75, refHigh: 250, date: "2026-07-25" }),
+        lab({ value: 38, refLow: 30, refHigh: 100 }),
+      ],
+    }));
+    expect(l.points[0].status).toBe("below range");
+    expect(l.points[1].status).toBe("in range");
+  });
+
+  it("drops a reading it cannot line up at all rather than printing it at the wrong scale", () => {
+    const [l] = buildLabs(input({
+      labs: [lab({ id: "old", value: 60, unit: "furlongs", date: "2026-07-25" }), lab({ value: 38 })],
+    }));
+    expect(l.points.length).toBe(1);
+    expect(l.unit).toBe("ng/mL");
+  });
+});
+
+describe("buildSun", () => {
+  it("counts days, sessions and minutes across the range", () => {
+    const sun = buildSun(input({
+      sun: [sunSession("2026-08-01"), sunSession("2026-08-01", { minutes: 20 }), sunSession("2026-08-05")],
+    }));
+    expect(sun).toMatchObject({ days: 2, sessions: 3, minutes: 100, averageMinutes: 50 });
+  });
+
+  it("ignores sessions outside the range", () => {
+    expect(buildSun(input({ sun: [sunSession("2026-01-01")] }))).toBeNull();
+  });
+
+  it("carries the estimate as a range, with the note that keeps it apart from a blood level", () => {
+    const sun = buildSun(input({ sun: [sunSession("2026-08-01")] }))!;
+    expect(sun.estimatedLow).toBe(700);
+    expect(sun.estimatedHigh).toBe(1300);
+    expect(sun.estimateNote).toBe(SUN_ESTIMATE_NOTE);
+    expect(SUN_ESTIMATE_NOTE).toContain("not a measurement");
+    expect(SUN_ESTIMATE_NOTE).toContain("blood level is the measurement");
+  });
+});
+
+describe("the pack carries both, and says why when it can't", () => {
+  it("includes them when they are switched on and have something to say", () => {
+    const pack = buildAppointmentPack(input({
+      labs: [lab()], sun: [sunSession("2026-08-01")],
+    }));
+    expect(pack.labs.length).toBe(1);
+    expect(pack.sun).toBeTruthy();
+    expect(pack.omitted.some((o) => o.key === "labs")).toBe(false);
+  });
+
+  it("explains an empty section instead of leaving somebody to guess", () => {
+    const pack = buildAppointmentPack(input());
+    expect(pack.omitted.find((o) => o.key === "labs")?.reason).toContain("No measurements");
+    expect(pack.omitted.find((o) => o.key === "sun")?.reason).toContain("No time outside");
+  });
+
+  it("leaves them out entirely when the section is switched off", () => {
+    const pack = buildAppointmentPack(input({
+      labs: [lab()], sun: [sunSession("2026-08-01")],
+      sections: { labs: false, sun: false },
+    }));
+    expect(pack.labs).toEqual([]);
+    expect(pack.sun).toBeNull();
+    expect(pack.omitted.some((o) => o.key === "labs")).toBe(false);
+  });
+
+  it("offers both as sections somebody can turn off", () => {
+    expect(PACK_SECTIONS.map((s) => s.key)).toContain("labs");
+    expect(PACK_SECTIONS.map((s) => s.key)).toContain("sun");
+    expect(DEFAULT_PACK_SECTIONS.labs).toBe(true);
+    expect(DEFAULT_PACK_SECTIONS.sun).toBe(true);
   });
 });

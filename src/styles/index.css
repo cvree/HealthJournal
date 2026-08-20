@@ -5716,6 +5716,1355 @@ button:active > .fhj-nav-add {
   background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
 }
 
+
+/* ============================================================
+   Shared bits the new surfaces needed
+   ============================================================ */
+
+/* A row of chips that wraps. The chip itself already exists; this is only the
+   container, and it earns its own class because five screens now lay chips out
+   the same way and were each doing it with a utility soup. */
+.fhj-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: var(--fhj-gap);
+}
+
+/* Text that behaves like a link but is a button, which is what almost every
+   "show more" in this app actually is. Underlined on purpose: colour alone is
+   not an affordance, and this one carries real actions. */
+.fhj-linkish {
+  background: none;
+  border: 0;
+  padding: 0.25rem 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-accent-text, #a6c3ea);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+}
+.fhj-linkish:hover {
+  text-decoration-thickness: 2px;
+}
+.fhj-linkish-quiet {
+  color: var(--fhj-subtle, #9a9ca6);
+  font-weight: 500;
+}
+
+.fhj-icon-btn-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+  min-width: 0;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+/* ============================================================
+   Evidence
+   ============================================================
+   Four segments and a disclosure. The fill is the only thing that changes as
+   a finding strengthens — never the hue — because a strong finding in a health
+   journal is not necessarily good news, and colouring it like a completed task
+   would say the wrong thing about somebody's own body. */
+
+.fhj-ev {
+  margin: var(--fhj-gap-sm) 0;
+}
+
+.fhj-ev-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.fhj-ev-stage {
+  font-family: var(--fhj-font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fhj-sub, #adafb8);
+}
+/* Only the top rung gets full ink, and it gets it by weight rather than by
+   colour — the ladder is a quantity, not a verdict. */
+.fhj-ev-stage[data-stage="useful"],
+.fhj-ev-stage[data-stage="established"] {
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-ev-count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-ev-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.fhj-ev-seg {
+  position: relative;
+  height: 6px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, #2a2d35);
+  overflow: hidden;
+}
+
+.fhj-ev-seg-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: var(--fhj-accent, #8fb0e3);
+  transition: transform 900ms var(--fhj-out);
+}
+.fhj-ev-seg[data-state="done"] .fhj-ev-seg-fill {
+  opacity: 0.55;
+}
+
+.fhj-ev-detail {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--fhj-sub, #adafb8);
+}
+
+.fhj-ev-why {
+  margin-top: 0.5rem;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fhj-subtle, #9a9ca6);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.fhj-ev-panel {
+  margin-top: 0.625rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  animation: fhjEvOpen 260ms var(--fhj-out);
+}
+
+@keyframes fhjEvOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.fhj-ev-rows {
+  display: grid;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+.fhj-ev-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+}
+.fhj-ev-row dd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-ev-lims ul {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0;
+  padding-left: 1rem;
+  list-style: disc;
+}
+.fhj-ev-lims li {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #adafb8);
+}
+
+/* ============================================================
+   Day context — weather living behind a day
+   ============================================================ */
+
+/* The wash. Absolutely positioned behind a row's content, pointer-inert, and
+   quiet enough that an ordinary day is nearly invisible. Its opacity comes
+   from the data (see contextWash), which is why there is no opacity here. */
+.fhj-ctx-wash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.fhj-sky-glyph {
+  flex: none;
+  vertical-align: -0.15em;
+}
+
+.fhj-ctx-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-ctx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.fhj-ctx-cell {
+  min-width: 0;
+}
+.fhj-ctx-val {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  margin-top: 0.125rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-ctx-sub {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-temp-trace {
+  display: block;
+  width: 100%;
+  height: 46px;
+  overflow: visible;
+}
+
+/* ============================================================
+   Sun & outdoor light
+   ============================================================ */
+
+.fhj-sun {
+  display: grid;
+  gap: var(--fhj-gap);
+  padding: 0 var(--fhj-gap) var(--fhj-gap);
+}
+
+/* ---- the arc ---- */
+
+.fhj-arc {
+  position: relative;
+  margin: 0 -0.25rem;
+}
+.fhj-arc svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.fhj-arc-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--fhj-gap);
+  border-radius: var(--fhj-radius);
+  border: 1px dashed var(--fhj-line, #31343d);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.fhj-arc-feet {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-arc-peak {
+  color: var(--fhj-muted, #787b86);
+}
+
+/* The sun disc breathes while a session runs. Six seconds, barely visible —
+   the sun moves a quarter of a degree in that time, and anything faster is a
+   lie about the sky. */
+.fhj-arc-sun.is-up {
+  animation: fhjSunBreathe 6s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes fhjSunBreathe {
+  50% {
+    opacity: 0.82;
+  }
+}
+
+/* The stretch spent outside draws itself along the path when it appears. */
+.fhj-arc-span {
+  stroke-dasharray: 200;
+  animation: fhjArcDraw 900ms var(--fhj-out) both;
+}
+@keyframes fhjArcDraw {
+  from {
+    stroke-dashoffset: 200;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ---- the idle screen ---- */
+
+.fhj-sun-facts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-top: var(--fhj-gap);
+}
+@media (min-width: 420px) {
+  .fhj-sun-facts {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.fhj-sun-fact-val {
+  margin-top: 0.125rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-sun-fact-sub {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-sun-start {
+  margin-top: var(--fhj-gap);
+  gap: 0.5rem;
+  font-size: 1rem;
+  padding-top: 0.9375rem;
+  padding-bottom: 0.9375rem;
+}
+
+.fhj-sun-total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.fhj-sun-total-num {
+  font-family: var(--fhj-font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-total-sub {
+  font-size: 0.8125rem;
+  color: var(--fhj-sub, #adafb8);
+}
+
+.fhj-sun-est-block {
+  margin-top: var(--fhj-gap);
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--fhj-line, #31343d);
+}
+.fhj-sun-iu-sm {
+  font-family: var(--fhj-font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+/* Never smaller than the surrounding caption text, and never dressed as a
+   footnote — the moment this line stops being read is the moment somebody
+   starts treating an estimate as a blood test. */
+.fhj-sun-iu-note {
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-sun-first {
+  margin-top: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--fhj-sub, #adafb8);
+}
+
+.fhj-sun-list {
+  margin-top: var(--fhj-gap);
+  display: grid;
+  gap: 0.5rem;
+}
+.fhj-sun-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-sun-list-time {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-list-meta {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-sun-windows {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.fhj-sun-windows li {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+@media (max-width: 380px) {
+  .fhj-sun-windows li {
+    grid-template-columns: 1fr;
+    gap: 0.125rem;
+  }
+}
+.fhj-sun-win-when {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+.fhj-sun-win-what strong {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-win-what em {
+  display: block;
+  margin-top: 0.125rem;
+  font-style: normal;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #adafb8);
+}
+
+/* Thirty days of being outside, as thirty bars. Not a chart — a texture. */
+.fhj-sun-hist {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 56px;
+  margin-top: 0.5rem;
+}
+.fhj-sun-hist-bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--fhj-accent, #8fb0e3);
+  opacity: 0.75;
+  transform-origin: bottom center;
+  animation: fhjBarRise 500ms var(--fhj-out) both;
+}
+.fhj-sun-hist-bar[data-empty="true"] {
+  background: var(--fhj-faint, #2a2d35);
+  opacity: 1;
+  height: 2px !important;
+}
+/* How an insight lights up a day here. */
+.fhj-sun-hist-bar.is-lit {
+  background: var(--fhj-warn, #d68a4a);
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--fhj-warn, #d68a4a);
+}
+@keyframes fhjBarRise {
+  from {
+    transform: scaleY(0.1);
+  }
+}
+.fhj-sun-hist-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the live session ---- */
+
+.fhj-sun-live {
+  position: relative;
+  display: grid;
+  gap: var(--fhj-gap);
+  padding: var(--fhj-gap);
+  min-height: 100dvh;
+}
+
+/* The atmosphere. It is the only thing in the app that reacts to a live
+   physical state, and it is tied to the burn scale rather than to anything
+   decorative: the screen warms as the dose climbs, which is information. */
+.fhj-sun-live-sky {
+  position: absolute;
+  inset: -20% -20% auto;
+  height: 60vh;
+  pointer-events: none;
+  background: radial-gradient(
+    60% 50% at 50% 0%,
+    color-mix(in srgb, var(--fhj-warn, #d68a4a) 22%, transparent),
+    transparent 70%
+  );
+  transition: opacity 1200ms ease;
+  opacity: 0.5;
+}
+.fhj-sun-live[data-burn="caution"] .fhj-sun-live-sky {
+  opacity: 0.8;
+}
+.fhj-sun-live[data-burn="over"] .fhj-sun-live-sky {
+  opacity: 1;
+  background: radial-gradient(
+    60% 50% at 50% 0%,
+    color-mix(in srgb, var(--fhj-alert, #c9743f) 30%, transparent),
+    transparent 70%
+  );
+}
+
+.fhj-sun-clock {
+  font-family: var(--fhj-font-display);
+  font-size: clamp(3.25rem, 18vw, 4.75rem);
+  font-weight: 600;
+  line-height: 0.95;
+  text-align: center;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-clock-sub {
+  margin-top: -0.375rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-sun-live-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.625rem;
+}
+@media (min-width: 420px) {
+  .fhj-sun-live-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.fhj-sun-stat {
+  padding: 0.75rem;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  background: var(--fhj-card, #1e2026);
+}
+.fhj-sun-stat-val {
+  margin-top: 0.125rem;
+  font-family: var(--fhj-font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-sun-stat-sub {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-sun-estimate {
+  padding: var(--fhj-gap);
+  border-radius: var(--fhj-radius-lg);
+  border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
+  background: var(--fhj-card, #1e2026);
+  text-align: center;
+}
+.fhj-sun-iu {
+  font-family: var(--fhj-font-display);
+  font-size: clamp(1.75rem, 9vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-sun-below {
+  margin-top: 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--fhj-sub, #adafb8);
+}
+
+/* The burn scale — the one element allowed to change colour, because it is
+   the one thing on the screen that can go wrong. */
+.fhj-sun-burn {
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-sun-burn[data-level="caution"] {
+  border-color: var(--fhj-warn, #d68a4a);
+}
+.fhj-sun-burn[data-level="over"] {
+  border-color: var(--fhj-bad, #b8563f);
+  background: var(--fhj-danger-bg, rgba(184, 86, 63, 0.14));
+}
+.fhj-sun-burn-bar {
+  height: 6px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line, #31343d);
+  overflow: hidden;
+}
+.fhj-sun-burn-bar > span {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: var(--fhj-good, #7f9f7e);
+  transition: transform 900ms var(--fhj-out), background 900ms ease;
+}
+.fhj-sun-burn[data-level="building"] .fhj-sun-burn-bar > span {
+  background: var(--fhj-warn, #d68a4a);
+}
+.fhj-sun-burn[data-level="caution"] .fhj-sun-burn-bar > span {
+  background: var(--fhj-alert, #c9743f);
+}
+.fhj-sun-burn[data-level="over"] .fhj-sun-burn-bar > span {
+  background: var(--fhj-bad, #b8563f);
+}
+.fhj-sun-burn-text {
+  margin-top: 0.5rem;
+}
+.fhj-sun-burn-text strong {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-burn-text span {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #adafb8);
+}
+
+.fhj-sun-live-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.fhj-sun-finish-est {
+  font-size: 0.8125rem;
+  color: var(--fhj-sub, #adafb8);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Experiments
+   ============================================================ */
+
+.fhj-exp,
+.fhj-labs,
+.fhj-labs-detail {
+  display: grid;
+  gap: var(--fhj-gap);
+  padding: 0 var(--fhj-gap) var(--fhj-gap);
+  align-content: start;
+}
+
+.fhj-exp-head {
+  padding-top: var(--fhj-gap);
+}
+.fhj-exp-lede {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--fhj-sub, #adafb8);
+}
+
+.fhj-exp-list {
+  display: grid;
+  gap: var(--fhj-gap);
+}
+
+.fhj-exp-card {
+  position: relative;
+  padding: var(--fhj-gap);
+  border-radius: var(--fhj-radius-lg);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  background: var(--fhj-card, #1e2026);
+  transition: border-color 600ms ease, box-shadow 600ms ease;
+}
+/* A card that has reached a result is drawn one notch heavier. The change is
+   in *weight*, not colour — see the note on the evidence ladder. */
+.fhj-exp-card[data-stage="useful"],
+.fhj-exp-card[data-stage="established"] {
+  border-color: var(--fhj-line-strong, #464a55);
+  box-shadow: var(--fhj-shadow, 0 6px 20px rgba(0, 0, 0, 0.32));
+}
+
+.fhj-exp-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.fhj-exp-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-exp-pair {
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-exp-pair em {
+  font-style: normal;
+  color: var(--fhj-muted, #787b86);
+}
+
+.fhj-exp-pin {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fhj-radius-sm);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--fhj-muted, #787b86);
+  cursor: pointer;
+}
+.fhj-exp-pin.is-on {
+  color: var(--fhj-accent-text, #a6c3ea);
+  border-color: var(--fhj-accent-line, rgba(143, 176, 227, 0.35));
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* The sentence. It arrives rather than appearing, because the moment an
+   experiment first has something to say is the moment worth marking. */
+.fhj-exp-headline {
+  margin: 0.625rem 0 0.25rem;
+  font-family: var(--fhj-font-display);
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  color: var(--fhj-ink, #ecebe7);
+  animation: fhjHeadlineIn 620ms var(--fhj-out) both;
+}
+.fhj-exp-headline[data-kind="flat"],
+.fhj-exp-headline[data-kind="emerging"] {
+  font-family: var(--fhj-font-body);
+  font-size: 0.9375rem;
+  color: var(--fhj-sub, #adafb8);
+}
+@keyframes fhjHeadlineIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.fhj-exp-subline {
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* ---- paired-day dots ---- */
+
+.fhj-exp-dots {
+  margin-top: 0.75rem;
+}
+.fhj-exp-dots svg {
+  display: block;
+  width: 100%;
+  height: 96px;
+  overflow: visible;
+}
+.fhj-exp-dot {
+  animation: fhjDotIn 420ms var(--fhj-out) both;
+}
+@keyframes fhjDotIn {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+}
+.fhj-exp-dots-axes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* ---- the two halves ---- */
+
+.fhj-exp-compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+.fhj-exp-half {
+  display: grid;
+  gap: 0.125rem;
+  padding: 0.625rem;
+  text-align: left;
+  border-radius: var(--fhj-radius-sm);
+  border: 1px solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+  cursor: pointer;
+}
+.fhj-exp-half-mean {
+  font-family: var(--fhj-font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-exp-half-mean em {
+  margin-left: 0.1875rem;
+  font-style: normal;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-exp-half-n {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-exp-gap {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+.fhj-exp-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--fhj-line, #31343d);
+}
+
+/* ---- starters and suggestions ---- */
+
+.fhj-exp-starters ul,
+.fhj-exp-suggest ul {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+.fhj-exp-starter {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--fhj-ink, #ecebe7);
+  border-radius: var(--fhj-radius);
+  border: 1px solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+  cursor: pointer;
+}
+.fhj-exp-starter:hover:not(:disabled) {
+  border-color: var(--fhj-accent-line, rgba(143, 176, 227, 0.35));
+}
+.fhj-exp-suggest li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.fhj-exp-suggest-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-exp-suggest-why {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* ============================================================
+   Labs & measurements
+   ============================================================ */
+
+.fhj-labs-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.fhj-labs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fhj-gap);
+  width: 100%;
+  padding: 0.875rem var(--fhj-gap);
+  text-align: left;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  background: var(--fhj-card, #1e2026);
+  cursor: pointer;
+  transition: border-color var(--fhj-ease) ease;
+}
+.fhj-labs-row:hover {
+  border-color: var(--fhj-line-strong, #464a55);
+}
+.fhj-labs-row-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-labs-row-series {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-labs-row-right {
+  display: grid;
+  justify-items: end;
+  gap: 0.25rem;
+}
+.fhj-labs-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-labs-mini {
+  width: 40px;
+  height: 16px;
+  overflow: visible;
+}
+.fhj-labs-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fhj-good, #7f9f7e);
+}
+.fhj-labs-dot[data-status="below"],
+.fhj-labs-dot[data-status="above"] {
+  background: var(--fhj-warn, #d68a4a);
+}
+
+/* ---- the chart, where a value connects to the one before it ---- */
+
+.fhj-lab-chart {
+  position: relative;
+  padding: 0 0 1.75rem;
+}
+.fhj-lab-chart svg {
+  display: block;
+  width: 100%;
+  height: 96px;
+  overflow: visible;
+}
+
+/* Each segment draws itself from the older reading toward the newer one. That
+   is the whole visual argument of this screen: a result is not a row in a
+   table, it is a thing that reached back and connected to its own history. */
+.fhj-lab-link {
+  stroke-dasharray: 300;
+  animation: fhjLinkReach 700ms var(--fhj-out) both;
+}
+@keyframes fhjLinkReach {
+  from {
+    stroke-dashoffset: 300;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.fhj-lab-node circle {
+  animation: fhjNodeIn 420ms var(--fhj-out) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes fhjNodeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+/* Real tap targets over the nodes — an SVG circle of radius 3 is not one. */
+.fhj-lab-picks {
+  position: absolute;
+  inset: auto 0 0;
+  height: 1.75rem;
+}
+.fhj-lab-pick {
+  position: absolute;
+  transform: translateX(-50%);
+  min-width: 2.75rem;
+  padding: 0.25rem 0.375rem;
+  font: inherit;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.fhj-lab-pick.is-on {
+  color: var(--fhj-ink, #ecebe7);
+  font-weight: 700;
+}
+
+.fhj-labs-value-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fhj-gap);
+}
+.fhj-labs-big {
+  font-family: var(--fhj-font-display);
+  font-size: 2.25rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-labs-delta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-labs-delta em {
+  font-style: normal;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-labs-range {
+  margin-top: 0.875rem;
+  font-size: 0.75rem;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-labs-range em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-labs-rangebar {
+  position: relative;
+  height: 8px;
+  margin-bottom: 0.5rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-labs-rangebar-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: var(--fhj-good-soft, rgba(127, 159, 126, 0.2));
+}
+.fhj-labs-rangebar-pin {
+  position: absolute;
+  top: -3px;
+  width: 3px;
+  height: 14px;
+  margin-left: -1.5px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-ink, #ecebe7);
+  transition: left 800ms var(--fhj-out);
+}
+.fhj-labs-rangebar-pin[data-status="below"],
+.fhj-labs-rangebar-pin[data-status="above"] {
+  background: var(--fhj-warn, #d68a4a);
+}
+
+.fhj-labs-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-labs-note {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--fhj-sub, #adafb8);
+}
+
+/* ---- what else happened ---- */
+
+.fhj-labs-gap {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0.625rem 0 0.75rem;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-labs-gap-line {
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--fhj-line-strong, #464a55) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.fhj-labs-changes {
+  display: grid;
+  gap: 0.625rem;
+}
+.fhj-labs-changes li {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  animation: fhjChangeIn 420ms var(--fhj-out) both;
+}
+.fhj-labs-changes li:nth-child(2) { animation-delay: 60ms; }
+.fhj-labs-changes li:nth-child(3) { animation-delay: 120ms; }
+.fhj-labs-changes li:nth-child(4) { animation-delay: 180ms; }
+.fhj-labs-changes li:nth-child(n + 5) { animation-delay: 240ms; }
+@keyframes fhjChangeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+.fhj-labs-change-mark {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  background: var(--fhj-faint, #2a2d35);
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-labs-change-mark[data-kind="sun"] {
+  color: var(--fhj-warn, #d68a4a);
+}
+.fhj-labs-change-mark[data-kind="episode"] {
+  color: var(--fhj-clay-text, #d9a184);
+}
+.fhj-labs-changes strong {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-labs-changes em {
+  display: block;
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-labs-change-date {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--fhj-muted, #787b86);
+}
+.fhj-labs-empty-changes {
+  font-size: 0.8125rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* ---- measured beside estimated ----
+   Two panels, deliberately not two lines on a chart. The border style is the
+   difference the eye reads first: solid for a measurement, dashed for an
+   estimate. */
+.fhj-labs-vd-two {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0.625rem 0 0.75rem;
+}
+@media (min-width: 420px) {
+  .fhj-labs-vd-two {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.fhj-labs-vd-side {
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+.fhj-labs-vd-side[data-kind="estimated"] {
+  border-style: dashed;
+  background: none;
+}
+.fhj-labs-vd-num {
+  margin-top: 0.125rem;
+  font-family: var(--fhj-font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--fhj-ink, #ecebe7);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-labs-vd-sub {
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* ---- adding one ---- */
+
+.fhj-labs-catalog {
+  display: grid;
+  gap: var(--fhj-gap);
+  margin-top: var(--fhj-gap);
+}
+.fhj-labs-fields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.625rem;
+  margin-bottom: var(--fhj-gap);
+}
+.fhj-labs-field {
+  display: grid;
+  gap: 0.25rem;
+}
+.fhj-labs-field .fhj-label {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   Illuminated days
+   ============================================================
+   Tapping a finding lights the days it is about, everywhere they appear. One
+   class, applied by every surface that draws a day, so "light these days up"
+   means one thing across the whole app. */
+
+.fhj-lit {
+  position: relative;
+  animation: fhjLit 1600ms var(--fhj-out);
+}
+.fhj-lit::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px var(--fhj-accent, #8fb0e3);
+  opacity: 0.9;
+}
+@keyframes fhjLit {
+  0% {
+    opacity: 0.35;
+  }
+}
+
+/* The banner that says what is lit, and offers the way out of it. */
+.fhj-lit-bar {
+  position: sticky;
+  top: 0;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem var(--fhj-gap);
+  border-bottom: 1px solid var(--fhj-accent-line, rgba(143, 176, 227, 0.35));
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  backdrop-filter: saturate(140%) blur(8px);
+  font-size: 0.8125rem;
+}
+.fhj-lit-bar strong {
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-lit-bar span {
+  color: var(--fhj-sub, #adafb8);
+}
+
+/* ============================================================
+   Reduced motion
+   ============================================================
+   Everything above that moves is either decorative or an arrival. Under
+   reduced motion the arrivals become instant and the loops stop; nothing is
+   removed, so no information lives in the movement alone. */
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-arc-sun.is-up,
+  .fhj-arc-span,
+  .fhj-exp-dot,
+  .fhj-exp-headline,
+  .fhj-lab-link,
+  .fhj-lab-node circle,
+  .fhj-labs-changes li,
+  .fhj-sun-hist-bar,
+  .fhj-ev-panel,
+  .fhj-lit {
+    animation: none !important;
+  }
+  .fhj-arc-span,
+  .fhj-lab-link {
+    stroke-dasharray: none;
+  }
+  .fhj-ev-seg-fill,
+  .fhj-sun-burn-bar > span,
+  .fhj-labs-rangebar-pin,
+  .fhj-sun-live-sky {
+    transition: none;
+  }
+}
+
 /* ============================================================
    Print
    ============================================================

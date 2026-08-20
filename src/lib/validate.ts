@@ -63,6 +63,26 @@ export function validateDatabase(data: unknown): ValidationResult {
     }
   }
 
+  /* The 1.21 collections. Each is only checked for *shape* here — the
+     per-row repair lives in each module's own sanitizer, and this exists so
+     the recovery screen can say "your lab results are not an array" instead of
+     handing somebody a journal that quietly lost them. */
+  for (const key of ["sun", "labs", "experiments", "context"] as const) {
+    if (d[key] !== undefined && !Array.isArray(d[key])) {
+      errors.push(`${key} is not an array.`);
+    }
+  }
+  if (Array.isArray(d.labs)) {
+    (d.labs as unknown[]).forEach((r: unknown, i: number) => {
+      if (!r || typeof r !== "object") { errors.push(`Lab result ${i} is not an object.`); return; }
+      const lab = r as Record<string, unknown>;
+      if (typeof lab.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(lab.date))
+        errors.push(`Lab result ${i} has an invalid date.`);
+      if (typeof lab.value !== "number" || !Number.isFinite(lab.value))
+        errors.push(`Lab result ${i} has no numeric value.`);
+    });
+  }
+
   return { ok: errors.length === 0, errors };
 }
 

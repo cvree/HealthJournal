@@ -228,3 +228,161 @@ export function buildRoutineItemsTable(items: RoutineItem[]): ExportTable {
     ]);
   return { header, rows };
 }
+
+/* ---------- labs, sun and the weather ----------
+
+   Three more sheets, and one rule shared by all of them: what the app measured,
+   what somebody else measured and what the app estimated go in *different
+   columns with different names*, so a spreadsheet somebody opens in two years
+   still says which is which. `vitamin_d_estimated_iu_low/high` cannot be
+   mistaken for a blood level, and that is the point of the naming.
+
+   These take already-sanitised rows, described structurally so this module
+   keeps importing nothing but the model contract. */
+
+export interface LabRow {
+  id: string;
+  test: string;
+  name: string;
+  value: number;
+  value2?: number;
+  unit: string;
+  date: string;
+  time?: string;
+  refLow?: number;
+  refHigh?: number;
+  refText?: string;
+  fasting?: boolean;
+  provider?: string;
+  note?: string;
+  kind: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function buildLabsTable(labs: LabRow[]): ExportTable {
+  const header = [
+    "date", "time", "measurement", "test_key", "value", "value_2", "unit",
+    "lab_reference_low", "lab_reference_high", "lab_reference_text",
+    "against_lab_range", "fasting", "provider", "kind", "notes",
+    "result_id", "created_at", "updated_at",
+  ];
+  const rows: ExportCell[][] = [...labs]
+    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+    .map((r) => [
+      r.date, r.time || "", r.name, r.test, r.value, r.value2 ?? "", r.unit,
+      r.refLow ?? "", r.refHigh ?? "", r.refText || "",
+      labRangeWord(r), r.fasting === undefined ? "" : r.fasting ? "yes" : "no",
+      r.provider || "", r.kind, r.note || "",
+      r.id, r.createdAt, r.updatedAt,
+    ]);
+  return { header, rows };
+}
+
+function labRangeWord(r: LabRow): string {
+  if (r.refLow === undefined && r.refHigh === undefined) return "no range recorded";
+  if (r.refLow !== undefined && r.value < r.refLow) return "below";
+  if (r.refHigh !== undefined && r.value > r.refHigh) return "above";
+  return "within";
+}
+
+export interface SunRow {
+  id: string;
+  date: string;
+  start: string;
+  end?: string | null;
+  minutes: number;
+  exposure: string;
+  shade: string;
+  spf?: number;
+  skin?: number;
+  uvSource: string;
+  avgUV: number;
+  peakUV: number;
+  avgElevation: number;
+  sed: number;
+  medFraction: number;
+  iu: number;
+  iuLow: number;
+  iuHigh: number;
+  belowThreshold: boolean;
+  note?: string;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function buildSunTable(sun: SunRow[]): ExportTable {
+  const header = [
+    "date", "started_at", "ended_at", "minutes_outside",
+    "skin_exposed", "shade", "spf", "skin_type",
+    "uv_source", "uv_average", "uv_peak", "sun_elevation_average_deg",
+    "uv_dose_sed", "fraction_of_burn_dose",
+    /* Deliberately long names. In a spreadsheet, six months later, next to a
+       column of laboratory values, "vitamin_d_iu" would be a lie by omission. */
+    "vitamin_d_estimated_iu_low", "vitamin_d_estimated_iu_high",
+    "vitamin_d_estimate_is_a_model_not_a_measurement",
+    "below_uvb_threshold", "logged_as", "notes", "session_id", "created_at", "updated_at",
+  ];
+  const rows: ExportCell[][] = [...sun]
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((s) => [
+      s.date, s.start, s.end || "", s.minutes,
+      s.exposure, s.shade, s.spf ?? "", s.skin ?? "",
+      s.uvSource, s.avgUV, s.peakUV, s.avgElevation,
+      s.sed, s.medFraction,
+      s.iuLow, s.iuHigh, "yes",
+      s.belowThreshold ? "yes" : "no", s.source, s.note || "",
+      s.id, s.createdAt, s.updatedAt,
+    ]);
+  return { header, rows };
+}
+
+export interface ContextRow {
+  date: string;
+  coords: { lat: number; lon: number };
+  capturedAt: string;
+  tempMax?: number;
+  tempMin?: number;
+  tempMean?: number;
+  humidityMean?: number;
+  pressureMean?: number;
+  pressureChange?: number;
+  weatherCode?: number;
+  uvMax?: number;
+  daylightMinutes?: number;
+  precipitation?: number;
+  windMax?: number;
+  aqi?: number;
+  pm25?: number;
+  pm10?: number;
+  pollenGrass?: number;
+  pollenTree?: number;
+  pollenWeed?: number;
+  source: string;
+}
+
+export function buildContextTable(context: ContextRow[]): ExportTable {
+  const header = [
+    "date", "temp_max_c", "temp_min_c", "temp_mean_c", "humidity_mean_pct",
+    "pressure_mean_hpa", "pressure_change_hpa", "weather_code", "uv_index_max",
+    "daylight_minutes", "precipitation_mm", "wind_max_kmh",
+    "air_quality_index", "pm2_5", "pm10",
+    "pollen_grass", "pollen_tree", "pollen_weed",
+    /* The coarse place, rounded to about a kilometre, exactly as stored. It is
+       in the export because it is what the readings are *of* — and it is at
+       this precision because that is all the app ever kept. */
+    "latitude_coarse", "longitude_coarse", "source", "fetched_at",
+  ];
+  const rows: ExportCell[][] = [...context]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((c) => [
+      c.date, c.tempMax ?? "", c.tempMin ?? "", c.tempMean ?? "", c.humidityMean ?? "",
+      c.pressureMean ?? "", c.pressureChange ?? "", c.weatherCode ?? "", c.uvMax ?? "",
+      c.daylightMinutes ?? "", c.precipitation ?? "", c.windMax ?? "",
+      c.aqi ?? "", c.pm25 ?? "", c.pm10 ?? "",
+      c.pollenGrass ?? "", c.pollenTree ?? "", c.pollenWeed ?? "",
+      c.coords.lat, c.coords.lon, c.source, c.capturedAt,
+    ]);
+  return { header, rows };
+}
