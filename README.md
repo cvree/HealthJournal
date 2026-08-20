@@ -34,23 +34,39 @@ everything else working exactly as it does now:
 because the point of tracking food is logging it while you eat. Add as many named times as suit
 your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
 
-**The first thirty seconds.** First run is four acts, not a wizard. A full-screen hero — *Your
-health, remembered.* — over a journal that is already alive: a rating, a photograph fourteen days
-apart, a note about a bad night, a dose ticked off, a flare that ended, three months of trend with
-the flare shaded behind it. Then the only question that cannot be defaulted (*what are you
-tracking?*), then your first real entry — ten large targets you can tap or slide a thumb across,
-with the card taking the colour of the day as soon as there is a number.
+**The first two minutes.** First run is six acts, not a wizard, and there is one path through it.
+A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a rating, a
+photograph fourteen days apart, a note about a bad night, a dose ticked off, a flare that ended,
+three months of trend with the flare shaded behind it, with the five checkable promises about the
+build one tap below it. Then the only question that cannot be defaulted (*what are you tracking?*),
+and then the two screens that shape the app around the answer.
 
-Then the part that is the point: **the card you just filled in flies into place as the first card
-on a timeline**, the rail draws downward past it into the days you have not lived yet, and the
-streak counts to one. A journal is a promise about the future, and watching your own first entry
-become the first thing on a timeline makes that promise in about three seconds.
+**What should it ask you?** Your daily check-in, already set up from the packs you picked, with
+the honest cost of it printed above in the largest number on the screen — *14 questions, about 50
+seconds a day* — that changes as you switch one on or off. Quick, Balanced and Thorough are one
+tap each; sections fold; the daily number is locked on because a journal without one is not one;
+and *ask me something of my own* takes a question in your own words as a 1–10, a yes/no or a
+number.
 
-Everything else first run used to ask for — which questions, which body spots, weight, progress
-photos, a name, a theme — has a sensible default and a screen in Settings. The long form is still
-one tap away for anybody who would rather build the whole survey first, and both paths produce the
-same journal. The main number you pick is what Today asks for every day, what the streak counts,
-and the first figure in an appointment pack; it is changeable whenever you like.
+**What else should it keep?** Photos (with the body map for the areas you want to line up over
+time), meds and creams, meals, flares, the bathroom, weight — and each one you tick draws itself
+into the row of one-tap buttons underneath, so the dashboard is assembled in front of you out of
+your own answers rather than filed away to be discovered later. A nudge, if you want one, at a
+time you choose.
+
+Then your first real entry — ten large targets you can tap or slide a thumb across, with the card
+taking the colour of the day as soon as there is a number — and the part that is the point: **the
+card you just filled in flies into place as the first card on a timeline**, the rail draws downward
+past it into the days you have not lived yet, and the streak counts to one. A journal is a promise
+about the future, and watching your own first entry become the first thing on a timeline makes that
+promise in about three seconds.
+
+Every screen after the first arrives already answered, so Continue is never blocked on work and a
+person who wants to be through in thirty seconds still can be. There is no "set everything up in
+detail instead" door beside it any more: a link to a longer setup is an admission that the main
+path does not do the job. The main number you pick is what Today asks for every day, what the
+streak counts, and the first figure in an appointment pack; everything here is changeable whenever
+you like, from Edit Setup and from the Quick Add editor.
 
 **Build your own survey.** Start from a question pack — Eczema/Skin, Carnivore/Diet, POTS,
 IBS, Migraine, Allergy/MCAS, Fatigue/Long COVID, Autoimmune, Thyroid, Joint Pain, General
@@ -149,9 +165,18 @@ note, bowel movement, measurement — landing on Today, which is the day it adds
 the month, the last fortnight in words, and the two doors out of it: Insights and the Diary.
 Settings lives in the header, because a preference is not a destination.
 
-**Open it, log it, close it.** **Quick Add** sits under the pulse and *learns*: the tiles sort
-themselves by what you actually tap, frequency decayed by recency, and arranging them by hand
-switches that off for good. **Again** is the row under it, and it is the shortest path in the
+**Open it, log it, close it.** **Quick Add** sits under the pulse, and it is shaped like your
+condition: a POTS journal opens with water, a heart rate and a flare; a skin journal with a camera,
+a routine and a trigger; a gut journal with the bathroom and the day's meals. Fourteen buttons
+exist — check-in, food, drink, bowel, routine, photo, flare, symptom, heart rate, water, trigger,
+note, measurement, diary — and one only ever appears when your own setup has a question behind it,
+so there is no button that opens an apology. Water is one tap and one cup with an Undo in the
+toast; Flare starts a bad stretch and then reads *End flare · day 6* until you do; Symptom rates
+one question 1–10 without the whole check-in; Heart rate takes lying and standing and prints the
+jump between them. **The + button in the navigation bar shows exactly what you put on your
+dashboard** — one list, two doors — with everything else one tap further down and the editor a tap
+after that. The tiles also *learn*: they sort themselves by what you actually tap, frequency
+decayed by recency, and arranging them by hand switches that off for good. **Again** is the row under it, and it is the shortest path in the
 app — your most-logged foods, the doses you take daily, the spot you photograph, the number you
 record, one tap each, ranked together so it is your own week in your own order. **Today's Logs**
 is one timeline carrying check-ins, meals, bowel movements, doses and photos in the order they
@@ -362,8 +387,8 @@ npm run dev
 Open the printed URL (usually `http://localhost:5173`) and use a mobile viewport (~390px) —
 the app is designed phone-first.
 
-First run shows the onboarding wizard. To jump straight into a fully populated app, pick
-**"Just exploring? Load example data"** — an Eczema/Skin + Carnivore setup with ~34 days of
+First run shows the six acts. To jump straight into a fully populated app, pick
+**"Look around with example data"** — an Eczema/Skin + Carnivore setup with ~34 days of
 history, enough to exercise the dashboard, charts, calendar, patterns, reports, and exports.
 
 | Command | What it does |
@@ -616,7 +641,7 @@ health-journal/
 │   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
-│   │                           #   first run (the four acts)
+│   │                           #   first run (the six acts)
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving

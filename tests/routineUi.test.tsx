@@ -71,7 +71,8 @@ const row = (name: string | RegExp) => screen.getByRole("button", { name });
 describe("the routine on the dashboard", () => {
   it("shows the day's checklist with nothing ticked yet", async () => {
     await mountApp();
-    expect(await screen.findByText("Routine")).toBeTruthy();
+    // Heading, not the Quick Add tile of the same name that now sits above it.
+    expect(await screen.findByRole("heading", { name: "Routine" })).toBeTruthy();
     expect(screen.getByText(/0 of \d+ done/)).toBeTruthy();
     // Grouped by part of the day, not one undifferentiated list.
     expect(screen.getAllByText("Morning").length).toBeGreaterThan(0);

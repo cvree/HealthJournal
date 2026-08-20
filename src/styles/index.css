@@ -3792,6 +3792,517 @@ button.fhj-section:disabled {
   background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
 }
 
+/* ---------- the shaping acts: questions, extras ----------
+
+   Two screens that could easily have been forms, and are not. What keeps them
+   out of form territory is that every control here is already answered when it
+   arrives, is a single tap wide, and changes something visible on the same
+   screen — the seconds-a-day readout, the row of buttons being assembled.
+   Nothing on these screens is a field waiting to be filled in. */
+
+/* Where you are, and what is left. Four segments, filled behind you and
+   hollow ahead: the same shape as the timeline the last act draws, because
+   this app's one picture is a line of days. */
+.fhj-fr-rail-steps {
+  display: flex;
+  gap: 0.375rem;
+  margin-bottom: 1.25rem;
+}
+
+.fhj-fr-rail-seg {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.fhj-fr-rail-bar {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-fr-rail-seg.is-done .fhj-fr-rail-bar {
+  background: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 55%, transparent);
+}
+.fhj-fr-rail-seg.is-now .fhj-fr-rail-bar {
+  background: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-rail-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fhj-subtle, #9a9ca6);
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fhj-fr-rail-seg.is-now .fhj-fr-rail-label {
+  color: var(--fhj-accent-text, #a6c3ea);
+  opacity: 1;
+}
+.fhj-fr-rail-seg.is-done .fhj-fr-rail-label { opacity: 0.8; }
+
+.fhj-fr-hint {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.875rem;
+}
+
+.fhj-fr-sub.is-tight {
+  font-size: 0.8125rem;
+  margin-top: 0.375rem;
+}
+
+/* The five checkable facts, on the hero. */
+.fhj-fr-promises {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.fhj-fr-promises li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #b9bac2);
+}
+.fhj-fr-promise-mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.0625rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* ---------- the cost of a day ---------- */
+
+.fhj-fr-cost {
+  margin-top: 1.5rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-fr-cost-read {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.fhj-fr-cost-num {
+  font-family: var(--fhj-font-display);
+  font-size: 2.5rem;
+  line-height: 1;
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-fr-cost-word {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-cost-word b {
+  color: var(--fhj-ink, #ecebe7);
+  font-weight: 700;
+}
+
+.fhj-fr-depth {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  padding: 0.1875rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+}
+
+.fhj-fr-depth-btn {
+  flex: 1;
+  min-height: 2.25rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fhj-sub, #b9bac2);
+  transition: background var(--fhj-quick) ease, color var(--fhj-quick) ease;
+}
+.fhj-fr-depth-btn.is-on {
+  background: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #121419);
+}
+
+/* ---------- the question list ---------- */
+
+.fhj-fr-qs {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fhj-fr-qsec {
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  overflow: hidden;
+}
+
+.fhj-fr-qsec-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+}
+
+.fhj-fr-qsec-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.008em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fhj-fr-qsec-count {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-qlist {
+  display: flex;
+  flex-direction: column;
+}
+
+/* One question. The whole row is the switch — a 44px target that says what it
+   is, what kind of answer it wants, and whether it is on. */
+.fhj-fr-q {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  min-height: 2.875rem;
+  text-align: left;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-fr-q.is-on { background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)); }
+.fhj-fr-q.is-locked { opacity: 0.9; }
+
+.fhj-fr-q-mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.4375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+  transition: background var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
+}
+.fhj-fr-q.is-on .fhj-fr-q-mark {
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-q-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.fhj-fr-q-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.fhj-fr-q-type {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.0625rem;
+}
+
+.fhj-fr-q-own {
+  flex: none;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+/* ---------- a question of your own ---------- */
+
+.fhj-fr-own {
+  margin-top: 0.875rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: 1px dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+}
+
+.fhj-fr-own-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-bottom: 0.375rem;
+}
+
+.fhj-fr-own input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border-radius: var(--fhj-radius);
+  font-size: 0.9375rem;
+  color: var(--fhj-ink, #ecebe7);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  outline: none;
+}
+.fhj-fr-own input:focus { border-color: var(--fhj-accent, #8fb0e3); }
+
+.fhj-fr-own-types {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-fr-own-type {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid transparent;
+}
+.fhj-fr-own-type.is-on {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+.fhj-fr-own-type b {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.fhj-fr-own-type span {
+  display: block;
+  font-size: 0.625rem;
+  line-height: 1.3;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.125rem;
+}
+
+.fhj-fr-own-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+
+.fhj-fr-mini {
+  min-height: 2.5rem;
+  padding: 0 1.125rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--fhj-on-accent, #121419);
+  background: var(--fhj-accent, #8fb0e3);
+}
+.fhj-fr-mini:disabled { opacity: 0.45; }
+
+/* ---------- what else it should keep ---------- */
+
+.fhj-fr-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.fhj-fr-extra {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition:
+    transform 140ms var(--fhj-spring),
+    border-color var(--fhj-quick) ease,
+    background var(--fhj-quick) ease;
+}
+.fhj-fr-extra:active { transform: scale(0.985); }
+.fhj-fr-extra.is-on {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 10%, var(--fhj-card, #1e2026));
+}
+
+.fhj-fr-extra-mark {
+  flex: none;
+  width: 2.125rem;
+  height: 2.125rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-fr-extra.is-on .fhj-fr-extra-mark { background: var(--fhj-accent, #8fb0e3); }
+
+.fhj-fr-extra-body { min-width: 0; }
+
+.fhj-fr-extra-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.fhj-fr-extra-tag {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+.fhj-fr-extra-blurb {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.125rem;
+}
+
+.fhj-fr-spots {
+  margin-top: 1.25rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-fr-spot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-fr-spot-chip {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* The dashboard, assembling. The point of the screen: what somebody picks
+   above is not filed away, it is the row of buttons they will press tomorrow
+   morning, and it is drawn here while they choose. */
+.fhj-fr-preview {
+  margin-top: 1.25rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+}
+
+.fhj-fr-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.fhj-fr-preview-tile {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  animation: fhjFrTile 260ms var(--fhj-out) both;
+}
+
+.fhj-fr-preview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes fhjFrTile {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+.fhj-fr-nudge {
+  margin-top: 1.25rem;
+}
+
+.fhj-fr-nudge-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+}
+
+.fhj-fr-nudge-btn {
+  padding: 0.5rem 0.25rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition: border-color var(--fhj-quick) ease, background var(--fhj-quick) ease;
+}
+.fhj-fr-nudge-btn.is-on {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+.fhj-fr-nudge-btn b {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.fhj-fr-nudge-btn span {
+  display: block;
+  font-size: 0.625rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.0625rem;
+}
+
 /* ---------- act four ---------- */
 
 .fhj-fr-act.is-born {
@@ -3965,6 +4476,7 @@ button.fhj-section:disabled {
 @media (prefers-reduced-motion: reduce) {
   .fhj-fr-primary::after,
   .fhj-fr-note,
+  .fhj-fr-preview-tile,
   .fhj-fr-fine-body {
     animation: none;
   }

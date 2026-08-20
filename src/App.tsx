@@ -1284,6 +1284,9 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     bell: <g><path {...p} d="M6 9a6 6 0 0 1 12 0c0 3.5.8 5.2 1.6 6.2.4.5 0 1.3-.7 1.3H5.1c-.7 0-1.1-.8-.7-1.3C5.2 14.2 6 12.5 6 9z" /><path {...p} d="M10 20a2 2 0 0 0 4 0" /></g>,
     target: <g><circle {...p} cx="12" cy="12" r="8.5" /><circle {...p} cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1.6" fill={color} stroke="none" /></g>,
     search: <g><circle {...p} cx="11" cy="11" r="6.5" /><path {...p} d="M16 16l4.5 4.5" /></g>,
+    /* A heart with its own trace running through it. POTS is measured in the
+       jump between two heart rates, so the app needed a mark for one. */
+    heart: <g><path {...p} d="M12 20.5S3.5 15.2 3.5 9.4A4.4 4.4 0 0 1 12 7.4a4.4 4.4 0 0 1 8.5 2c0 5.8-8.5 11.1-8.5 11.1z" /><path {...p} d="M6.5 12h2.2l1.4-2.6L12 14l1.3-2h3.4" /></g>,
     /* The delete key, drawn as the key it is — an arrow-ended tag with an x in
        it. A bare chevron here reads as "go back a screen", which on a keypad
        is exactly the wrong promise. */
@@ -1608,7 +1611,10 @@ function RecentLegend({ className = "" }) {
    and nothing else: no banner, no confirm step, no sentence asking whether
    today was the same as usual. It marks where the user has been. Tapping it is
    how it gets accepted, exactly like tapping any other number. */
-function ScaleInput({ field, value, onChange, ghost = null }) {
+/* `hideLabel` is for the sheets that already have the question as their
+   title — the label stays in the group's accessible name, it just isn't
+   printed twice. */
+function ScaleInput({ field, value, onChange, ghost = null, hideLabel = false }) {
   const lowLbl = field.dir === "pos" ? "1 · low" : "1 · none";
   const highLbl = field.dir === "pos" ? "10 · great" : "10 · severe";
   const set = (n) => {
@@ -1618,8 +1624,8 @@ function ScaleInput({ field, value, onChange, ghost = null }) {
   };
   return (
     <div className="py-3" style={{ borderBottom: `1px solid ${C.line}` }}>
-      <div className="flex items-baseline justify-between gap-3 mb-2">
-        <span className="text-sm font-medium">{field.label}</span>
+      <div className={`flex items-baseline gap-3 mb-2 ${hideLabel ? "justify-end" : "justify-between"}`}>
+        {!hideLabel && <span className="text-sm font-medium">{field.label}</span>}
         <span className="font-display text-2xl leading-none shrink-0"
           style={{ color: value != null ? colorFor(value, field.dir) : C.muted }}>
           {value != null ? value : "–"}
@@ -12977,21 +12983,165 @@ const QUICK_ADD_TILES = [
   },
   {
     id: "routine", cat: "fhj-cat-routine", icon: "pill", label: "Routine",
-    sub: "Meds, creams, more", desc: "Opens your routine for the day",
+    sub: "Meds and creams", desc: "Tick off today's doses without leaving this screen",
   },
   {
     id: "photo", cat: "fhj-cat-photo", icon: "camera", label: "Photo",
     sub: "Progress shot", desc: "Needs at least one photo question in your setup",
+    needs: "photo",
+  },
+  /* ---- the condition-shaped ones ----
+     Everything above is something any journal can hold. Everything below only
+     appears when the person's own setup can answer it, which is what makes
+     the row read as *their* app rather than a menu of features. */
+  {
+    id: "flare", cat: "fhj-cat-symptom", icon: "spark", label: "Flare",
+    sub: "Mark a bad stretch", desc: "Starts a flare today, and ends it when it's over",
+    needs: "flare",
   },
   {
-    id: "diary", cat: "fhj-cat-food", icon: "target", label: "Diary",
+    id: "symptom", cat: "fhj-cat-symptom", icon: "trends", label: "Symptom",
+    sub: "Rate one thing", desc: "Rate a single question 1–10 without the whole check-in",
+    needs: "scale",
+  },
+  {
+    id: "hr", cat: "fhj-cat-symptom", icon: "heart", label: "Heart rate",
+    sub: "Lying, then standing", desc: "Both numbers, and the jump between them",
+    needs: "hr",
+  },
+  {
+    id: "water", cat: "fhj-cat-food", icon: "drink", label: "Water",
+    sub: "One tap, one cup", desc: "Adds a cup to today without opening anything",
+    needs: "water",
+  },
+  {
+    id: "trigger", cat: "fhj-cat-symptom", icon: "warn", label: "Trigger",
+    sub: "Something set it off", desc: "Tag what may have set today off, while you remember",
+    needs: "trigger",
+  },
+  {
+    id: "note", cat: "fhj-cat-symptom", icon: "note", label: "Note",
+    sub: "A line about today", desc: "A line about today, without the survey around it",
+  },
+  {
+    id: "measurement", cat: "fhj-cat-symptom", icon: "target", label: "Measurement",
+    sub: "Weight, steps", desc: "Straight to the keypad for a number you track",
+    needs: "number",
+  },
+  {
+    id: "diary", cat: "fhj-cat-food", icon: "calendar", label: "Diary",
     sub: "The whole day", desc: "The day's meals, totals and routine on one page",
   },
 ];
 
+/* What each condition actually reaches for.
+
+   A default set of four tiles that is right for everybody is right for
+   nobody: somebody tracking POTS wants water and a heart rate, somebody
+   tracking eczema wants a camera and a flare, and neither wants the other's.
+   These are the tiles each pack suggests, in the order that pack would want
+   them; `defaultQuickAdd` merges them for whatever combination somebody
+   picked. Nothing here is binding — it is the starting arrangement of a
+   screen the user owns and can edit from the tile row itself. */
+const PACK_QUICK_ADD = {
+  eczema: ["photo", "routine", "flare", "trigger"],
+  ibs: ["bowel", "food", "trigger", "flare"],
+  migraine: ["flare", "routine", "trigger", "water"],
+  pots: ["water", "hr", "flare", "symptom"],
+  fatigue: ["symptom", "flare", "note", "routine"],
+  allergy: ["trigger", "routine", "flare", "food"],
+  autoimmune: ["flare", "routine", "symptom", "trigger"],
+  thyroid: ["routine", "measurement", "hr", "note"],
+  joint: ["symptom", "flare", "routine", "trigger"],
+  carnivore: ["food", "measurement", "photo", "diary"],
+  wellness: ["note", "food", "measurement", "photo"],
+};
+
+/** The fallback for a journal with no packs at all, and the shape a saved
+    empty list is measured against. */
 const DEFAULT_QUICK_ADD = ["checkin", "food", "bowel", "photo"];
 
+/** Check-in always leads — it is the one thing worth doing every day — and the
+    packs fill the rest in the order they asked for. Six is the cap: a wall of
+    tiles is a menu, and a menu is something you read rather than press. */
+function defaultQuickAdd(modules) {
+  const mods = Array.isArray(modules) ? modules : [];
+  const out = ["checkin"];
+  /* Round-robin rather than pack-by-pack: somebody tracking two conditions
+     gets each one's first choice before either one's third. */
+  const lists = mods.map((m) => PACK_QUICK_ADD[m]).filter(Boolean);
+  if (!lists.length) return [...DEFAULT_QUICK_ADD];
+  for (let i = 0; i < 4 && out.length < 6; i++) {
+    for (const l of lists) {
+      if (out.length >= 6) break;
+      const id = l[i];
+      if (id && !out.includes(id) && quickAddTile(id)) out.push(id);
+    }
+  }
+  return out;
+}
+
 const quickAddTile = (id) => QUICK_ADD_TILES.find((t) => t.id === id);
+
+/** Whether the person's own setup can honour a tile.
+
+    A camera tile with no photo question behind it, a water tile in a journal
+    that never asks about water, a heart-rate tile without the two numbers it
+    compares — each of those is a button that opens an apology. They are not
+    offered at all rather than offered and then explained. */
+function tileSupported(tile, caps) {
+  if (!tile) return false;
+  if (!tile.needs) return true;
+  return !!caps?.[tile.needs];
+}
+
+/** What a given setup can actually answer, and the fields the tiles write to.
+
+    Derived from the template rather than from the pack list, so a question
+    added or removed by hand in Edit Setup moves the buttons with it. Shared by
+    the dashboard, the editor and the end of first run — three places that must
+    agree about which buttons exist, or somebody is offered one that opens an
+    apology. */
+function quickAddContext(tpl) {
+  const photoFields = tpl.fields.filter((f) => f.type === "photo");
+  const numberFields = tpl.fields.filter((f) => f.type === "number");
+  /* The main number first, then the ones marked quick, then the rest — which
+     is the order somebody would tap them in. */
+  const scaleFields = tpl.fields
+    .filter((f) => f.type === "scale")
+    .map((f, i) => ({ f, i, w: f.k === tpl.keyMetric ? 0 : f.quick ? 1 : 2 }))
+    .sort((a, b) => a.w - b.w || a.i - b.i)
+    .map((x) => x.f);
+  const waterField = numberFields.find((f) => f.k === "water_intake" || /water/i.test(f.label)) || null;
+  const hr = {
+    rest: numberFields.find((f) => f.k === "resting_hr") || null,
+    stand: numberFields.find((f) => f.k === "standing_hr") || null,
+  };
+  const triggerField = tpl.fields.find((f) => f.type === "chips" && f.k === "possible_triggers")
+    || tpl.fields.find((f) => f.type === "chips" && /trigger/i.test(f.label)) || null;
+  const keyField = tpl.fields.find((f) => f.k === tpl.keyMetric) || null;
+  return {
+    photoFields, numberFields, scaleFields, waterField, hr, triggerField, keyField,
+    caps: {
+      photo: photoFields.length > 0,
+      number: numberFields.length > 0,
+      scale: scaleFields.length > 0,
+      water: !!waterField,
+      hr: !!(hr.rest && hr.stand),
+      trigger: !!triggerField,
+      flare: !!(keyField && keyField.type === "scale"),
+    },
+  };
+}
+
+/** "1 cup", "3 cups". A tile that reads "1 cups so far" is a small thing and
+    it is also the whole difference between software somebody trusts with
+    their symptoms and software that was clearly never read out loud. */
+function amountWithUnit(n, unit) {
+  if (!unit) return String(n);
+  const one = n === 1 && /s$/i.test(unit) ? unit.replace(/s$/i, "") : unit;
+  return `${n} ${one}`;
+}
 
 /** Known ids only, no duplicates, order preserved. Runs on load and on save,
     because this list reaches the app from a hand-editable backup as readily as
@@ -13018,36 +13168,46 @@ function sanitizeQuickAdd(list) {
     screen afterwards has overruled somebody about their own thumb. Choosing
     the order in the editor sets `quickAddOrder: "manual"`; the switch there
     hands it back. */
-function resolveQuickAdd(profile, { hasPhotoField, stats, today }) {
-  const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD;
-  const usable = chosen.filter((id) => (id === "photo" ? hasPhotoField : true));
+function resolveQuickAdd(profile, { caps, stats, today }) {
+  const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? defaultQuickAdd(profile?.modules);
+  const usable = chosen.filter((id) => tileSupported(quickAddTile(id), caps));
   return rankIds(usable, stats || {}, today || todayStr(),
     profile?.quickAddOrder === "manual" ? "manual" : "auto");
 }
 
-function QuickAdd({ ids, checkedIn, actions }) {
+/* A tile that knows what today looks like.
+
+   Two of these change their own face: Check-in reads "Done today" once it is,
+   and Flare becomes "End flare · day 6" while one is running. Everything the
+   row draws that isn't in the catalogue arrives through `live` — one map, one
+   place to look, and a tile that has nothing live about it is untouched. */
+function tileFace(t, live) {
+  const l = live?.[t.id];
+  if (!l) return t;
+  return { ...t, ...l };
+}
+
+function QuickAdd({ ids, actions, live }) {
   const tiles = ids.map(quickAddTile).filter((t) => t && actions[t.id]);
   if (!tiles.length) return null;
 
   return (
     <div className="fhj-tiles">
-      {tiles.map((t) => {
-        const done = t.id === "checkin" && checkedIn;
+      {tiles.map((base) => {
+        const t = tileFace(base, live);
         return (
           <button key={t.id} type="button"
             /* The third channel. Sound needs a speaker and haptics need a
                motor; this reaches the person who has neither — and on the
                most-tapped control in the app, that matters most. */
             onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); actions[t.id](); }}
-            className={`fhj-tile fhj-pop ${t.cat}${done ? " is-done" : ""}`}>
+            className={`fhj-tile fhj-pop ${t.cat}${t.done ? " is-done" : ""}`}>
             <span className="fhj-tile-icon">
-              <Icon name={done ? "check" : t.icon} size={17} color="currentColor" />
+              <Icon name={t.done ? "check" : t.icon} size={17} color="currentColor" />
             </span>
             <span>
               <span className="fhj-tile-label block">{t.label}</span>
-              <span className="fhj-tile-sub block">
-                {t.id === "checkin" && checkedIn ? "Done today" : t.sub}
-              </span>
+              <span className="fhj-tile-sub block">{t.sub}</span>
             </span>
           </button>
         );
@@ -13062,10 +13222,10 @@ function QuickAdd({ ids, checkedIn, actions }) {
     question list in Edit Setup already works — this app has one reordering
     idiom and it is this one. Nothing is applied until Save, so a fiddle that
     goes wrong costs a Cancel rather than a repair. */
-function QuickAddEditor({ profile, hasPhotoField, stats, onSave, onClose }) {
+function QuickAddEditor({ profile, caps, stats, onSave, onClose }) {
   const [manual, setManual] = useState(profile?.quickAddOrder === "manual");
   const [order, setOrder] = useState(() => {
-    const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? DEFAULT_QUICK_ADD;
+    const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? defaultQuickAdd(profile?.modules);
     /* Opened while the order is learned, the list shows what is actually on
        screen — otherwise the first thing somebody does here is drag a tile
        that was already in that position, and the arrows appear broken. */
@@ -13073,8 +13233,13 @@ function QuickAddEditor({ profile, hasPhotoField, stats, onSave, onClose }) {
       ? chosen
       : rankIds(chosen, stats || {}, todayStr(), "auto");
   });
-  const available = QUICK_ADD_TILES.filter((t) => (t.id === "photo" ? hasPhotoField : true));
+  const available = QUICK_ADD_TILES.filter((t) => tileSupported(t, caps));
   const off = available.filter((t) => !order.includes(t.id));
+  /* What this person's own conditions reach for, minus whatever they already
+     have. Named as a suggestion rather than slipped in silently: the list is
+     theirs, and the app is allowed to have an opinion but not a vote. */
+  const suggested = defaultQuickAdd(profile?.modules)
+    .filter((id) => !order.includes(id) && tileSupported(quickAddTile(id), caps));
 
   /* Moving a tile *is* the decision to arrange them by hand. Making somebody
      find a switch first, and then discover their arrangement was ignored
@@ -13110,6 +13275,27 @@ function QuickAddEditor({ profile, hasPhotoField, stats, onSave, onClose }) {
         desc={manual
           ? "Off — your arrangement below is kept exactly as it is."
           : "On — the ones you tap most often move to the front."} />
+
+      {suggested.length > 0 && (
+        <div className="mb-3">
+          <div className="fhj-eyebrow mb-1.5">Suggested for what you track</div>
+          <div className="flex flex-wrap gap-1.5">
+            {suggested.map((id) => {
+              const t = quickAddTile(id);
+              return (
+                <button key={id} type="button" onClick={() => add(id)}
+                  aria-label={`Add ${t.label} to Quick Add`}
+                  className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full text-[12px] font-semibold"
+                  style={{ background: C.accentSoft, color: C.accentText,
+                    border: `1px solid ${C.accentLine}` }}>
+                  <Icon name="plus" size={12} color={C.accentText} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="fhj-eyebrow mb-1.5">On the dashboard</div>
       {order.length === 0 ? (
@@ -13174,15 +13360,16 @@ function QuickAddEditor({ profile, hasPhotoField, stats, onSave, onClose }) {
         </>
       )}
 
-      {!hasPhotoField && (
+      {QUICK_ADD_TILES.some((t) => !tileSupported(t, caps)) && (
         <p className="text-[11px] leading-relaxed mb-3" style={{ color: C.subtle }}>
-          The Photo tile isn't offered because your setup has no photo question in it. Add one in
-          Edit Setup and it will appear here.
+          Some buttons — photos, water, heart rate, triggers — only appear once your setup has a
+          question behind them. Add one in Edit Setup and the button turns up here.
         </p>
       )}
 
       <div className="flex gap-2 mt-4">
-        <Button variant="ghost" size="sm" onClick={() => { feedback("tap"); setOrder(DEFAULT_QUICK_ADD); }}>
+        <Button variant="ghost" size="sm"
+          onClick={() => { feedback("tap"); setManual(false); setOrder(defaultQuickAdd(profile?.modules).filter((id) => tileSupported(quickAddTile(id), caps))); }}>
           Reset
         </Button>
         <div className="flex-1" />
@@ -13489,7 +13676,7 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
     totals.calories != null
       ? { label: "eaten", value: `${formatNutrient("calories", totals.calories)} kcal` }
       : null,
-    streak > 0 ? { label: "streak", value: `${streak} days` } : null,
+    streak > 0 ? { label: "streak", value: `${streak} ${streak === 1 ? "day" : "days"}` } : null,
   ].filter(Boolean);
 
   return (
@@ -13536,32 +13723,72 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
    Everything here is a thing you *add to today*. Reading what is already
    there is Today and History; this sheet only ever writes. */
 
-const ADD_ACTIONS = [
-  { id: "checkin", label: "Check-in", sub: "The day's questions", icon: "log", cat: "fhj-cat-symptom" },
-  { id: "food", label: "Food", sub: "Meal, snack or drink", icon: "food", cat: "fhj-cat-food" },
-  { id: "routine", label: "Routine", sub: "Meds and creams", icon: "pill", cat: "fhj-cat-routine" },
-  { id: "photo", label: "Photo", sub: "Progress shot", icon: "camera", cat: "fhj-cat-photo" },
-  { id: "note", label: "Note", sub: "A line about today", icon: "note", cat: "fhj-cat-symptom" },
-  { id: "bowel", label: "Bowel", sub: "Bristol, colour, more", icon: "bowel", cat: "fhj-cat-bowel" },
-  { id: "measurement", label: "Measurement", sub: "Weight, steps", icon: "target", cat: "fhj-cat-symptom" },
-];
+/* What the + sheet offers is what the person put on their own dashboard.
 
-function AddSheet({ actions, onClose }) {
-  const tiles = ADD_ACTIONS.filter((a) => actions[a.id]);
+   It used to be a fixed list of seven, which meant the app had two different
+   opinions about what a day can hold — the tiles somebody chose, and this.
+   Somebody who had turned Bowel off still got it here, and somebody who had
+   added Heart rate did not. One list, chosen once, honoured in both places:
+   the row on Today and the sheet behind the +. Everything else the app can
+   still do is one tap further down, under "Everything else", so nothing is
+   lost by curating — which is the whole reason curating is safe. */
+function AddSheet({ ids, actions, live, caps, onEdit, onClose }) {
+  const [all, setAll] = useState(false);
+  const chosen = ids.map(quickAddTile).filter((t) => t && actions[t.id]);
+  const rest = QUICK_ADD_TILES
+    .filter((t) => tileSupported(t, caps) && actions[t.id] && !ids.includes(t.id));
+  const run = (t) => (e) => { feedback("quickadd", { el: e.currentTarget }); onClose(); actions[t.id](); };
+
+  const Tile = ({ t: base }) => {
+    const t = tileFace(base, live);
+    return (
+      <button type="button" onClick={run(t)} className={`fhj-add-tile fhj-pop ${t.cat}`}>
+        <span className="fhj-tile-icon"><Icon name={t.done ? "check" : t.icon} size={18} color="currentColor" /></span>
+        <span>
+          <span className="fhj-tile-label block">{t.label}</span>
+          <span className="fhj-tile-sub block">{t.sub}</span>
+        </span>
+      </button>
+    );
+  };
+
   return (
     <Modal title="Add to today" eyebrow="What happened?" onClose={onClose}>
-      <div className="fhj-add-grid">
-        {tiles.map((a) => (
-          <button key={a.id} type="button"
-            onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); onClose(); actions[a.id](); }}
-            className={`fhj-add-tile fhj-pop ${a.cat}`}>
-            <span className="fhj-tile-icon"><Icon name={a.icon} size={18} color="currentColor" /></span>
-            <span>
-              <span className="fhj-tile-label block">{a.label}</span>
-              <span className="fhj-tile-sub block">{a.sub}</span>
-            </span>
+      {chosen.length > 0 ? (
+        <div className="fhj-add-grid">
+          {chosen.map((t) => <Tile key={t.id} t={t} />)}
+        </div>
+      ) : (
+        <p className="text-[12.5px] leading-relaxed px-3 py-4 rounded-xl"
+          style={{ background: C.faint, color: C.subtle }}>
+          You have no buttons chosen — everything the app can add to a day is below.
+        </p>
+      )}
+
+      {rest.length > 0 && (all || chosen.length === 0) && (
+        <>
+          <div className="fhj-eyebrow mt-4 mb-2">Everything else</div>
+          <div className="fhj-add-grid">
+            {rest.map((t) => <Tile key={t.id} t={t} />)}
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center justify-between gap-2 mt-4">
+        {rest.length > 0 && chosen.length > 0 ? (
+          <button type="button" onClick={() => { feedback("tap"); setAll((v) => !v); }}
+            aria-expanded={all}
+            className="flex items-center gap-1 text-[12px] font-semibold" style={{ color: C.sub }}>
+            {all ? "Show less" : `Everything else (${rest.length})`}
+            <Icon name={all ? "up" : "down"} size={12} color={C.sub} />
           </button>
-        ))}
+        ) : <span />}
+        {onEdit && (
+          <button type="button" onClick={() => { feedback("tap"); onClose(); onEdit(); }}
+            className="text-[12px] font-semibold" style={{ color: C.accentText }}>
+            Edit these buttons
+          </button>
+        )}
       </div>
     </Modal>
   );
@@ -13633,6 +13860,175 @@ function MeasurementSheet({ fields, answers, ghosts, date, onSave, onClose }) {
             </button>
           ))}
         </div>
+      )}
+    </Modal>
+  );
+}
+
+/** One question, one number, done.
+
+    The check-in asks everything; this asks one thing. It exists because the
+    honest unit of a symptom is not the day — itch at 3pm and itch at 11pm are
+    different facts, and somebody who has just noticed one should be able to
+    put it down in two taps rather than open a survey and scroll past nine
+    questions they already answered this morning.
+
+    Ordered by what the person actually rates: the questions marked quick in
+    their own setup come first, and the main number leads. */
+function SymptomSheet({ fields, answers, date, onSave, onClose }) {
+  const [picked, setPicked] = useState(() => (fields.length === 1 ? fields[0] : null));
+  if (picked) {
+    return (
+      <Modal title={picked.label} eyebrow={date === todayStr() ? "Today" : fmtNice(date)}
+        onClose={() => (fields.length === 1 ? onClose() : setPicked(null))}>
+        <div className="fhj-cat-symptom">
+          <ScaleInput field={picked} hideLabel value={answers[picked.k] ?? null}
+            onChange={(v) => { onSave(picked.k, v); if (v != null) onClose(); }} />
+        </div>
+        <p className="text-[11.5px] leading-relaxed mt-3" style={{ color: C.subtle }}>
+          Saved to today the moment you tap. The rest of the check-in is still there when you
+          want it.
+        </p>
+      </Modal>
+    );
+  }
+  return (
+    <Modal title="Rate one thing" eyebrow={date === todayStr() ? "Today" : fmtNice(date)} onClose={onClose}>
+      {fields.length === 0 ? (
+        <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+          No 1–10 questions in your setup yet — add one in Edit Setup and it will show up here.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          {fields.map((f, i) => {
+            const v = answers[f.k];
+            return (
+              <button key={f.k} type="button" onClick={() => { feedback("tap"); setPicked(f); }}
+                className="flex items-center justify-between gap-3 py-3 text-left"
+                style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none" }}>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold truncate">{f.label}</span>
+                  <span className="block text-[11px]" style={{ color: C.subtle }}>
+                    {v != null ? scoreWord(v, f.dir) : "not rated today"}
+                  </span>
+                </span>
+                <span className="font-display text-2xl leading-none shrink-0"
+                  style={{ color: v != null ? colorFor(v, f.dir) : C.muted }}>
+                  {v != null ? v : "–"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** Lying, then standing, then the number that actually matters.
+
+    A POTS journal that records two heart rates and never subtracts them has
+    made the person do the arithmetic that defines their condition. This does
+    it live: both numbers side by side, the jump between them underneath, and
+    a plain-language read of what that jump was — never a diagnosis, which is
+    somebody else's job, but the sentence they would otherwise write in the
+    note field every single time.
+
+    Both values are ordinary answers on today's entry. Nothing here invents a
+    field, and the check-in shows the same two numbers. */
+const HR_RISE_NOTE = (rise) => {
+  if (rise == null) return "";
+  if (rise >= 30) return "A rise of 30 or more is the threshold clinicians ask about.";
+  if (rise >= 20) return "A noticeable rise. Worth a run of days rather than one reading.";
+  return "A small rise today.";
+};
+
+function HeartRateSheet({ restField, standField, answers, ghosts, date, onSave, onClose }) {
+  const [pad, setPad] = useState(null);
+  const rest = restField ? answers[restField.k] : null;
+  const stand = standField ? answers[standField.k] : null;
+  const rise = rest != null && stand != null ? Math.round(stand - rest) : null;
+
+  if (pad) {
+    return (
+      <NumberPadSheet field={pad} value={answers[pad.k]} ghost={ghosts?.[pad.k]}
+        onCommit={(v) => { onSave(pad.k, v); setPad(null); }}
+        onClose={() => setPad(null)} />
+    );
+  }
+
+  const Row = ({ field, value, hint }) => (
+    <button type="button" disabled={!field}
+      onClick={() => { feedback("tap"); setPad(field); }}
+      className="flex-1 rounded-xl px-3 py-3 text-left"
+      style={{ background: C.faint, border: `1px solid ${C.line}` }}>
+      <span className="block text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.subtle }}>
+        {hint}
+      </span>
+      <span className="flex items-baseline gap-1 mt-1">
+        <span className="font-display text-[2rem] leading-none tabular-nums"
+          style={{ color: value != null ? C.ink : C.muted }}>
+          {value != null ? value : "–"}
+        </span>
+        <span className="text-[11px]" style={{ color: C.subtle }}>bpm</span>
+      </span>
+    </button>
+  );
+
+  return (
+    <Modal title="Heart rate" eyebrow={date === todayStr() ? "Today" : fmtNice(date)} onClose={onClose}>
+      <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: C.sub }}>
+        Rest for a few minutes, take the first number, then stand and take the second after about
+        ten minutes on your feet.
+      </p>
+      <div className="flex gap-2">
+        <Row field={restField} value={rest} hint="Lying / resting" />
+        <Row field={standField} value={stand} hint="Standing" />
+      </div>
+      <div className="mt-3 rounded-xl px-3 py-3 fhj-cat-symptom"
+        style={{ background: rise != null ? C.accentSoft : C.faint, border: `1px solid ${rise != null ? C.accentLine : C.line}` }}>
+        <div className="flex items-baseline gap-2">
+          <span className="fhj-eyebrow">The jump</span>
+          <span className="font-display text-2xl leading-none tabular-nums"
+            style={{ color: rise != null ? C.ink : C.muted }}>
+            {rise != null ? `${rise > 0 ? "+" : ""}${rise}` : "–"}
+          </span>
+          <span className="text-[11px]" style={{ color: C.subtle }}>bpm</span>
+        </div>
+        <p className="text-[11.5px] leading-relaxed mt-1" style={{ color: C.sub }}>
+          {rise != null ? HR_RISE_NOTE(rise) : "Both numbers, and this fills itself in."}
+        </p>
+      </div>
+      <p className="text-[11px] leading-relaxed mt-3" style={{ color: C.subtle }}>
+        A record of what you measured, not a diagnosis. Bring the trend to whoever is treating you.
+      </p>
+    </Modal>
+  );
+}
+
+/** What may have set today off, tagged while it is still remembered.
+
+    The check-in asks this at the end of the day, which is exactly when nobody
+    can remember it. Two taps at the moment it happens is the difference
+    between a trigger list worth reading in six months and one full of
+    "Unknown". */
+function TriggerSheet({ field, value, date, onSave, onClose }) {
+  const sel = Array.isArray(value) ? value : [];
+  return (
+    <Modal title={field.label} eyebrow={date === todayStr() ? "Today" : fmtNice(date)} onClose={onClose}
+      footer={<Button block variant="secondary" onClick={onClose}>Done</Button>}>
+      <p className="text-[12.5px] leading-relaxed mb-1" style={{ color: C.sub }}>
+        Tag it now while you remember. Nothing here is a conclusion — the app looks for the
+        pattern later.
+      </p>
+      <div className="fhj-cat-symptom">
+        <ChipsInput field={field} value={sel} tint={C.accent}
+          onChange={(v) => { feedback("select"); onSave(field.k, v); }} />
+      </div>
+      {sel.length > 0 && (
+        <p className="text-[11.5px] mt-2" style={{ color: C.subtle }}>
+          {sel.length} tagged today.
+        </p>
       )}
     </Modal>
   );
@@ -13878,7 +14274,7 @@ function DailyPulse({
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
@@ -13897,18 +14293,33 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
   const [noteSheet, setNoteSheet] = useState(false);
   const [measureSheet, setMeasureSheet] = useState(false);
   const [routineListSheet, setRoutineListSheet] = useState(false);
+  const [symptomSheet, setSymptomSheet] = useState(false);
+  const [hrSheet, setHrSheet] = useState(false);
+  const [triggerSheet, setTriggerSheet] = useState(false);
   const numberFields = useMemo(() => tpl.fields.filter((f) => f.type === "number"), [tpl]);
   const aiEnabled = !!ai?.enabled && !viewer;
   const aiAuto = aiEnabled && ai?.auto === true;
+
+  /* What this particular setup can answer, and the fields each tile writes
+     to. The condition-shaped tiles are only as real as the questions behind
+     them: a journal with no water question has no water button, and one with
+     both heart rates gets the tile that subtracts them. */
+  const qa = useMemo(() => quickAddContext(tpl), [tpl]);
+  const { scaleFields, waterField, hr: hrFields, triggerField } = qa;
+  const caps = { ...qa.caps, flare: qa.caps.flare && !!onStartFlare };
+  /* One flare per metric can be open at a time; this is the one for the number
+     this journal is about, which is the one the tile starts and ends. */
+  const runningFlare = useMemo(
+    () => (keyField ? (episodes || []).find((e) => e.metric === keyField.k && episodeIsOpen(e)) || null : null),
+    [episodes, keyField]
+  );
 
   /* Quick Add: which tiles, and what each one does. The catalogue and the
      handlers are kept apart on purpose — a tile with no handler here simply
      doesn't render, so the viewer build and a setup without photo questions
      both drop the tiles they can't honour without any extra conditionals. */
   const stats = useMemo(() => sanitizeActionStats(profile.actionStats), [profile.actionStats]);
-  const quickAddIds = resolveQuickAdd(profile, {
-    hasPhotoField: photoFields.length > 0, stats, today: todayStr(),
-  });
+  const quickAddIds = resolveQuickAdd(profile, { caps, stats, today: todayStr() });
 
   /* Every tap on an action is a vote about tomorrow's ordering. Recorded here,
      once, around whatever the action itself does — so a new action added later
@@ -13968,27 +14379,66 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     if (item.kind === "measurement") return setMeasureSheet(item.refId);
     if (item.kind === "note") return setNoteSheet(true);
   };
-  const quickAddActions = {
+  /* Water is the only tile that writes without opening anything: a cup is not
+     a decision, and a sheet that asks "how many cups?" for the answer "one
+     more" is the friction the tile exists to remove. Undo lives in the toast,
+     like every other write on this screen. */
+  const addWater = () => {
+    if (!waterField) return;
+    const before = today?.answers?.[waterField.k];
+    const step = waterField.step || 1;
+    const next = Math.min(waterField.max ?? 99, (typeof before === "number" ? before : 0) + step);
+    onPatch(profile.id, todayStr(), { answers: { [waterField.k]: next } }, "quick");
+    toast({
+      text: `${waterField.label}: ${amountWithUnit(next, waterField.unit)} today`,
+      icon: "drink", cat: "fhj-cat-food",
+      undo: () => onPatch(profile.id, todayStr(), { answers: { [waterField.k]: before ?? null } }, "quick"),
+    });
+  };
+
+  const toggleFlare = () => {
+    if (runningFlare) onEndFlare?.(runningFlare.id);
+    else onStartFlare?.();
+  };
+
+  /* One map, both doors.
+
+     Quick Add on Today and the sheet behind the + used to keep separate
+     handler tables, which is how they drifted into offering different things.
+     There is one way to log a meal in this app and one list of what a day can
+     hold; the row and the sheet are two views of it. */
+  const actions = viewer ? {} : {
     checkin: track("checkin", () => openLog(todayStr())),
     food: track("food", () => setFoodPicker(mealForTime(localTime()))),
     drink: track("drink", () => setFoodPicker("drink")),
     bowel: track("bowel", () => setBowelSheet({})),
-    routine: goRoutine ? track("routine", goRoutine) : null,
-    photo: photoFields.length > 0 ? track("photo", () => openLog(todayStr(), { photos: true })) : null,
+    routine: track("routine", () => setRoutineListSheet(true)),
+    photo: caps.photo ? track("photo", () => openLog(todayStr(), { photos: true })) : null,
+    flare: caps.flare ? track("flare", toggleFlare) : null,
+    symptom: caps.scale ? track("symptom", () => setSymptomSheet(true)) : null,
+    hr: caps.hr ? track("hr", () => setHrSheet(true)) : null,
+    water: caps.water ? track("water", addWater) : null,
+    trigger: caps.trigger ? track("trigger", () => setTriggerSheet(true)) : null,
+    note: track("note", () => setNoteSheet(true)),
+    measurement: caps.number ? track("measurement", () => setMeasureSheet(true)) : null,
     diary: goFood ? track("diary", goFood) : null,
   };
 
-  /* What the + button in the navigation bar can do. Same handlers as Quick
-     Add where they overlap — there is one way to log a meal in this app, and
-     both doors open onto it. */
-  const addActions = viewer ? {} : {
-    checkin: track("checkin", () => openLog(todayStr())),
-    food: track("food", () => setFoodPicker(mealForTime(localTime()))),
-    routine: track("routine", () => setRoutineListSheet(true)),
-    photo: photoFields.length > 0 ? track("photo", () => openLog(todayStr(), { photos: true })) : null,
-    note: track("note", () => setNoteSheet(true)),
-    bowel: track("bowel", () => setBowelSheet({})),
-    measurement: track("measurement", () => setMeasureSheet(true)),
+  /* The two tiles that describe today rather than name a feature. */
+  const liveTiles = {
+    checkin: today ? { done: true, sub: "Done today" } : null,
+    flare: runningFlare
+      ? {
+        label: "End flare", icon: "check",
+        sub: (() => {
+          const days = daySpan(runningFlare.start, todayStr());
+          return days > 1 ? `Running · day ${days}` : "Running · started today";
+        })(),
+      }
+      : null,
+    water: waterField && typeof today?.answers?.[waterField.k] === "number"
+      ? { sub: `${amountWithUnit(today.answers[waterField.k], waterField.unit)} so far` }
+      : null,
   };
 
   /* One tap on a checklist row. Ticking writes a log; un-ticking removes the
@@ -14061,7 +14511,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             </button>
           </div>
           {quickAddIds.length > 0 ? (
-            <QuickAdd ids={quickAddIds} checkedIn={!!today} actions={quickAddActions} />
+            <QuickAdd ids={quickAddIds} actions={actions} live={liveTiles} />
           ) : (
             <button type="button" onClick={() => { feedback("tap"); setQuickAddEditor(true); }}
               className="w-full text-[12px] leading-relaxed px-3 py-3 rounded-xl text-left"
@@ -14156,7 +14606,8 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           onClose={() => setRoutineSheet(null)} />
       )}
       {addOpen && !viewer && (
-        <AddSheet actions={addActions} onClose={onCloseAdd} />
+        <AddSheet ids={quickAddIds} actions={actions} live={liveTiles} caps={caps}
+          onEdit={() => setQuickAddEditor(true)} onClose={onCloseAdd} />
       )}
       {noteSheet && (
         <NoteSheet initial={today?.notes || ""} suggestions={recentNotes(entries)}
@@ -14181,10 +14632,27 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           onManage={goRoutine}
           onClose={() => setRoutineListSheet(false)} />
       )}
+      {symptomSheet && (
+        <SymptomSheet fields={scaleFields} answers={today?.answers || {}} date={todayStr()}
+          onSave={(k, v) => onPatch(profile.id, todayStr(), { answers: { [k]: v } }, "quick")}
+          onClose={() => setSymptomSheet(false)} />
+      )}
+      {hrSheet && (
+        <HeartRateSheet restField={hrFields.rest} standField={hrFields.stand}
+          answers={today?.answers || {}}
+          ghosts={recentAnswers(numberFields, entries, todayStr())} date={todayStr()}
+          onSave={(k, v) => onPatch(profile.id, todayStr(), { answers: { [k]: v } }, "quick")}
+          onClose={() => setHrSheet(false)} />
+      )}
+      {triggerSheet && triggerField && (
+        <TriggerSheet field={triggerField} value={today?.answers?.[triggerField.k]} date={todayStr()}
+          onSave={(k, v) => onPatch(profile.id, todayStr(), { answers: { [k]: v } }, "quick")}
+          onClose={() => setTriggerSheet(false)} />
+      )}
       {quickAddEditor && (
         <QuickAddEditor
           profile={profile}
-          hasPhotoField={photoFields.length > 0}
+          caps={caps}
           stats={stats}
           onSave={(ids, order) => { onUpdateQuickAdd?.(ids, order); setQuickAddEditor(false); }}
           onClose={() => setQuickAddEditor(false)} />
@@ -14198,25 +14666,14 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
    ============================================================ */
 
 /* =====================================================================
-   Onboarding — first-run setup wizard
-   Welcome/disclaimer → pick packs → tune questions → photo spots (body
-   map) → weight & progress photos → finish. Produces one profile via
-   buildOnboardProfile(). Existing installs skip this (onboarded flag).
-   ===================================================================== */
+   First run — everything a new journal is built out of
 
-const ONBOARD_PACKS = [
-  { key: "eczema", desc: "Itch, dryness, flare areas, sleep, stress, possible triggers" },
-  { key: "carnivore", desc: "Adherence, foods, weight, energy, digestion, cravings" },
-  { key: "pots", desc: "Dizziness, heart rate, standing tolerance, hydration, flares" },
-  { key: "ibs", desc: "Gut symptoms, bathroom tracking, foods, stress, possible triggers" },
-  { key: "migraine", desc: "Headache severity, attacks, sensitivities, sleep, hydration" },
-  { key: "allergy", desc: "Reaction severity, hives, flushing, foods, antihistamines" },
-  { key: "fatigue", desc: "Fatigue, brain fog, crashes, pacing, activity capacity" },
-  { key: "autoimmune", desc: "Symptoms, joint pain, stiffness, flares, medication" },
-  { key: "thyroid", desc: "Energy, mood, weight, heart rate, medication" },
-  { key: "joint", desc: "Pain, stiffness, painful areas, movement, exercise" },
-  { key: "wellness", desc: "Wellbeing, mood, energy, sleep, habits — a gentle default" },
-];
+   The screens live in components/FirstRun; this is the data behind them and
+   the one function that turns their answers into a profile. There is a single
+   path through it, and no long form behind a link: a setup that has to offer
+   an escape hatch to a "detailed" version has admitted its main path does not
+   do the job.
+   ===================================================================== */
 
 /* What the first screen promises, and why it is a list rather than a paragraph.
 
@@ -14235,26 +14692,6 @@ const PROMISES = [
   ["eye", "No analytics, no trackers, no ads. Nobody is counting your taps."],
   ["download", "Export the whole thing to a spreadsheet whenever you want. It's your data, in a file you keep."],
   ["trash", "Delete everything, permanently, from Settings. No 'contact us to close your account'."],
-];
-
-/* The setup, named. Seven dots told someone they were on the fourth of seven
-   somethings; these tell them what the fourth one is and what is left after it,
-   which is the difference between a progress bar and an agenda.
-
-   Every step here is about the person's health. Choosing a theme used to be
-   the second screen — before the app had asked a single question about why
-   somebody had installed it — and a first run that opens with decoration is a
-   first run that has told you what it thinks it is. The look lives in
-   Settings, where a preference belongs, and the last screen of setup is not a
-   summary: it is the first number on the record. */
-const ONBOARD_STEPS = [
-  { key: "welcome", label: "Welcome" },
-  { key: "focus", label: "Tracking" },
-  { key: "metric", label: "Main number" },
-  { key: "questions", label: "Questions" },
-  { key: "photos", label: "Photos" },
-  { key: "body", label: "Body" },
-  { key: "first", label: "First entry" },
 ];
 
 /* part|side → severity scale key it can link a photo rating to */
@@ -14319,9 +14756,77 @@ function FIRST_RUN_PACKS() {
              skin today?" is somebody being asked. */
           ask: f.k === t.keyMetric ? FIRST_RUN_ASKS[k] : undefined,
         })),
+      /* Everything this pack can ask, for the screen where somebody shapes
+         their own check-in. Photos and weight are left out on purpose: they
+         are not questions to be toggled but decisions with their own screen,
+         one step later. */
+      questions: t.fields
+        .filter((f) => f.type !== "photo" && f.k !== "weight")
+        .map((f) => ({ k: f.k, label: f.label, type: f.type, sec: f.sec || "Other", quick: !!f.quick, dir: f.dir })),
+      /* Which face the Photos choice wears: a body map, or one progress
+         shot. Decided by what the pack itself photographs. */
+      photoKind: t.fields.some((f) => f.type === "photo" && f.category !== "progress") ? "skin" : "progress",
     };
   });
 }
+
+/* What a journal can hold besides a daily number.
+
+   The old first run asked about photos, then weight, then progress shots, on
+   three separate screens, and every one of them was a question about a feature
+   rather than about the person. This is the same ground as one screen of
+   plain choices — and every one of them lights up a button on the dashboard,
+   which is the honest description of what saying yes actually does.
+
+   `suggest` is which conditions arrive with it already ticked. It is the app
+   having an opinion, which is useful; everything is still offered to
+   everybody, which is the part that matters. */
+const FIRST_RUN_EXTRAS = [
+  {
+    id: "photos", label: "Photos", icon: "camera", spots: true,
+    blurb: "Line each shot up with the last one and watch it change",
+    tile: { label: "Photo", icon: "camera" },
+    suggest: ["eczema", "allergy", "carnivore", "autoimmune"],
+  },
+  {
+    id: "routine", label: "Meds & creams", icon: "pill",
+    blurb: "A daily checklist of what you take and use",
+    tile: { label: "Routine", icon: "pill" },
+    suggest: ["eczema", "migraine", "autoimmune", "thyroid", "allergy", "joint", "pots"],
+  },
+  {
+    id: "food", label: "Meals & drinks", icon: "food",
+    blurb: "What you ate, and what it lines up with later",
+    tile: { label: "Food", icon: "food" },
+    suggest: ["ibs", "allergy", "carnivore", "migraine", "wellness"],
+  },
+  {
+    id: "flare", label: "Flares & bad stretches", icon: "spark",
+    blurb: "Mark when one starts and ends — how often, how long, how bad",
+    tile: { label: "Flare", icon: "spark" },
+    suggest: ["eczema", "ibs", "migraine", "pots", "autoimmune", "fatigue", "joint", "allergy"],
+  },
+  {
+    id: "bowel", label: "Bathroom", icon: "bowel",
+    blurb: "Bristol type, urgency, colour — in two taps",
+    tile: { label: "Bowel", icon: "bowel" },
+    suggest: ["ibs"],
+  },
+  {
+    id: "weight", label: "Weight & measurements", icon: "target",
+    blurb: "Numbers you take now and then, straight to a keypad",
+    tile: { label: "Measurement", icon: "target" },
+    suggest: ["carnivore", "thyroid"],
+  },
+];
+
+/** What each extra turns on: the Quick Add buttons it lights up, and whether
+    it changes the profile itself. Kept beside the catalogue so that adding an
+    extra is one edit rather than three. */
+const EXTRA_TILES = {
+  photos: ["photo"], routine: ["routine"], food: ["food"],
+  flare: ["flare"], bowel: ["bowel"], weight: ["measurement"],
+};
 
 /* One line each, and the only place in the app that speaks in the second
    person about a body part. It is the first entry somebody ever makes. */
@@ -14421,6 +14926,65 @@ function buildOnboardProfile(sel) {
   };
 }
 
+/* First run's answers → everything a new journal needs.
+
+   Three things come out of it, in one place because they are one decision:
+   the profile, the first entry, and the row of one-tap buttons. Splitting
+   them was how the app ended up asking somebody about photographs on screen
+   four and then not giving them a camera button on screen one.
+
+   The Quick Add row is assembled here rather than left to the dashboard
+   default because this person has just *said* what they want — the extras
+   they ticked come first, their conditions' own suggestions fill the rest,
+   and anything their setup cannot honour is dropped rather than shown as a
+   button that opens an apology. */
+function firstRunQuickAdd(profile, extras) {
+  const ids = ["checkin"];
+  for (const id of extras) {
+    for (const tile of EXTRA_TILES[id] || []) if (!ids.includes(tile)) ids.push(tile);
+  }
+  const { caps } = quickAddContext(getProfileTemplate(profile));
+  for (const id of defaultQuickAdd(profile.modules)) {
+    if (ids.length >= 6) break;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids.filter((id) => tileSupported(quickAddTile(id), caps)).slice(0, 6);
+}
+
+function firstRunProfile(choice) {
+  const extras = new Set(choice.extras || []);
+  const customs = (choice.customQuestions || [])
+    .map((c, i) => buildCustomField({ label: c.label, kind: c.type }, i));
+  const spots = extras.has("photos") ? (choice.spots || []) : [];
+  /* Photos with no body areas behind them means the other kind of photo: one
+     progress shot, front on, which is what a journal that isn't about skin
+     takes. */
+  const progressAngles = extras.has("photos") && spots.length === 0 ? ["Front"] : [];
+
+  const profile = buildOnboardProfile({
+    modules: choice.modules,
+    enabledKeys: new Set(choice.enabledKeys || []),
+    spots,
+    weightOn: extras.has("weight"),
+    progressAngles,
+    name: "",
+    customs,
+    keyMetric: choice.keyMetric,
+  });
+
+  profile.quickAdd = firstRunQuickAdd(profile, extras);
+  if (choice.reminder) {
+    profile.reminders = [newReminder({
+      label: "Daily check-in", time: choice.reminder, kind: "checkin", enabled: true,
+    })];
+  }
+
+  const firstEntry = choice.score != null && choice.keyMetric
+    ? { key: choice.keyMetric, value: choice.score, note: choice.note }
+    : null;
+  return [profile, "dashboard", firstEntry];
+}
+
 /* Tappable front-view body map. Person faces the viewer, so their right side
    is on the viewer's left (labeled). Back of body is a chip below the map. */
 function BodyMap({ spots, onToggle, tint }) {
@@ -14454,607 +15018,6 @@ function BodyMap({ spots, onToggle, tint }) {
       <text x="34" y="330" fontSize="11" fill={C.sub}>their right</text>
       <text x="146" y="330" fontSize="11" fill={C.sub}>their left</text>
     </svg>
-  );
-}
-
-function OnboardingWizard({ onComplete, onLoadSample }) {
-  const [step, setStep] = useState(0);
-  const [mods, setMods] = useState([]);
-  const [enabled, setEnabled] = useState(new Set());
-  const known = useRef(new Set());
-  const [spots, setSpots] = useState([]);
-  const [weightOn, setWeightOn] = useState(false);
-  const [weightTouched, setWeightTouched] = useState(false);
-  const [progressAngles, setProgressAngles] = useState([]);
-  const [progressTouched, setProgressTouched] = useState(false);
-  const [name, setName] = useState("");
-  const [customs, setCustoms] = useState([]);
-  /* The two health-first additions: which number this journal is about, and
-     the first one of them. `firstScore` is held here and written by App once
-     the profile it belongs to exists. */
-  const [keyMetric, setKeyMetric] = useState(null);
-  const [firstScore, setFirstScore] = useState(null);
-  const scrollRef = useRef(null);
-  const bodyRef = useRef(null);
-  const railRef = useRef(null);
-
-  /* One way to change step, so the sound, the scroll and the entrance can never
-     disagree about which of the three happened. The pitch climbs with the step
-     — the last screen of the setup resolves an octave above the first — which
-     is a small thing that makes a seven-screen form feel like it is going
-     somewhere rather than repeating. */
-  const go = (next) => {
-    if (next === step) return;
-    if (next > step) place("step", next + 1, ONBOARD_STEPS.length);
-    else feedback("nav");
-    setStep(next);
-  };
-
-  /* The name, used. Twice, deliberately: once on the screen straight after it
-     was typed, so the app is visibly listening, and once at the end, where the
-     setup being handed over is theirs. Greeting on all seven would be a bit
-     desperate. */
-  const firstName = name.trim().split(/\s+/)[0] || "";
-  const greet = firstName ? (
-    <div className="fhj-greet">Nice to meet you, {firstName}.</div>
-  ) : null;
-
-  const tint = mods.length ? TEMPLATES[mods[0]].color : C.accent;
-  const merged = useMemo(() => mergedPackFields(mods), [mods]);
-  const tunable = useMemo(() => merged.filter((f) => f.type !== "photo" && f.k !== "weight"), [merged]);
-
-  /* Keep the enabled set in step with the chosen packs: a question the wizard
-     has never offered before arrives switched on, and one it has offered keeps
-     whatever the user decided about it.
-
-     `seen` has to be read into a local *before* the ref is replaced. It used to
-     be read inside the updater, and an updater passed to setState does not run
-     during the effect — it runs later, during the re-render, by which time
-     `known.current = keys` had already executed. Every key therefore looked
-     like one the user had already seen and ruled on, the "preserve their
-     choice" branch won, and the choice it preserved was the empty set from
-     before any pack existed. The visible result was that picking a pack turned
-     on nothing at all: the estimate read "0 quick questions", every question
-     chip was grey, and the only way forward from step 3 of first-run setup was
-     to notice the disabled button and go tap "Track everything". */
-  useEffect(() => {
-    const keys = new Set(tunable.map((f) => f.k));
-    const seen = known.current;
-    known.current = keys;
-    setEnabled((prev) => {
-      const next = new Set();
-      for (const k of keys) { if (!seen.has(k) || prev.has(k)) next.add(k); }
-      return next;
-    });
-    const hasCarni = mods.includes("carnivore");
-    if (!weightTouched) setWeightOn(hasCarni);
-    if (!progressTouched) setProgressAngles(hasCarni ? ["Front", "Side", "Back"] : []);
-  }, [mods]); // eslint-disable-line
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo?.(0, 0);
-    window.scrollTo(0, 0);
-    animateStepIn(bodyRef.current);
-    /* Keep the step you are on inside the rail's visible run, so the fade at
-       its end only ever covers steps you aren't on. `block: "nearest"` stops
-       this from scrolling the page as a side effect of scrolling the rail. */
-    railRef.current
-      ?.querySelector('[aria-current="step"]')
-      ?.scrollIntoView?.({ inline: "center", block: "nearest", behavior: "smooth" });
-  }, [step]);
-
-  /* live daily-check-in estimate */
-  const quickCount = tunable.filter((f) => f.quick && enabled.has(f.k)).length + (weightOn ? 1 : 0)
-    + customs.filter((f) => f.type !== "photo" && f.quick !== false).length;
-  const photoCount = spots.length + progressAngles.length + customs.filter((f) => f.type === "photo").length;
-  const secs = 8 + quickCount * 6 + photoCount * 15;
-  const timeLabel = secs < 75 ? "under a minute" : `about ${Math.round(secs / 60)} min`;
-  const estimatePill = (
-    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
-      style={{ background: C.faint, color: C.ink }}>
-      {quickCount} quick question{quickCount === 1 ? "" : "s"}{photoCount ? ` · ${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""} · {timeLabel} a day
-    </div>
-  );
-
-  const toggleSpot = (s) => setSpots((prev) => {
-    const i = prev.findIndex((x) => x.part === s.part && (x.side || "") === (s.side || ""));
-    return i >= 0 ? prev.filter((_, j) => j !== i) : [...prev, s];
-  });
-
-  const finish = (dest) => {
-    /* The one moment in the setup that gets the full chord. It is the only
-       thing here the user will never do again. */
-    feedback("complete");
-    onComplete(
-      buildOnboardProfile({ modules: mods, enabledKeys: enabled, spots, weightOn, progressAngles, name, customs, keyMetric }),
-      dest,
-      /* The first entry, if they made one. Written by App against the profile
-         this call is creating — it cannot be written here, because the journal
-         it belongs to does not exist yet. */
-      keyMetric && firstScore != null ? { key: keyMetric, value: firstScore } : null
-    );
-  };
-
-  const chipBtn = (on, label, onClick, key) => (
-    <button key={key || label} onClick={onClick}
-      className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-      style={{ background: on ? tint : C.faint, color: on ? readableInk(tint) : C.ink, minHeight: 40 }}>
-      {on && <Icon name="check" size={13} color={readableInk(tint)} />}{label}
-    </button>
-  );
-
-  /* ---------- step bodies ---------- */
-  let body = null; let actions = null;
-
-  if (step === 0) {
-    /* The name moved here from the last screen, and that is the whole point of
-       it. Asked at the end it was a label on a profile nobody looks at. Asked
-       first, it is the one thing every screen after this can use — the setup
-       stops being a form and starts being a conversation with someone whose
-       name it knows, and the person filling it in can see that happen from the
-       second screen onward.
-
-       It stays optional, and skipping it costs nothing: the greeting simply
-       doesn't appear. An onboarding step that can't be skipped is a toll. */
-    body = (
-      <div className="pt-8">
-        <div className="fhj-hello">Health Journal</div>
-        <div className="font-display text-3xl leading-tight mb-2">Your health, in your own words.</div>
-        <p className="text-sm leading-relaxed mb-5" style={{ color: C.sub }}>
-          Build a daily check-in that fits <i>your</i> situation — a couple of taps a day, trends over time,
-          and everything stays privately on this device.
-        </p>
-
-        <div className="mb-5">
-          <label className="fhj-label" htmlFor="fhj-onboard-name">What should this app call you?</label>
-          <input id="fhj-onboard-name" value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="Optional — a first name is plenty"
-            autoComplete="given-name" className="fhj-input" />
-        </div>
-
-        {/* Trust, as five things that are true about the build rather than as a
-            paragraph about how much we value privacy. Every line here is a
-            claim the user can check from inside the app on day one, which is
-            the only kind worth printing on a first-run screen. */}
-        <Card className="mb-4">
-          <div className="fhj-eyebrow mb-2.5">What this app does, and doesn't</div>
-          <ul className="fhj-promises">
-            {PROMISES.map(([icon, text]) => (
-              <li key={text}>
-                <span className="fhj-promise-mark"><Icon name={icon} size={13} color={C.good} /></span>
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Card className="mb-4">
-          <div className="fhj-eyebrow mb-2">Before you start</div>
-          <p className="text-sm leading-relaxed">{DISCLAIMER}</p>
-          <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
-            The app highlights <i>possible patterns</i> in what you log. It never concludes that something caused a symptom.
-          </p>
-        </Card>
-      </div>
-    );
-    actions = (
-      <div className="flex flex-col gap-2">
-        <button onClick={() => go(1)} className="fhj-btn fhj-btn-primary fhj-btn-block">I understand — set me up</button>
-        <button onClick={onLoadSample} className="w-full py-2.5 rounded-xl text-sm font-medium"
-          style={{ background: C.faint, color: C.sub }}>Just exploring? Load example data</button>
-      </div>
-    );
-  } else if (step === 1) {
-    body = (
-      <>
-        {greet}
-        <div className="font-display text-2xl mb-1">What are you tracking?</div>
-        <p className="text-sm mb-4" style={{ color: C.sub }}>Pick one or more. You can change everything later in Edit Setup.</p>
-        <div className="flex flex-col gap-3">
-          {ONBOARD_PACKS.map(({ key, desc }) => {
-            const t = TEMPLATES[key];
-            const on = mods.includes(key);
-            const qn = t.fields.filter((f) => f.quick && f.type !== "photo").length;
-            return (
-              <button key={key}
-                onClick={() => setMods((prev) => on ? prev.filter((m) => m !== key) : [...prev, key])}
-                className="text-left rounded-2xl p-4 flex items-start gap-3"
-                style={{ background: C.card, border: `2px solid ${on ? t.color : C.line}` }}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                  style={{ background: on ? t.color : C.faint }}>
-                  {on ? <Icon name="check" size={17} color={readableInk(t.color)} /> : <div className="w-3 h-3 rounded-full" style={{ background: t.color }} />}
-                </div>
-                <div className="min-w-0">
-                  <div className="font-display text-lg leading-snug">{t.label}</div>
-                  <div className="text-sm mt-0.5" style={{ color: C.sub }}>{desc}</div>
-                  <div className="text-[11px] mt-1 font-medium" style={{ color: t.color }}>{qn} quick questions ready to go</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="text-[11px] mt-4 leading-relaxed" style={{ color: C.sub }}>
-          Shared questions (like sleep or stress) are only asked once, even across packs. You can add your own questions on the next step.
-        </div>
-      </>
-    );
-    actions = (
-      <button onClick={() => go(2)} disabled={!mods.length}
-        className="fhj-btn fhj-btn-primary fhj-btn-block">
-        {mods.length ? "Continue" : "Pick at least one to continue"}
-      </button>
-    );
-  } else if (step === 2) {
-    /* The main number.
-
-       Every pack ships with an opinion about which of its questions matters
-       most, and for most people that opinion is right — but it is an opinion,
-       and this is the number that becomes the one-tap question on Today, the
-       hero on Insights and the first figure a clinician reads in the
-       appointment pack. Somebody whose eczema is fine but whose sleep is
-       wrecked should be able to say so on day one, in one tap, rather than
-       discovering three months later that the app has been charting the wrong
-       thing about their life. */
-    /* Every 1–10 question in the chosen packs could be the main number, but a
-       list of eighteen is not a choice somebody can make in ten seconds. The
-       packs' own headline metrics come first — that is what `chartMetrics` is,
-       each pack's opinion of what it is about — and the body areas and the
-       rest sit behind one control for the person whose journal really is about
-       their left hand. */
-    const scales = merged.filter((f) => f.type === "scale");
-    const headline = new Set(mods.flatMap((mk) => TEMPLATES[mk]?.chartMetrics || []));
-    const top = scales.filter((f) => headline.has(f.k)).slice(0, 6);
-    const rest = scales.filter((f) => !top.includes(f));
-    const suggested = TEMPLATES[mods[0]]?.keyMetric;
-    const picked = keyMetric || suggested;
-    const optionBtn = (f) => {
-      const on = picked === f.k;
-      const t = TEMPLATES[f.module] || TEMPLATES[mods[0]];
-      return (
-        <button key={f.k} onClick={() => { feedback("select"); setKeyMetric(f.k); }}
-          aria-pressed={on}
-          className="text-left rounded-2xl px-4 py-3 flex items-center gap-3 w-full"
-          style={{ background: C.card, border: `2px solid ${on ? t.color : C.line}` }}>
-          <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-            style={{ background: on ? t.color : C.faint }}>
-            {on ? <Icon name="check" size={15} color={readableInk(t.color)} /> : null}
-          </span>
-          <span className="min-w-0">
-            <span className="block font-semibold text-[15px]">{f.label}</span>
-            <span className="block text-[11.5px]" style={{ color: C.subtle }}>
-              {f.k === suggested ? "Suggested for this pack" : (f.sec || t.label)}
-            </span>
-          </span>
-        </button>
-      );
-    };
-    body = (
-      <>
-        <div className="font-display text-2xl mb-1">Which number matters most?</div>
-        <p className="text-sm mb-4" style={{ color: C.sub }}>
-          This is the one you will be asked for every day, in one tap — and the one every chart,
-          streak and summary is about. You can change it whenever you like.
-        </p>
-        <div className="flex flex-col gap-2">
-          {(top.length ? top : scales).map(optionBtn)}
-        </div>
-        {top.length > 0 && rest.length > 0 && (
-          <Disclosure className="mt-3" label={`Other questions (${rest.length})`}
-            summary="Body areas and everything else you kept">
-            <div className="flex flex-col gap-2">{rest.map(optionBtn)}</div>
-          </Disclosure>
-        )}
-        {scales.length === 0 && (
-          <p className="text-sm" style={{ color: C.sub }}>
-            The packs you chose have no 1–10 questions in them, so there is nothing to pick here.
-          </p>
-        )}
-      </>
-    );
-    actions = (
-      <button onClick={() => { if (!keyMetric && suggested) setKeyMetric(suggested); go(3); }}
-        className="fhj-btn fhj-btn-primary fhj-btn-block">
-        Continue
-      </button>
-    );
-  } else if (step === 3) {
-    const sections = [];
-    for (const mk of mods) {
-      const t = TEMPLATES[mk];
-      const mine = tunable.filter((f) => f.module === mk);
-      if (!mine.length) continue;
-      const bySec = [];
-      for (const f of mine) {
-        let g = bySec.find((x) => x.sec === (f.sec || "Other"));
-        if (!g) { g = { sec: f.sec || "Other", fields: [] }; bySec.push(g); }
-        g.fields.push(f);
-      }
-      sections.push({ mk, label: t.label, color: t.color, groups: bySec });
-    }
-    const allKeys = tunable.map((f) => f.k);
-    const essentials = () => setEnabled(new Set(tunable.filter((f) => f.quick).map((f) => f.k)));
-    const everything = () => setEnabled(new Set(allKeys));
-    body = (
-      <>
-        <div className="font-display text-2xl mb-1">Build your daily check-in</div>
-        <p className="text-sm mb-2" style={{ color: C.sub }}>
-          Tap questions on or off, or add your own. Photos and weight come next.
-        </p>
-        <div className="mb-3">{estimatePill}</div>
-        <div className="flex gap-2 mb-4">
-          <button onClick={essentials} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-            style={{ background: C.faint }}>Keep it quick</button>
-          <button onClick={everything} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-            style={{ background: C.faint }}>Track everything</button>
-        </div>
-        {sections.map((s) => (
-          <div key={s.mk} className="mb-4">
-            <div className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: s.color }}>{s.label}</div>
-            {s.groups.map((g) => (
-              <div key={g.sec} className="mb-2.5">
-                <div className="text-[11px] mb-1.5" style={{ color: C.sub }}>{g.sec}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {g.fields.map((f) => {
-                    const on = enabled.has(f.k);
-                    return (
-                      <button key={f.k}
-                        onClick={() => setEnabled((prev) => { const n = new Set(prev); on ? n.delete(f.k) : n.add(f.k); return n; })}
-                        className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-                        style={{ background: on ? s.color : C.faint, color: on ? readableInk(s.color) : C.sub, minHeight: 40 }}>
-                        {on && <Icon name="check" size={13} color={readableInk(s.color)} />}{f.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-        <div className="mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: C.sub }}>Your own questions</div>
-          {customs.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {customs.map((f) => (
-                <button key={f.k} onClick={() => setCustoms((prev) => prev.filter((x) => x.k !== f.k))}
-                  className="px-3 py-2 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-                  style={{ background: tint, color: readableInk(tint), minHeight: 40 }}>
-                  {f.label} <Icon name="x" size={12} color={readableInk(tint)} />
-                </button>
-              ))}
-            </div>
-          )}
-          <AddCustomQuestion onAdd={(input) => setCustoms((prev) => [...prev, buildCustomField(input, prev.length)])} />
-        </div>
-      </>
-    );
-    actions = (
-      <button onClick={() => go(4)} disabled={!enabled.size}
-        className="fhj-btn fhj-btn-primary fhj-btn-block">
-        {enabled.size ? "Continue" : "Keep at least one question"}
-      </button>
-    );
-  } else if (step === 4) {
-    body = (
-      <>
-        <div className="font-display text-2xl mb-1">Problem spots to photograph</div>
-        <p className="text-sm mb-1" style={{ color: C.sub }}>
-          Tap the body where you'd like photo check-ins — the app lines each shot up with your last one so changes are easy to see. Totally optional.
-        </p>
-        <div className="mb-2">{estimatePill}</div>
-        <Card className="mb-3">
-          <BodyMap spots={spots} onToggle={toggleSpot} tint={tint} />
-          <div className="flex flex-wrap gap-1.5 justify-center mt-1">
-            {chipBtn(spots.some((s) => s.part === "Back"), "Back of body", () => toggleSpot({ part: "Back", side: "" }))}
-          </div>
-        </Card>
-        {spots.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {spots.map((s) => (
-              <button key={s.part + s.side} onClick={() => toggleSpot(s)}
-                className="px-3 py-1.5 rounded-full text-sm font-medium inline-flex items-center gap-1.5"
-                style={{ background: tint, color: readableInk(tint) }}>
-                {spotLabel(s)} <Icon name="x" size={12} color={readableInk(tint)} />
-              </button>
-            ))}
-          </div>
-        )}
-        {spots.length === 0 && (
-          <p className="text-[11px]" style={{ color: C.sub }}>No spots selected — you can add photo questions any time in Edit Setup.</p>
-        )}
-      </>
-    );
-    actions = (
-      <button onClick={() => go(5)} className="fhj-btn fhj-btn-primary fhj-btn-block">
-        {spots.length ? "Continue" : "Skip for now"}
-      </button>
-    );
-  } else if (step === 5) {
-    const progressOn = progressAngles.length > 0;
-    body = (
-      <>
-        <div className="font-display text-2xl mb-1">Weight &amp; progress photos</div>
-        <p className="text-sm mb-3" style={{ color: C.sub }}>Optional — great for diet or fitness goals.</p>
-        <Card className="mb-3">
-          <button onClick={() => { setWeightTouched(true); setWeightOn((v) => !v); }}
-            className="w-full flex items-center justify-between gap-3 text-left">
-            <div>
-              <div className="font-semibold text-sm">Track weight daily</div>
-              <div className="text-[12px] mt-0.5" style={{ color: C.sub }}>A quick number entry in your check-in.</div>
-            </div>
-            <div className="w-12 h-7 rounded-full p-1 shrink-0" style={{ background: weightOn ? tint : C.line }}>
-              <div className="w-5 h-5 rounded-full bg-white" style={{ marginLeft: weightOn ? "auto" : 0, transition: "margin 120ms" }} />
-            </div>
-          </button>
-        </Card>
-        <Card>
-          <button onClick={() => { setProgressTouched(true); setProgressAngles(progressOn ? [] : ["Front", "Side", "Back"]); }}
-            className="w-full flex items-center justify-between gap-3 text-left">
-            <div>
-              <div className="font-semibold text-sm">Progress photos</div>
-              <div className="text-[12px] mt-0.5" style={{ color: C.sub }}>
-                Full-body photos over time{weightOn ? ", captioned with your weight" : ""}.
-              </div>
-            </div>
-            <div className="w-12 h-7 rounded-full p-1 shrink-0" style={{ background: progressOn ? tint : C.line }}>
-              <div className="w-5 h-5 rounded-full bg-white" style={{ marginLeft: progressOn ? "auto" : 0, transition: "margin 120ms" }} />
-            </div>
-          </button>
-          {progressOn && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {["Front", "Side", "Back"].map((ang) => chipBtn(
-                progressAngles.includes(ang), ang,
-                () => { setProgressTouched(true); setProgressAngles((prev) => prev.includes(ang) ? prev.filter((a) => a !== ang) : [...prev, ang]); },
-                ang
-              ))}
-            </div>
-          )}
-        </Card>
-        <div className="mt-3">{estimatePill}</div>
-      </>
-    );
-    actions = (
-      <button onClick={() => go(6)} className="fhj-btn fhj-btn-primary fhj-btn-block">
-        Continue
-      </button>
-    );
-  } else {
-    const setupLabel = mods.map((mk) => TEMPLATES[mk].label).join(" + ");
-    /* The first three questions, by name. The estimate pill has been counting
-       them the whole way through, but a count is an abstraction — "9 quick
-       questions" could be anything. Seeing the actual words the app will ask
-       tomorrow morning is what turns a setup screen into a thing that was
-       built, and it is the last chance to notice it asks the wrong ones. */
-    const preview = tunable
-      .filter((f) => f.quick && enabled.has(f.k))
-      .slice(0, 3)
-      .map((f) => f.label);
-    const pulseField = tunable.find((f) => f.k === keyMetric)
-      || tunable.find((f) => f.type === "scale" && enabled.has(f.k));
-    body = (
-      <>
-        <div>
-          <div className="font-display text-2xl mb-1">
-            {firstName ? `You're all set, ${firstName}.` : "You're all set"}
-          </div>
-          <p className="text-sm" style={{ color: C.sub }}>
-            Here is the check-in you just built. Everything stays on this device.
-          </p>
-        </div>
-
-        {/* The setup does not end on a summary. It ends with the thing the app
-            is for, done once — because the difference between an app somebody
-            configured and an app somebody uses is one tap, and this is the
-            best moment it will ever have to ask for it. */}
-        {pulseField && (
-          <Card className="mt-4 fhj-pulse-card">
-            <div className="fhj-eyebrow">{firstScore != null ? "Your first entry" : "Start now — one tap"}</div>
-            <div className="font-display text-[1.35rem] leading-tight mt-1 mb-3">
-              {pulseField.label} today?
-            </div>
-            <PulseScale field={pulseField} value={firstScore}
-              onSet={(n, el) => {
-                if (firstScore === n) { feedback("erase"); setFirstScore(null); return; }
-                feedback("quickadd", { el });
-                place("scale", n, 10);
-                setFirstScore(n);
-              }} />
-            <div className="fhj-pulse-state">
-              {firstScore != null ? (
-                <>
-                  <span className="fhj-pulse-mark" style={{ background: colorFor(firstScore, pulseField.dir) }}>
-                    <Icon name="check" size={13} color={readableInk(colorFor(firstScore, pulseField.dir))} />
-                  </span>
-                  <span>
-                    <b>{firstScore}/10</b> — saved with your setup, as today's first entry.
-                  </span>
-                </>
-              ) : (
-                <span style={{ color: C.subtle }}>Optional. It becomes day one of your journal.</span>
-              )}
-            </div>
-          </Card>
-        )}
-
-        <Card className="mt-4">
-          <div className="font-display text-lg mb-2" style={{ color: tint }}>{setupLabel}</div>
-          <div className="text-sm leading-relaxed">
-            <div>• {quickCount} quick question{quickCount === 1 ? "" : "s"} — {timeLabel} a day</div>
-            {customs.length > 0 && <div>• {customs.length} question{customs.length === 1 ? "" : "s"} of your own</div>}
-            {spots.length > 0 && <div>• Photo check-ins: {spots.map(spotLabel).join(", ")}</div>}
-            {weightOn && <div>• Daily weight</div>}
-            {progressAngles.length > 0 && <div>• Progress photos: {progressAngles.join(" · ").toLowerCase()}</div>}
-          </div>
-          {preview.length > 0 && (
-            <div className="fhj-preview">
-              <div className="fhj-eyebrow mb-1.5">Tomorrow morning, it asks</div>
-              {preview.map((label) => <div key={label} className="fhj-preview-row">{label}</div>)}
-              {quickCount > preview.length && (
-                <div className="fhj-preview-more">…and {quickCount - preview.length} more</div>
-              )}
-            </div>
-          )}
-        </Card>
-
-        <p className="text-[11.5px] leading-relaxed mt-4" style={{ color: C.subtle }}>
-          Nothing here is permanent. Every question, photo spot and setting on these screens can be
-          changed, added or removed later from Edit Setup — including all of it at once.
-        </p>
-      </>
-    );
-    actions = (
-      <div className="flex flex-col gap-2">
-        <button onClick={() => finish("dashboard")} className="fhj-btn fhj-btn-primary fhj-btn-block">
-          {firstScore != null ? "Save it and start" : "Start using it"}
-        </button>
-        <button onClick={() => finish("log")} className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.faint }}>
-          Answer the rest of today's questions
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen" style={{ background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
-      {/* The setup runs over the app's real backdrop — the one the theme is
-          already set to. Choosing it is a Settings job; this screen has
-          health questions to ask. */}
-      <AmbientBackdrop />
-      <div ref={scrollRef} className="max-w-md mx-auto px-4 relative" style={{ paddingBottom: "9.5rem", zIndex: 1 }}>
-        {/* Seven anonymous dots told someone they were on the fourth of seven
-            somethings. The rail names them: what this screen is, what is left,
-            and — because every step behind you is tappable — a way back to any
-            answer without walking the whole flow in reverse. */}
-        <div className="sticky top-0 z-20 pt-4 pb-2 flex items-center gap-2.5" style={{ background: C.bg }}>
-          {step > 0 ? (
-            <button onClick={() => go(step - 1)} aria-label="back"
-              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-              style={{ background: C.card, border: `1px solid ${C.line}` }}>
-              <Icon name="left" size={17} color={C.sub} />
-            </button>
-          ) : <div className="w-9 h-9 shrink-0" />}
-          <ol ref={railRef} className="fhj-rail" aria-label={`Setup step ${step + 1} of ${ONBOARD_STEPS.length}`}>
-            {ONBOARD_STEPS.map((s, i) => {
-              const state = i === step ? "current" : i < step ? "done" : "todo";
-              return (
-                <li key={s.key}>
-                  <button type="button" data-state={state} disabled={i > step}
-                    aria-current={i === step ? "step" : undefined}
-                    onClick={() => go(i)}
-                    style={i <= step ? { "--fhj-rail-on": tint } : undefined}>
-                    <span className="fhj-rail-dot" aria-hidden="true" />
-                    <span className="fhj-rail-label">{s.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-        <div ref={bodyRef}>{body}</div>
-      </div>
-      <div className="fixed bottom-0 left-0 right-0 z-30" style={{ background: `linear-gradient(transparent, ${C.bg} 35%)` }}>
-        <div className="max-w-md mx-auto px-4 pb-4 pt-5">{actions}</div>
-      </div>
-    </div>
   );
 }
 
@@ -15241,7 +15204,6 @@ export default function App({ viewer = false }) {
   const [addSheet, setAddSheet] = useState(false);
   /* The long form, reached from the first-run screen by anybody who would
      rather build the whole survey now than start with one number. */
-  const [detailedSetup, setDetailedSetup] = useState(false);
   /* One shot, on the very first Today: the screen the journal was just handed
      over on. The last act of first run ends on a card flying into a timeline,
      and landing on a dashboard that simply *appears* would drop the thread —
@@ -15692,14 +15654,13 @@ export default function App({ viewer = false }) {
   }
 
   if (!db.onboarded) {
-    /* One writer for both first-run paths — the four-act one and the long
-       form behind it. Whatever produced the profile, the journal is created
-       the same way, and a first entry lands with it rather than after it. */
+    /* One writer for the whole first run. The profile, the first entry and
+       the reminder all land together — the entry belongs to a profile that
+       did not exist until this line, and a nudge for a journal that has not
+       been created yet is a notification about nothing. */
     const beginJournal = (profile, dest, firstEntry) => {
       setDb((prev) => {
         const next = { ...prev, profile, ack: true, onboarded: true };
-        /* Written here rather than in the setup screens: the entry belongs to
-           a profile that did not exist until this line. */
         if (firstEntry && firstEntry.key && firstEntry.value != null) {
           const now = new Date().toISOString();
           next.entries = [...(prev.entries || []), {
@@ -15717,41 +15678,20 @@ export default function App({ viewer = false }) {
       setJustBegan(true);
     };
 
-    if (detailedSetup) {
-      return (
-        <OnboardingWizard
-          onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
-          onComplete={beginJournal}
-        />
-      );
-    }
-
     return (
       <>
         <AmbientBackdrop />
         <FirstRun
           packs={FIRST_RUN_PACKS()}
+          extras={FIRST_RUN_EXTRAS}
+          promises={PROMISES}
           Icon={Icon}
+          BodyMap={BodyMap}
+          spotLabel={spotLabel}
           appName={APP_NAME}
           disclaimer={DISCLAIMER}
           onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
-          onDetailed={() => setDetailedSetup(true)}
-          onComplete={(choice) => {
-            /* The short path builds the same profile the long one does — the
-               pack's quick questions on, nothing else assumed — so a journal
-               started in thirty seconds and one built over seven screens are
-               the same object afterwards. */
-            const fields = mergedPackFields(choice.modules);
-            const enabledKeys = new Set(
-              fields.filter((f) => f.quick && f.type !== "photo" && f.k !== "weight").map((f) => f.k)
-            );
-            const profile = buildOnboardProfile({
-              modules: choice.modules, enabledKeys, spots: [], weightOn: false,
-              progressAngles: [], name: "", customs: [], keyMetric: choice.keyMetric,
-            });
-            beginJournal(profile, "dashboard",
-              choice.score != null ? { key: choice.keyMetric, value: choice.score, note: choice.note } : null);
-          }}
+          onComplete={(choice) => beginJournal(...firstRunProfile(choice))}
         />
       </>
     );
@@ -16074,6 +16014,10 @@ export default function App({ viewer = false }) {
     goFood: () => setScreen("food"), goRoutine: () => setScreen("routine"),
     goInsights: () => setScreen("insights"),
     onUpdateQuickAdd: setQuickAdd, onUseAction: noteActionUse, ai: db.ai, syncStatus,
+    /* Quick Add can start and end a flare, so Today needs the episodes and the
+       two writers that Insights already had. Same functions — a flare started
+       from a tile and one started from the chart are the same object. */
+    episodes: db.episodes || [], onStartFlare: beginFlare, onEndFlare: finishFlare,
   };
 
   const insightsProps = {
@@ -16338,5 +16282,7 @@ export const __internals = {
   SwipeDeck, FinishCelebration, feedback, FB, hapticsSupported,
   rangeForOffset, offsetOfPeriod, minPeriodOffset, ReportScreen,
   DEFAULT_PREFS, LEGACY_PREFS, categoryOf, CATEGORY_META, CATEGORY_ORDER,
+  QUICK_ADD_TILES, DEFAULT_QUICK_ADD, defaultQuickAdd, quickAddTile, tileSupported,
+  quickAddContext, resolveQuickAdd, firstRunQuickAdd, FIRST_RUN_EXTRAS, amountWithUnit,
   scaleHaptic, HAPTIC_PATTERNS, HAPTIC_SCALE, HAPTIC_LEVELS,
 };

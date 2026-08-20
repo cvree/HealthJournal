@@ -713,6 +713,73 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-19 addendum 23 — 1.19: Quick Add is shaped like the condition; first run guides the
+> whole setup.**
+> **The catalogue grew from seven tiles to fourteen and learned what a setup can answer.**
+> `QUICK_ADD_TILES` now carries an optional `needs` key (`photo | number | scale | water | hr |
+> trigger | flare`), and **`quickAddContext(tpl)`** — the one function three callers share
+> (dashboard, editor, end of first run) — derives both the fields each tile writes to
+> (`waterField`, `hr.rest`/`hr.stand`, `triggerField`, `scaleFields` sorted main-number-first)
+> and the `caps` object `tileSupported` checks against. Derived from the *template*, not the pack
+> list, so switching `resting_hr` off in Edit Setup removes the Heart rate button.
+>
+> **`PACK_QUICK_ADD` + `defaultQuickAdd(modules)`** replace the fixed `DEFAULT_QUICK_ADD` when a
+> profile has no saved `quickAdd`: check-in always leads, then each pack's list round-robin (so
+> two conditions each get their first choice before either gets its third), capped at six.
+> `DEFAULT_QUICK_ADD` survives as the no-packs fallback. **Existing installs are affected** —
+> they had no `quickAdd` either — which is intended and non-destructive.
+>
+> **New actions.** `flare` (starts/ends the open episode on the key metric — `beginFlare`/
+> `finishFlare` are now passed to Today as well as Insights), `symptom` (`SymptomSheet`: pick a
+> 1–10 question, rate it, closes itself), `hr` (`HeartRateSheet`: two `NumberPadSheet`s and the
+> live difference, with `HR_RISE_NOTE` and a "record, not a diagnosis" line), `water` (no sheet at
+> all — one `onPatch` plus a toast with Undo), `trigger` (`TriggerSheet` over `ChipsInput`), plus
+> `note` and `measurement` promoted from the + sheet. `ScaleInput` gained `hideLabel` for sheets
+> that already print the question as their title.
+>
+> **One handler map, two doors.** `quickAddActions`/`addActions` are merged into one `actions`
+> object, and `ADD_ACTIONS` is deleted: **`AddSheet` now takes `ids={quickAddIds}`** and renders
+> the person's own row, with the remaining supported tiles behind an "Everything else (n)"
+> disclosure and an "Edit these buttons" link into `QuickAddEditor`. `tileFace(tile, live)` is
+> how a tile describes today rather than naming a feature (Check-in → "Done today", Flare → "End
+> flare · day 6", Water → "3 cups so far"); both surfaces read the same `live` map.
+>
+> **First run is six acts and one path.** `OnboardingWizard` (~600 lines), `ONBOARD_PACKS`,
+> `ONBOARD_STEPS` and the `detailedSetup` state are **deleted**, along with
+> `tests/onboarding.test.tsx`. `BodyMap`, `spotLabel`, `PROMISES` and `buildOnboardProfile`
+> survive and are now *props to* `FirstRun` (the component still draws nothing of its own).
+> Two new acts sit between the packs and the entry:
+> - **tune** — the merged pack questions (photos and weight excluded; they are act four's job)
+>   grouped by section, with `depth` presets (Quick/Balanced/Thorough) and `hand: Set | null` —
+>   null means "still following the preset", which is what lets going back and changing a pack
+>   re-derive the list instead of stranding answers about questions that no longer exist. The
+>   cost model (`checkInSeconds`/`checkInTimeLabel`, exported for tests) prints the honest
+>   seconds-a-day and re-runs `readoutSwap` on every change. The key metric is locked on.
+> - **extras** — `FIRST_RUN_EXTRAS` (photos/routine/food/flare/bowel/weight, pre-ticked by
+>   `suggest` per module), the body map when a skin pack is in play, the live preview of the
+>   Quick Add row being assembled, and the reminder chips.
+>
+> `FirstRunChoice` grew `enabledKeys`, `customQuestions`, `extras`, `spots`, `reminder`;
+> **`firstRunProfile(choice)`** turns all of it into `[profile, dest, firstEntry]` — including
+> `profile.quickAdd` via `firstRunQuickAdd` (extras' tiles first, then `defaultQuickAdd`, then
+> filtered by `caps`) and `profile.reminders` via `newReminder`. `beginJournal` is unchanged and
+> is now the only writer.
+>
+> **CSS.** `.fhj-fr-rail-steps` (the four-segment progress rail), `.fhj-fr-cost*`,
+> `.fhj-fr-depth*`, `.fhj-fr-q*` (sections and switch rows), `.fhj-fr-own*` (a question of your
+> own), `.fhj-fr-extra*`, `.fhj-fr-spot*`, `.fhj-fr-preview*`, `.fhj-fr-nudge*`,
+> `.fhj-fr-promises`.
+>
+> **Verified in a browser, not only in jsdom:** the whole first run for eczema+POTS and for POTS
+> alone; water/heart-rate/symptom/flare/trigger each pressed and the write checked; the + sheet
+> mirroring the row; zero console errors.
+>
+> Tests: **1014 across 47 suites** (was 997/47) — `tests/quickAddTiles.test.tsx` (13, new),
+> `firstRun` 12 → 21, `onboarding` (9) deleted; `foodBowelUi`, `navigation` and `routineUi`
+> updated for a Quick Add row that is no longer a fixed four.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
