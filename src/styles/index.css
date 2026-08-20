@@ -5971,10 +5971,14 @@ button:active > .fhj-nav-add {
   position: relative;
   margin: 0 -0.25rem;
 }
+/* The arc stretches horizontally to whatever width it is given and keeps the
+   height it was asked for. `height: auto` is wrong here: with
+   preserveAspectRatio="none" the browser scales the 100-unit-wide viewBox by
+   the element's width, so a 132-unit-tall arc came out 500px tall on a phone.
+   The height comes from the component as an inline style. */
 .fhj-arc svg {
   display: block;
   width: 100%;
-  height: auto;
   overflow: visible;
 }
 
@@ -5999,19 +6003,42 @@ button:active > .fhj-nav-add {
   color: var(--fhj-subtle, #9a9ca6);
 }
 .fhj-arc-peak {
-  color: var(--fhj-muted, #787b86);
+  color: var(--fhj-subtle, #9a9ca6);
 }
 
-/* The sun disc breathes while a session runs. Six seconds, barely visible —
-   the sun moves a quarter of a degree in that time, and anything faster is a
-   lie about the sky. */
+/* The sun. An element over the SVG rather than a circle inside it — see the
+   note in SolarArc. Sized in px so it stays round whatever the arc is
+   stretched to, and centred on its own coordinates. */
+.fhj-arc-sun {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    var(--fhj-warn, #d68a4a) 0 14%,
+    color-mix(in srgb, var(--fhj-warn, #d68a4a) 45%, transparent) 30%,
+    transparent 70%
+  );
+  opacity: 0.5;
+}
+.fhj-arc[data-variant="hero"] .fhj-arc-sun {
+  width: 38px;
+  height: 38px;
+  margin: -19px 0 0 -19px;
+}
 .fhj-arc-sun.is-up {
+  opacity: 1;
+  /* Six seconds, barely visible — the sun moves a quarter of a degree in that
+     time, and anything faster is a lie about the sky. */
   animation: fhjSunBreathe 6s ease-in-out infinite;
-  transform-origin: center;
 }
 @keyframes fhjSunBreathe {
   50% {
-    opacity: 0.82;
+    opacity: 0.78;
+    transform: scale(0.94);
   }
 }
 
@@ -6138,7 +6165,10 @@ button:active > .fhj-nav-add {
 }
 .fhj-sun-windows li {
   display: grid;
-  grid-template-columns: 7.5rem 1fr;
+  /* Wide enough for "10:20 AM – 3:50 PM" on one line, which is the longest
+     range this can print. Wrapping a time range is the one thing that makes a
+     window card unreadable at a glance. */
+  grid-template-columns: 8.75rem 1fr;
   gap: 0.75rem;
   align-items: start;
 }
@@ -6149,7 +6179,7 @@ button:active > .fhj-nav-add {
   }
 }
 .fhj-sun-win-when {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--fhj-accent-text, #a6c3ea);
@@ -6226,13 +6256,17 @@ button:active > .fhj-nav-add {
    decorative: the screen warms as the dose climbs, which is information. */
 .fhj-sun-live-sky {
   position: absolute;
-  inset: -20% -20% auto;
+  /* Inside its own box, deliberately. A negative right inset bled 78px past
+     the viewport and gave the whole live screen a sideways scroll — the one
+     thing a full-bleed atmosphere must never cost. The spread comes from the
+     gradient's own stops instead. */
+  inset: 0 0 auto;
   height: 60vh;
   pointer-events: none;
   background: radial-gradient(
-    60% 50% at 50% 0%,
+    110% 62% at 50% -6%,
     color-mix(in srgb, var(--fhj-warn, #d68a4a) 22%, transparent),
-    transparent 70%
+    transparent 72%
   );
   transition: opacity 1200ms ease;
   opacity: 0.5;
@@ -6243,9 +6277,9 @@ button:active > .fhj-nav-add {
 .fhj-sun-live[data-burn="over"] .fhj-sun-live-sky {
   opacity: 1;
   background: radial-gradient(
-    60% 50% at 50% 0%,
+    110% 62% at 50% -6%,
     color-mix(in srgb, var(--fhj-alert, #c9743f) 30%, transparent),
-    transparent 70%
+    transparent 72%
   );
 }
 
@@ -6453,7 +6487,7 @@ button:active > .fhj-nav-add {
 }
 .fhj-exp-pair em {
   font-style: normal;
-  color: var(--fhj-muted, #787b86);
+  color: var(--fhj-subtle, #9a9ca6);
 }
 
 .fhj-exp-pin {
@@ -6465,7 +6499,7 @@ button:active > .fhj-nav-add {
   border-radius: var(--fhj-radius-sm);
   border: 1px solid transparent;
   background: none;
-  color: var(--fhj-muted, #787b86);
+  color: var(--fhj-subtle, #9a9ca6);
   cursor: pointer;
 }
 .fhj-exp-pin.is-on {
@@ -6508,21 +6542,45 @@ button:active > .fhj-nav-add {
 .fhj-exp-dots {
   margin-top: 0.75rem;
 }
+/* The plot box exists only so the dot layer has the *chart's* height to
+   position against rather than the whole section's — the axis row underneath
+   would otherwise shift every dot upward by its own height. */
+.fhj-exp-plot {
+  position: relative;
+  height: 96px;
+}
+.fhj-exp-dot-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 .fhj-exp-dots svg {
   display: block;
   width: 100%;
   height: 96px;
   overflow: visible;
 }
+/* Positioned over the chart, sized in px so they stay round however wide the
+   card is — see the note in ExperimentsScreen. The two halves differ by
+   opacity rather than by hue: a red half and a green half would be the app
+   deciding which side of somebody's own life is the bad one. */
 .fhj-exp-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--fhj-ink, #ecebe7);
+  opacity: 0.35;
   animation: fhjDotIn 420ms var(--fhj-out) both;
+}
+.fhj-exp-dot[data-side="high"] {
+  opacity: 0.75;
 }
 @keyframes fhjDotIn {
   from {
     opacity: 0;
     transform: scale(0.2);
-    transform-box: fill-box;
-    transform-origin: center;
   }
 }
 .fhj-exp-dots-axes {
@@ -6587,6 +6645,42 @@ button:active > .fhj-nav-add {
   margin-top: 0.625rem;
   padding-top: 0.625rem;
   border-top: 1px solid var(--fhj-line, #31343d);
+}
+
+/* The pinned version on Today. The smallest possible form of the card above:
+   a title that is also the way in, the ladder, and the sentence if there is
+   one. No dots, no halves — this is a status. */
+.fhj-exp-mini-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.fhj-exp-mini-line {
+  display: block;
+  width: 100%;
+  margin-top: 0.375rem;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-family: var(--fhj-font-display);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--fhj-ink, #ecebe7);
+  cursor: pointer;
+}
+.fhj-exp-mini-line:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* ---- starters and suggestions ---- */
@@ -6703,8 +6797,15 @@ button:active > .fhj-nav-add {
 .fhj-lab-chart svg {
   display: block;
   width: 100%;
-  height: 96px;
   overflow: visible;
+}
+/* The layer the nodes live in — the chart's own box, so a node's percentage
+   is measured against the chart and not against the row of value labels
+   underneath it. */
+.fhj-lab-nodes {
+  position: absolute;
+  inset: 0 0 1.75rem;
+  pointer-events: none;
 }
 
 /* Each segment draws itself from the older reading toward the newer one. That
@@ -6722,10 +6823,22 @@ button:active > .fhj-nav-add {
     stroke-dashoffset: 0;
   }
 }
-.fhj-lab-node circle {
+.fhj-lab-node {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--fhj-card, #1e2026);
+  border: 2px solid var(--fhj-accent, #8fb0e3);
   animation: fhjNodeIn 420ms var(--fhj-out) both;
-  transform-box: fill-box;
-  transform-origin: center;
+}
+.fhj-lab-node.is-on {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  background: var(--fhj-accent, #8fb0e3);
+  box-shadow: 0 0 0 4px var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
 }
 @keyframes fhjNodeIn {
   from {
@@ -6916,7 +7029,7 @@ button:active > .fhj-nav-add {
 .fhj-labs-change-date {
   display: block;
   font-size: 0.6875rem;
-  color: var(--fhj-muted, #787b86);
+  color: var(--fhj-subtle, #9a9ca6);
 }
 .fhj-labs-empty-changes {
   font-size: 0.8125rem;
@@ -7046,7 +7159,7 @@ button:active > .fhj-nav-add {
   .fhj-exp-dot,
   .fhj-exp-headline,
   .fhj-lab-link,
-  .fhj-lab-node circle,
+  .fhj-lab-node,
   .fhj-labs-changes li,
   .fhj-sun-hist-bar,
   .fhj-ev-panel,

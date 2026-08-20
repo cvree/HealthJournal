@@ -315,15 +315,21 @@ function LabChart({
   onSelect: (i: number) => void;
 }) {
   const W = 100;
-  const H = 96;
+  const H = 118;
+  /* The scale is the *values*, never the reference range.
+
+     Including the range looks tidier and is the wrong call: a vitamin D range
+     of 30–100 against readings of 24, 31 and 38 pushes the whole history into
+     a sliver at the bottom of the chart and makes a fourteen-point climb —
+     the thing the person came here to see — invisible. So the chart fits the
+     data, and the range is drawn as a band clipped to that view: the boundary
+     shows as an edge inside the chart when it falls in range, and fills the
+     background when the whole history sits inside it. */
   const geo = useMemo(() => {
     const vals = points.map((p) => p.value);
-    const lows = points.map((p) => p.refLow).filter((v): v is number => v !== undefined);
-    const highs = points.map((p) => p.refHigh).filter((v): v is number => v !== undefined);
-    const all = [...vals, ...lows, ...highs];
-    const min = Math.min(...all);
-    const max = Math.max(...all);
-    const pad = (max - min) * 0.18 || Math.max(1, max * 0.1);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const pad = (max - min) * 0.25 || Math.max(1, Math.abs(max) * 0.12);
     return { min: min - pad, max: max + pad };
   }, [points]);
 
@@ -338,20 +344,35 @@ function LabChart({
     <div className="fhj-lab-chart">
       <svg
         viewBox={`0 0 ${W} ${H}`}
+        style={{ height: H }}
         preserveAspectRatio="none"
         role="img"
         aria-label={`${points.length} results from ${points[0].date} to ${last.date}. ${seriesLabel(points)}.`}
       >
-        {/* The lab's own range, when there is one. Never the catalog's. */}
-        {bandLow !== undefined && bandHigh !== undefined && (
-          <rect
-            x={0}
-            y={y(bandHigh)}
-            width={W}
-            height={Math.max(1, y(bandLow) - y(bandHigh))}
-            fill={C.goodSoft}
-          />
-        )}
+        {/* The lab's own range, when there is one. Never the catalog's, and
+            clipped to the chart rather than allowed to set its scale. */}
+        {(bandLow !== undefined || bandHigh !== undefined) && (() => {
+          const top = bandHigh !== undefined ? Math.max(0, y(bandHigh)) : 0;
+          const bottom = bandLow !== undefined ? Math.min(H, y(bandLow)) : H;
+          if (bottom <= top) return null;
+          return (
+            <>
+              <rect x={0} y={top} width={W} height={bottom - top} fill={C.goodSoft} />
+              {/* An edge where a boundary actually falls inside the view — a
+                  band with no visible edge says nothing. */}
+              {bandLow !== undefined && y(bandLow) < H && y(bandLow) > 0 && (
+                <line x1={0} y1={y(bandLow)} x2={W} y2={y(bandLow)}
+                  stroke={C.good} strokeWidth={1} strokeDasharray="3 3" opacity={0.7}
+                  vectorEffect="non-scaling-stroke" />
+              )}
+              {bandHigh !== undefined && y(bandHigh) < H && y(bandHigh) > 0 && (
+                <line x1={0} y1={y(bandHigh)} x2={W} y2={y(bandHigh)}
+                  stroke={C.good} strokeWidth={1} strokeDasharray="3 3" opacity={0.7}
+                  vectorEffect="non-scaling-stroke" />
+              )}
+            </>
+          );
+        })()}
 
         {/* Each segment its own path, so it can reach across on arrival. */}
         {points.slice(1).map((p, i) => (
@@ -370,21 +391,20 @@ function LabChart({
           />
         ))}
 
-        {points.map((p, i) => (
-          <g key={p.id} className={"fhj-lab-node" + (i === selected ? " is-on" : "")}>
-            <circle
-              cx={x(i)}
-              cy={y(p.value)}
-              r={i === selected ? 3.4 : 2.4}
-              fill={i === selected ? C.accent : C.card}
-              stroke={C.accent}
-              strokeWidth={1.4}
-              vectorEffect="non-scaling-stroke"
-              style={{ animationDelay: `${i * 90}ms` }}
-            />
-          </g>
-        ))}
       </svg>
+
+      {/* Nodes over the chart rather than in it: the SVG stretches
+          horizontally, which turns a circle into an ellipse. Same reasoning as
+          the sun disc on the solar arc. */}
+      <div className="fhj-lab-nodes" aria-hidden>
+        {points.map((p, i) => (
+          <span
+            key={p.id}
+            className={"fhj-lab-node" + (i === selected ? " is-on" : "")}
+            style={{ left: `${x(i)}%`, top: `${(y(p.value) / H) * 100}%`, animationDelay: `${i * 90}ms` }}
+          />
+        ))}
+      </div>
 
       {/* Real buttons over the nodes: an SVG circle is not a tap target. */}
       <div className="fhj-lab-picks">

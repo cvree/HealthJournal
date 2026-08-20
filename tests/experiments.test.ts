@@ -11,6 +11,7 @@ import {
   highlightDates, newExperiment, pairDays, runAll, runExperiment,
   sanitizeExperiments, sortResults, STARTERS, suggestExperiments,
 } from "../src/lib/experiments";
+import { splitPoint } from "../src/lib/experiments";
 import { journalDates, variables } from "../src/lib/series";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -260,9 +261,12 @@ describe("before/after experiments", () => {
 describe("describeSide", () => {
   const v = { k: "sun_minutes", label: "Time outside", unit: "min", dir: "neutral" as const, sec: "Sun", kind: "sun" as const, value: () => null };
 
-  it("says the threshold in the factor's own unit", () => {
-    expect(describeSide(v, 15, "high")).toBe("15 min+ time outside");
-    expect(describeSide(v, 15, "low")).toBe("under 15 min time outside");
+  it("says the threshold in the factor's own unit, and on the right side of it", () => {
+    /* The high half is x > threshold, strictly. "15 min+" would put the
+       threshold itself in the sentence's high half and in the arithmetic's
+       low half — an off-by-one somebody checking by hand would find. */
+    expect(describeSide(v, 15, "high")).toBe("time outside above 15 min");
+    expect(describeSide(v, 15, "low")).toBe("time outside at or below 15 min");
   });
 
   it("reads a yes/no factor as a thing that happened", () => {
@@ -399,5 +403,67 @@ describe("experimentTitle", () => {
     expect(experimentTitle(vars.find((v) => v.k === "water"), vars.find((v) => v.k === "sleep")))
       .toBe("Water × Sleep quality");
     expect(experimentTitle(undefined, undefined)).toBe("Untitled experiment");
+  });
+});
+
+describe("splitPoint", () => {
+  it("lands on the median for evenly spread values", () => {
+    expect(splitPoint([1, 2, 3, 4, 5])).toBe(2);
+    expect(splitPoint([1, 2, 3, 4])).toBe(2);
+  });
+
+  it("divides a balanced bimodal factor into its two clumps", () => {
+    const water = [...Array(20).fill(2), ...Array(20).fill(9)];
+    const t = splitPoint(water)!;
+    expect(water.filter((v) => v > t).length).toBe(20);
+    expect(water.filter((v) => v <= t).length).toBe(20);
+  });
+
+  it("divides an *unbalanced* bimodal factor rather than putting every day on one side", () => {
+    /* The case that shipped broken: eighty days at nine, forty at two. The
+       median is nine, and a strict "above" test then compares 120 days
+       against none. */
+    const water = [...Array(40).fill(2), ...Array(80).fill(9)];
+    const t = splitPoint(water)!;
+    expect(water.filter((v) => v > t).length).toBe(80);
+    expect(water.filter((v) => v <= t).length).toBe(40);
+  });
+
+  it("never cuts inside a run of equal values, because that split does not exist", () => {
+    const t = splitPoint([1, 5, 5, 5, 5, 9])!;
+    expect([1, 5]).toContain(t);
+  });
+
+  it("refuses to split a factor that never varies", () => {
+    expect(splitPoint([4, 4, 4, 4])).toBeNull();
+    expect(splitPoint([])).toBeNull();
+  });
+
+  it("leaves an experiment on an unvarying factor collecting rather than comparing to nothing", () => {
+    const flat = {
+      entries: Array.from({ length: 60 }, (_, i) => ({
+        date: day(i * 3), answers: { water: 5, sleep: 4 + (i % 5) },
+      })),
+      fields: FIELDS,
+    };
+    const r = runExperiment(exp(), flat);
+    expect(r.threshold).toBeNull();
+    expect(r.headline).toBe("");
+    expect(r.evidence.stage).toBe("collecting");
+  });
+
+  it("compares two real halves on the unbalanced case, end to end", () => {
+    const src2 = {
+      entries: Array.from({ length: 120 }, (_, i) => ({
+        date: day(i * 2),
+        answers: { water: i % 3 === 0 ? 2 : 9, sleep: i % 3 === 0 ? 4 : 8 },
+      })),
+      fields: FIELDS,
+    };
+    const r = runExperiment(exp(), src2);
+    expect(r.high.n).toBeGreaterThan(20);
+    expect(r.low.n).toBeGreaterThan(20);
+    expect(r.difference).toBe(4);
+    expect(r.headline).toContain("has averaged");
   });
 });

@@ -213,19 +213,43 @@ export function pairDays(exp: Experiment, factor: Variable, outcome: Variable, d
 
 /** Where to cut the days in two.
 
-    The *lower* median, not the upper one, and that detail is load-bearing. A
-    factor people actually track is usually bimodal — nine glasses of water on
-    the days you remember and two on the days you don't — and with an even
-    split the upper median *is* the top group's own value, so a strict
-    "above the line" test puts every day below it and the experiment compares
-    fifty days against none. Cutting at the lower median puts the two clumps on
-    opposite sides, which is what somebody means by "the days I had a lot".
+    Not the median — the cut that actually *divides*, which is a different
+    thing and the difference is load-bearing.
 
-    Returns null when there is nothing to cut. */
+    A factor people really track is rarely a smooth spread. It is nine glasses
+    of water on the days you remember and two on the days you don't, and often
+    not in equal numbers: eighty days at nine and forty at two. The median of
+    that is nine, and a strict "above the line" test then puts all hundred and
+    twenty days *below* it and compares a hundred and twenty against nothing.
+    The experiment looks like it is working and is comparing one group to the
+    empty set.
+
+    So the split is chosen from the values that are actually present, and the
+    one picked is whichever leaves the two halves closest in size. On evenly
+    spread data that lands on the median anyway; on the water case it lands on
+    two, which is exactly what somebody means by "the days I had a lot".
+
+    Returns null when there is nothing to cut, and null when every day carries
+    the same value — that factor cannot be split at all, and saying so is more
+    honest than picking a line with nothing on one side of it. */
 export function splitPoint(values: number[]): number | null {
   if (!values.length) return null;
   const xs = [...values].sort((a, b) => a - b);
-  return xs[Math.floor((xs.length - 1) / 2)];
+  const n = xs.length;
+  let best: number | null = null;
+  let bestGap = Infinity;
+  for (let i = 0; i < n - 1; i += 1) {
+    /* Only at a real boundary — cutting inside a run of equal values would
+       claim a split that does not exist. */
+    if (xs[i] === xs[i + 1]) continue;
+    const low = i + 1;
+    const gap = Math.abs(n - 2 * low);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = xs[i];
+    }
+  }
+  return best;
 }
 
 export function runExperiment(exp: Experiment, src: SeriesSources, allVars?: Variable[]): ExperimentResult {
@@ -456,19 +480,24 @@ function missingCount(dates: string[], factor: Variable, outcome: Variable, lag:
 const trim = (n: number): string => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
 const unitOf = (v: Variable): string => (v.unit ? ` ${v.unit}` : "");
 
-/** "15+ minutes outside", "a higher humidity", "the cream taken". The phrase
-    the headline puts after "On days with". */
+/** "time outside above 15 min", "dairy", "no dairy". The phrase the headline
+    puts after "On days with".
+
+    The wording tracks the arithmetic exactly. The high half is `x > threshold`,
+    strictly — so it is "above 15 min", never "15 min+", which would include
+    the threshold itself and put it on the wrong side of the sentence from the
+    side it is actually counted on. A number nobody can check is bad; a number
+    somebody checks and finds off by one is worse. */
 export function describeSide(v: Variable, threshold: number | null, side: "high" | "low"): string {
-  if (threshold == null) return side === "high" ? `more ${v.label.toLowerCase()}` : `less ${v.label.toLowerCase()}`;
+  const name = v.label.toLowerCase();
+  if (threshold == null) return side === "high" ? `more ${name}` : `less ${name}`;
   /* A yes/no factor splits at 0 and reads as a thing that happened, not as a
      number above a line. */
   if (threshold === 0 && v.dir !== "neutral") {
-    return side === "high" ? v.label.toLowerCase() : `no ${v.label.toLowerCase()}`;
+    return side === "high" ? name : `no ${name}`;
   }
-  const t = trim(threshold);
-  return side === "high"
-    ? `${t}${unitOf(v)}+ ${v.label.toLowerCase()}`
-    : `under ${t}${unitOf(v)} ${v.label.toLowerCase()}`;
+  const t = `${trim(threshold)}${unitOf(v)}`;
+  return side === "high" ? `${name} above ${t}` : `${name} at or below ${t}`;
 }
 
 /* ---------- suggesting them ----------

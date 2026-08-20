@@ -290,8 +290,10 @@ function PairedDots({
 
   return (
     <div className="fhj-exp-dots">
+      <div className="fhj-exp-plot">
       <svg
         viewBox={`0 0 ${W} ${H}`}
+        style={{ height: 96 }}
         preserveAspectRatio="none"
         role="img"
         aria-label={`${pairs.length} paired days. ${outcomeVar?.label || "Outcome"} against ${factorVar?.label || "factor"}.`}
@@ -316,19 +318,30 @@ function PairedDots({
             stroke={C.accent} strokeWidth={1.4} opacity={0.9} vectorEffect="non-scaling-stroke"
           />
         )}
+      </svg>
+
+      {/* The dots are positioned over the SVG rather than drawn inside it.
+
+          The chart stretches horizontally (preserveAspectRatio="none"), which
+          is right for the split line and the two averages — they are lines
+          across a width — and wrong for a dot: a circle in that viewBox comes
+          out an ellipse four times wider than it is tall. Percentages over the
+          same box give identical coordinates and round dots. */}
+      <div className="fhj-exp-dot-layer" aria-hidden>
         {pairs.map((p, i) => (
-          <circle
+          <span
             key={`${p.date}-${i}`}
             className="fhj-exp-dot"
-            cx={px(p.x)}
-            cy={py(p.y)}
-            r={1.9}
-            fill={C.ink}
-            opacity={p.side === "high" ? 0.75 : 0.35}
-            style={{ animationDelay: `${Math.min(600, i * 12)}ms` }}
+            data-side={p.side}
+            style={{
+              left: `${px(p.x)}%`,
+              top: `${(py(p.y) / H) * 100}%`,
+              animationDelay: `${Math.min(600, i * 12)}ms`,
+            }}
           />
         ))}
-      </svg>
+      </div>
+      </div>
       <div className="fhj-exp-dots-axes">
         <span>{factorVar?.label || "Factor"} →</span>
         <button

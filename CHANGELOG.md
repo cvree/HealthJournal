@@ -99,9 +99,17 @@ starter list of real questions in plain words, from its own suggestions, or from
 a picker that can put *anything against anything* — a symptom against the
 pollen count, a meal against the next morning, a lab value against a season.
 
-The split is the person's **own median**, not a threshold from a guideline, so
-both halves exist. Fifty days with two above the line is two days of evidence
-wearing fifty days' clothing, and the ladder grades on the smaller half.
+The split is chosen from the values the person actually logged, and the one
+picked is whichever leaves the two halves closest in size. That is not the
+same as the median, and the difference matters: a factor people really track
+is rarely a smooth spread — it is nine glasses of water on the days you
+remember and two on the days you don't, often eighty of the first and forty of
+the second. The median of *that* is nine, so a strict "above the line" test
+puts all hundred and twenty days below it and compares them against nothing.
+Fifty days with two above the line is also two days of evidence wearing fifty
+days' clothing, so the ladder grades on the smaller half. And a factor that
+never varies cannot be split at all — the card says so and stays collecting,
+rather than reporting a comparison with an empty side.
 
 And nothing is reported until that ladder says so. **Collecting** is a progress
 bar and a count — not a result with a caveat on it, because a sentence with a

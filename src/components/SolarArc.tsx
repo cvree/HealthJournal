@@ -100,6 +100,10 @@ export default function SolarArc({
     <div className="fhj-arc" data-variant={variant}>
       <svg
         viewBox={`0 0 ${w} ${height}`}
+        /* Stretched horizontally, fixed vertically — see the note on
+           `.fhj-arc svg`. The viewBox is 100 units wide whatever the screen
+           is, so every x below is a percentage of the day. */
+        style={{ height }}
         preserveAspectRatio="none"
         role="img"
         aria-label={
@@ -112,18 +116,13 @@ export default function SolarArc({
       >
         <defs>
           <linearGradient id={`${id}sky`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.accent} stopOpacity={0.22} />
-            <stop offset="100%" stopColor={C.accent} stopOpacity={0.02} />
+            <stop offset="0%" stopColor={C.accent} stopOpacity={0.34} />
+            <stop offset="100%" stopColor={C.accent} stopOpacity={0.04} />
           </linearGradient>
           <linearGradient id={`${id}uvb`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.warn} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={C.warn} stopOpacity={0.04} />
+            <stop offset="0%" stopColor={C.warn} stopOpacity={0.32} />
+            <stop offset="100%" stopColor={C.warn} stopOpacity={0.06} />
           </linearGradient>
-          <radialGradient id={`${id}glow`}>
-            <stop offset="0%" stopColor={C.warn} stopOpacity={0.85} />
-            <stop offset="55%" stopColor={C.warn} stopOpacity={0.22} />
-            <stop offset="100%" stopColor={C.warn} stopOpacity={0} />
-          </radialGradient>
           <clipPath id={`${id}clip`}>
             <path d={fill || "M0,0"} />
           </clipPath>
@@ -143,6 +142,17 @@ export default function SolarArc({
               height={horizon}
               fill={`url(#${id}uvb)`}
             />
+            {/* Two hairlines at the edges: without them the band blends into
+                the sky and stops reading as a *window* — which is the one
+                thing it is there to say. */}
+            {[uvbSpan[0], uvbSpan[1]].map((edge, i) => (
+              <line
+                key={i}
+                x1={x(edge)} y1={0} x2={x(edge)} y2={horizon}
+                stroke={C.warn} strokeWidth={1} opacity={0.55}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
           </g>
         )}
 
@@ -178,24 +188,25 @@ export default function SolarArc({
         {light.sunrise && <Foot x={x(light.sunrise)} y={horizon} />}
         {light.sunset && <Foot x={x(light.sunset)} y={horizon} />}
 
-        {/* The sun. */}
-        {nowSample && (
-          <g className={sunUp ? "fhj-arc-sun is-up" : "fhj-arc-sun"}>
-            <circle
-              cx={x(nowSample.at)}
-              cy={y(Math.max(0, nowSample.elevation))}
-              r={variant === "hero" ? 13 : 9}
-              fill={`url(#${id}glow)`}
-            />
-            <circle
-              cx={x(nowSample.at)}
-              cy={y(Math.max(0, nowSample.elevation))}
-              r={variant === "hero" ? 3.6 : 2.6}
-              fill={sunUp ? C.warn : C.muted}
-            />
-          </g>
-        )}
       </svg>
+
+      {/* The sun is drawn *over* the SVG rather than inside it.
+
+          The arc stretches horizontally (preserveAspectRatio="none"), which is
+          right for a path — a day is a percentage of a width — and wrong for a
+          disc: a circle in that viewBox comes out an ellipse four times wider
+          than it is tall. Positioning it in percentages over the same box gives
+          the same coordinates and a round sun. */}
+      {nowSample && (
+        <span
+          className={"fhj-arc-sun" + (sunUp ? " is-up" : "")}
+          aria-hidden
+          style={{
+            left: `${x(nowSample.at)}%`,
+            top: `${(y(Math.max(0, nowSample.elevation)) / height) * 100}%`,
+          }}
+        />
+      )}
 
       {labels && (
         <div className="fhj-arc-feet">
