@@ -558,3 +558,52 @@ describe("the permission screens say what they do", () => {
     await waitFor(() => expect(saved().profile.sun.skin).toBe(4));
   });
 });
+
+describe("a flare lights its own period up", () => {
+  it("offers the whole stretch, and lands on it", async () => {
+    await mount((db) => {
+      const key = I.getProfileTemplate(db.profile).keyMetric;
+      db.profile.context = { enabled: true, location: "manual", place: HERE, units: "metric" };
+      db.episodes = [{
+        id: "ep1", title: "Bad fortnight", metric: key,
+        start: daysAgo(20), end: daysAgo(6),
+        createdAt: "", updatedAt: "",
+      }];
+      db.entries = Array.from({ length: 40 }, (_, i) => ({
+        id: `e${i}`, date: daysAgo(i), answers: { [key]: 5 },
+        quickLogCompleted: true, createdAt: "", updatedAt: "",
+      }));
+      db.context = db.entries.map((e: any) => ctxDay(e.date));
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /Insights|How have you been/i }));
+    fireEvent.click(await screen.findByText("Bad fortnight", {}, { timeout: 8000 }));
+    const light = await screen.findByRole("button", { name: /Light these 15 days up/ });
+    fireEvent.click(light);
+
+    expect(await screen.findByText("Lit days")).toBeTruthy();
+    const bar = screen.getByRole("status", { name: "Illuminated days" });
+    expect(within(bar).getByText(/15 days lit/)).toBeTruthy();
+  });
+});
+
+describe("the privacy card tracks what is actually switched on", () => {
+  it("promises no network at all while everything is off", async () => {
+    await mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Read the rest/ }));
+    expect(await screen.findByText("No network")).toBeTruthy();
+    expect(screen.queryByText("Weather, not whereabouts")).toBeNull();
+  });
+
+  it("rewrites its own promise once daily context is on, rather than leaving a stale one", async () => {
+    await mount((db) => {
+      db.profile.context = { enabled: true, location: "manual", place: HERE, units: "metric" };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Read the rest/ }));
+    expect(await screen.findByText("Weather, not whereabouts")).toBeTruthy();
+    expect(screen.getByText(/rounded to about a kilometre/)).toBeTruthy();
+    expect(screen.queryByText("No network")).toBeNull();
+  });
+});

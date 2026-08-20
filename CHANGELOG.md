@@ -1,5 +1,205 @@
 # Changelog
 
+## 1.21.0
+
+Four things a journal cannot get from asking questions, and one seam that makes
+them a single product rather than four features.
+
+### The day around the day
+
+A journal that only holds what somebody typed is missing the half of their life
+that happened to them. It was 34°C. The pressure dropped eleven hectopascals
+overnight. The pollen was the highest it had been all spring. None of that is
+anybody's fault, none of it is worth a daily question, and all of it is exactly
+the sort of thing that turns up in a chart six months later and explains a
+fortnight nobody could account for.
+
+So, with permission, every day now gets a context record attached: temperature,
+humidity, barometric pressure **and its change**, weather, UV index, sunrise and
+sunset, daylight duration, air quality, PM2.5 and PM10, and pollen where it is
+published. It comes from Open-Meteo, which needs no account and no key.
+
+Three rules shape it, and they are the whole design.
+
+**Ask once, plainly, and mean it.** This is the only switch in the app that
+turns on an automatic outbound request. It is off until somebody turns it on,
+the settings card says exactly what is sent and what comes back in a list
+somebody could check against a network tab, and turning it off stops the
+requests on the next render. There is no queue to drain.
+
+**Store the weather, not the person's movements.** Coordinates are rounded to
+two decimal places — about a kilometre — *before* anything is written down or
+sent, in one function, once, so there is a single place to check. What is kept
+per day is a reading of the sky. There is no location history here, and the
+export column is called `latitude_coarse` because that is all there ever was.
+
+**Invisible until it is meaningful.** Context is not a weather app bolted onto a
+health app. It sits behind a day as a wash whose colour comes from the
+temperature and whose *loudness* comes from how far that day sat from this
+journal's own middle — so an ordinary day is nearly invisible and a 34°C one is
+not, and the same code reads correctly in Reykjavík and in Phoenix. Above the
+recent days, a temperature trace: highs, lows, and the day you are looking at.
+
+And when it has something to say, it says it as a count of somebody's own days.
+*8 of your 10 hardest days were above 29°C.* Never a coefficient, never below
+twenty days of overlap, and never a cause — the vocabulary lives in one module
+so the causal-language audit can read every phrase it can produce.
+
+### Sun & Outdoor Light
+
+One tap: **Start sun session**. What opens is drawn from the sun's own
+arithmetic rather than from a stock illustration. The curve is the actual solar
+elevation at that latitude on that date, sampled every ten minutes; the shaded
+band under it is the stretch where there is enough UVB for synthesis to be
+plausible; the thicker overlay is the part of it spent outside; the disc is
+where the sun is now. Which means it looks flat and bandless in December,
+because December *is* flat and bandless — and at 69°N in midwinter it says the
+sun does not rise, rather than printing NaN o'clock.
+
+Running alongside: a stopwatch legible from across a garden, live UV index
+(a forecast value where there is one, a modelled clear-sky value otherwise, and
+the screen says which), the sun's height and bearing, minutes outside, ambient
+UV dose in SED, and the estimate.
+
+**Estimated vitamin D — ~1,800–2,600 IU — research-model estimate · not a
+measurement.** Personalised on UV over the actual session, latitude, date and
+time, skin type, age, exposed body area, clothing, sunscreen, shade and
+duration. It is a range because the honest width of this estimate is much
+larger than any point value implies, the assumptions behind it are listed in
+full one tap away, and it is dressed as an estimate everywhere it appears —
+including in the spreadsheet, where the column is called
+`vitamin_d_estimated_iu_low` and the one beside it is called
+`vitamin_d_estimate_is_a_model_not_a_measurement`. A blood test measures
+vitamin D. This does not.
+
+The model plateaus rather than climbing: past roughly one minimal erythemal
+dose, skin stops making more and starts breaking down what it has, and an app
+whose number keeps rising is quietly telling somebody a longer burn is a bigger
+benefit. Beside the estimate runs the burn scale — the only element on the
+screen allowed to change colour, because it is the only thing that can go
+wrong — and the atmosphere behind the whole screen warms with it.
+
+Also tracked: outdoor light minutes, ambient UV dose, first outdoor light after
+waking (a circadian number, deliberately kept away from anything about vitamin
+D, because at 8am there is essentially no UVB to claim), the best upcoming
+sunlight window, and the next likely vitamin-D-producing window — which
+correctly answers "none in the next week" in a British January instead of
+inventing one.
+
+### Personal experiments
+
+*Does morning sunlight relate to better sleep? Does humidity line up with my
+eczema? Did anything change after I started this cream?* Every one of those is
+answerable from data the app already has, and every one of them is ordinarily
+answered by scrolling back through six weeks of entries and guessing.
+
+An experiment is a factor, an outcome, a lag and a way of splitting the days in
+two. The app builds the smallest one that could answer the question, from a
+starter list of real questions in plain words, from its own suggestions, or from
+a picker that can put *anything against anything* — a symptom against the
+pollen count, a meal against the next morning, a lab value against a season.
+
+The split is the person's **own median**, not a threshold from a guideline, so
+both halves exist. Fifty days with two above the line is two days of evidence
+wearing fifty days' clothing, and the ladder grades on the smaller half.
+
+And nothing is reported until that ladder says so. **Collecting** is a progress
+bar and a count — not a result with a caveat on it, because a sentence with a
+caveat is still a sentence somebody will remember. Then **Emerging**: *something
+may be forming*. Then **Useful**: *on days with 15 min+ time outside, your sleep
+quality has averaged 0.9 points higher.* Then **Well established in your
+journal**, which needs ninety paired days across three separate months.
+
+Underneath, every paired day is a dot, placed by its own two values and split at
+the threshold, with each half's average drawn as the level its dots sit around.
+Two clouds at different heights *is* the finding. Overlapping clouds is the null
+result — and the app draws it the same way, in the same ink, because it is not
+more excited about a positive.
+
+### Evidence, everywhere, on one ladder
+
+One module now decides what "strong" means, so *Useful* on an experiment card
+and *Useful* on an insight are the same claim about the same kind of evidence.
+Four rungs, counted in paired days, spread across weeks and months — a burst of
+forty days from one fortnight is capped at Emerging however clean it looks,
+because that is one fortnight of somebody's life.
+
+No confidence percentages. A percentage is a promise about a population, and
+this app has a sample size of one and no control group. What it can honestly
+say is how many paired days there are, how they are spread, and what is missing
+— and **Why am I seeing this?** opens exactly that: usable observations, days
+missing one side, the comparison window, how the days were split, consistency,
+the lag used, and the limitations, which include the three standing ones that
+are true of every finding this app can ever make.
+
+### Labs & measurements
+
+Vitamin D, ferritin, HbA1c, TSH, B12, cholesterol, blood pressure, weight, or
+anything at all with a name and a number. Each result carries its test, value,
+unit, date and time, **the reference range the laboratory printed**, fasting
+status, provider, a note and optionally a photo of the report.
+
+That range is the point. Ranges differ between laboratories, between assays and
+between countries, and an app that substitutes its own for the one on the report
+is telling somebody their result is abnormal on the strength of a constant in a
+file. So the range travels on the record, the catalog's is offered as a prefill
+that says whose it is, and a result recorded without one gets **no band, no
+colour and no verdict**.
+
+The screen is built around one idea: a new value arrives into its own history.
+The segment reaches back from the previous reading to the new one, the delta
+counts up beside it — *38 ng/mL, up 14 over 92 days* — and under the line, the
+band fills in with what else the journal held during that gap: ☀ time outside
+increased, ◍ a supplement started, ▲ a flare, ❈ the season turned, → days
+recorded somewhere else. With, in as many words, the line that says this is a
+memory aid and not an explanation.
+
+And where the test is 25(OH)D, the measured blood level sits beside the
+estimated production from sunlight over the eight weeks before the draw — two
+panels, two units, two headings, one solid border and one dashed. Never one
+axis.
+
+### They talk to each other
+
+Tap a coincidence on Insights, an experiment's half, "light these days up" under
+the dots, a lab period, or a flare, and *those exact days* light up — in
+History, which reorders itself to show them, in the temperature trace behind
+them, and in the thirty-day sun history. One set of days, one banner naming what
+lit them, one Clear, surviving navigation between screens.
+
+Sunlight is experiment data. Weather is context on every day. Labs are timeline
+events with the journal drawn underneath them. Flares shade the charts and can
+illuminate their own fortnight. Experiments can compare a lab value against the
+weather. It is one connected memory rather than five new features.
+
+### And on paper
+
+The appointment pack gains two sections, in the order the conversation runs in:
+**Measurements**, with each test's series, the laboratory's own range and
+whether the latest reading sits inside it, and **Time outside**, with total
+daylight, the average on a day outside, and the estimate printed as an estimate
+in its own row with the sentence that keeps it apart from a blood result.
+Exports gain three sheets — Measurements, Time outside and Weather — each named
+so a spreadsheet opened in two years still says which numbers somebody measured
+and which this app modelled.
+
+### Under it
+
+Seven new typed modules, none of which read a clock: `solar` (NOAA solar
+position, sunrise/sunset, daylight, clear-sky UV, minimal erythemal dose,
+vitamin D synthesis), `sun` (sessions, live accumulation, daily aggregates,
+metrics), `context` (consent, coarse location, fetching, parsing, observations),
+`labs` (catalog, unit conversion, series, reference ranges, what-else-happened),
+`experiments` (pairing, splitting, suggesting), `evidence` (the one ladder), and
+`series` (the seam that lets any of them be compared against any other).
+
+New collections in the journal — `sun`, `labs`, `experiments`, `context` — each
+sanitised on every load like everything before them, each carried in backups and
+exports, and each validated well enough that the recovery screen can say what
+was wrong rather than quietly dropping them.
+
+**223 new tests. 1,278 across 53 suites, all green.**
+
 ## 1.20.0
 
 ### The first run knows who it is for

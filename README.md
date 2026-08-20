@@ -11,7 +11,7 @@ There is no account, no server, and no tracking. Out of the box, after the app h
 it makes **no network requests at all** — it installs to a phone's Home Screen and works
 completely offline.
 
-Two things can change that, both opt-in, both off until you turn them on, and both leaving
+Three things can change that, all opt-in, all off until you turn them on, and all leaving
 everything else working exactly as it does now:
 
 - **AI observations.** Add your own Google Gemini API key in Settings and it sends a minimal
@@ -20,6 +20,10 @@ everything else working exactly as it does now:
   encrypted on your device before it's uploaded, with a passphrase that never leaves it. Local
   saves still never wait for the network. [How it works, and what it doesn't
   claim.](#optional-sync-across-devices)
+- **Daily context.** Turn it on and each day gets the weather attached — temperature, pressure,
+  UV, air quality, pollen. The request carries a latitude and longitude rounded to about a
+  kilometre and *nothing else*: no identifier, no name, nothing from your journal. What is stored
+  is a reading of the sky, not a record of where you were.
 
 > **Not medical advice.** This is a personal tracking tool. It does not diagnose, treat, cure, or
 > prevent any condition. It surfaces *possible patterns* in your own logs and never claims a cause.
@@ -285,6 +289,85 @@ thirty pairs however large the coefficient; the default shape is a grouped compa
 a scatter, because "on the days you logged more of this, that averaged 6.8 rather than 5.4" is a
 sentence you can act on carefully and a cloud of dots with a coefficient is one you will act on
 confidently; and "not proof that one causes the other" is on screen at all times.
+
+**The day around the day (optional, off by default).** A journal that only holds what you typed
+is missing the half of your life that happened to you. Switch on daily context and every day
+quietly gets the weather attached: temperature, humidity, barometric pressure *and its change*,
+conditions, UV index, sunrise and sunset, daylight duration, air quality, PM2.5 and PM10, and
+pollen where it's published. Two rules make that safe to have. Your coordinates are rounded to
+about a kilometre **before** anything is written down or sent, in one function, once — what's
+stored is a reading of the sky, not a record of where you were, and the export column is called
+`latitude_coarse` because that's all there ever was. And it stays invisible until it means
+something: behind a day as a wash whose loudness comes from how unusual that day was against
+*your own* range, as a temperature trace above your recent days, and — only when it has something
+to say — as a count of your own days. *8 of your 10 hardest days were above 29°C.* Never a
+coefficient, never below twenty days of overlap, never a cause. The settings card lists exactly
+what is sent and what comes back, in enough detail to check against a network tab, and turning it
+off stops the requests immediately.
+
+**Sun & Outdoor Light.** One tap starts a session, and what opens is drawn from the sun's own
+arithmetic rather than from an illustration: the curve is the real solar elevation at your
+latitude on today's date, the shaded band is where there's enough UVB for synthesis to be
+plausible, the thicker overlay is the part you've spent outside, and the disc is where the sun is
+now. It looks flat and bandless in December because December is. Alongside it run a stopwatch,
+live UV (a forecast value where there is one, a modelled clear-sky value otherwise — the screen
+says which), the sun's height and bearing, minutes outside, ambient UV dose in SED, and
+**estimated vitamin D: ~1,800–2,600 IU, research-model estimate · not a measurement.**
+Personalised on the UV over your actual session, latitude, date, skin type, age, exposed body
+area, clothing, sunscreen and shade, printed as a range because the honest width of the estimate
+is wider than any single number implies, with every assumption listed one tap away. The model
+plateaus rather than climbing, because past about one minimal erythemal dose your skin stops
+making more — an app whose number keeps rising is telling you a longer burn is a bigger benefit.
+Beside it runs the burn scale, the only element on the screen allowed to change colour, and the
+atmosphere behind the whole screen warms with it. Also kept: first outdoor light after waking
+(a circadian number, deliberately separate from anything about vitamin D), the best upcoming
+window, and the next vitamin-D-producing one — which correctly says *none in the next week* in a
+British January instead of inventing one.
+
+**Personal experiments.** *Does morning sunlight relate to better sleep? Does humidity line up
+with my eczema? Did anything change after I started this cream?* Ask, and the app builds the
+smallest comparison that could answer it — from a list of real questions in plain words, from its
+own suggestions once you have the history for one, or from a picker that can put anything against
+anything: a symptom against the pollen count, a meal against the next morning, a lab value against
+a season. Your days are split at **your own median**, so both halves exist; the ladder grades on
+the smaller half, because fifty days with two above the line is two days of evidence in fifty
+days' clothing. And nothing is reported until the ladder allows it. *Collecting* is a progress bar
+and a count — not a hedged result, because a sentence with a caveat on it is still a sentence you
+will remember. Then *Emerging: something may be forming.* Then *Useful: on days with 15 min+ time
+outside, your sleep quality has averaged 0.9 points higher.* Underneath, every paired day is a dot
+placed by its own two values, split at the threshold, with each half's average drawn as the level
+its dots sit around — two clouds at different heights *is* the finding, and overlapping clouds is
+the null result, drawn identically, because the app is not more excited about a positive.
+
+**One ladder for everything the app claims.** *Useful* on an experiment and *Useful* on an insight
+are now the same claim about the same kind of evidence: four rungs counted in paired days and in
+how far they're spread. Forty days from a single fortnight is capped at Emerging however clean it
+looks. There are no confidence percentages anywhere — a percentage is a promise about a
+population, and this is a sample of one with no control group. **Why am I seeing this?** opens the
+working instead: usable observations, days missing one side, the comparison window, how the days
+were split, consistency, the lag used, and the limitations — including the three that are true of
+every finding this app can ever make.
+
+**Labs & measurements.** Vitamin D, ferritin, HbA1c, TSH, B12, cholesterol, blood pressure,
+weight, or anything at all with a name and a number. Each result keeps its value, unit, date and
+time, **the reference range your laboratory printed**, fasting status, provider, a note and a
+photo of the report. That range is the whole point: ranges differ between labs, assays and
+countries, so a result recorded without one gets no band, no colour and no verdict — this app
+does not know what normal is for somebody else's assay. A new value arrives *into* its history:
+the line reaches back from the previous reading, the delta counts up beside it (*38 ng/mL, up 14
+over 92 days*), and the band underneath fills in with what else your journal held during the gap —
+☀ time outside increased, ◍ a supplement started, ▲ a flare, ❈ the season turned — with the line
+that says this is a memory aid and not an explanation. Where the test is 25(OH)D, your measured
+blood level sits beside the estimated production from sunlight over the eight weeks before the
+draw: two panels, two units, two headings, one solid border and one dashed. Never one axis.
+
+**Tap a finding, and the days light up everywhere.** A coincidence on Insights, an experiment's
+half, a lab period, a flare — tap any of them and *those exact days* illuminate: History reorders
+itself to show them, the temperature trace behind them marks them, and so does the thirty-day sun
+history. One set of days, one banner naming what lit them, one Clear, surviving navigation.
+Sunlight is experiment data; weather is context on every day; labs are timeline events with your
+journal drawn underneath them; flares shade the charts and can illuminate their own fortnight.
+One connected memory rather than five separate features.
 
 **Your year, on one screen.** Under the 30-day chart sits the whole last twelve months of the
 selected 1–10 metric: one row per month, one square per day, a distinct shade for every score

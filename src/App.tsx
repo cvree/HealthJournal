@@ -5325,7 +5325,7 @@ function EpisodeStat({ label, value, unit, detail, tone }) {
 
 function EpisodeDetailScreen({
   profile, entries, episodes, episodeId, food = [], bowel = [], routine = [], routineItems = [],
-  openLog, goBack, onEnd, onUpdate, onDelete, viewer,
+  openLog, goBack, onEnd, onUpdate, onDelete, viewer, context = [], onHighlight,
 }) {
   const tpl = getProfileTemplate(profile);
   const t0 = todayStr();
@@ -5429,6 +5429,36 @@ function EpisodeDetailScreen({
           </Button>
         </Card>
       )}
+
+      {/* The flare's own weather, and the way into every other surface that
+          draws these days. Tapping it is the same illuminate the coincidences
+          and the experiments use — one set of days, one set of highlights, the
+          whole way through the app. */}
+      {(() => {
+        const span = datesBetween(ep.start, end);
+        const weather = context.filter((c) => c.date >= ep.start && c.date <= end);
+        if (!span.length) return null;
+        return (
+          <Card className="mt-2.5">
+            <div className="fhj-eyebrow mb-2">The days themselves</div>
+            {weather.length > 3 && (
+              <>
+                <TempTrace rows={weather} markDate={ep.start} />
+                <p className="text-[11.5px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+                  {contextLineFor(weather[Math.floor(weather.length / 2)], profile.context?.units)
+                    || "The weather across these days."}
+                </p>
+              </>
+            )}
+            {onHighlight && (
+              <Button variant="outline" block className={weather.length > 3 ? "mt-3" : ""}
+                onClick={() => onHighlight(span, `${ep.title} — ${fmtNice(ep.start)} to ${fmtNice(end)}`)}>
+                Light these {span.length} days up
+              </Button>
+            )}
+          </Card>
+        );
+      })()}
 
       {(s.baseline != null || s.after != null || s.sincePrevious != null) && (
         <Card className="mt-2.5">
@@ -8507,7 +8537,8 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
       </Card>
 
       <PrivacyCard aiEnabled={db.ai?.enabled === true} aiAuto={db.ai?.enabled === true && db.ai?.auto === true}
-        syncOn={!!syncStatus && syncStatus.phase !== "off"} syncEmail={syncStatus?.email} />
+        syncOn={!!syncStatus && syncStatus.phase !== "off"} syncEmail={syncStatus?.email}
+        contextOn={db.profile.context?.enabled === true} />
       <p className="text-[11px] mt-4 text-center" style={{ color: C.subtle }}>
         {APP_NAME} {APP_VERSION} ·{" "}
         {syncStatus && syncStatus.phase !== "off"
@@ -8730,7 +8761,7 @@ function SunProfileCard({ profile, onSave }) {
    and sync. Both rewrite their own line rather than leaving a promise standing
    that the app has stopped keeping. A privacy card that is right by default and
    quietly wrong once you use a feature is worse than no card. */
-function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEmail = null }) {
+function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEmail = null, contextOn: ctxOn = false }) {
   const [open, setOpen] = useState(false);
   const facts = [
     syncOn
@@ -8740,6 +8771,12 @@ function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEm
       ? ["Encrypted before it's uploaded", "Your entries are sealed on this device with a key derived from your sync passphrase, which is never sent anywhere. The server holds dates and unreadable blocks. Because the app is delivered over the web, this can't protect you from someone who controls the site itself — and no HIPAA or medical-records claim is made."]
       : ["No server", "Your entries, photos, and reports are written to this browser's storage and never uploaded. There is no backend to upload them to."],
     ["No tracking", "No analytics, no cookies, no advertising or third-party scripts of any kind."],
+    /* Daily context is the third thing that can change the network line, and
+       the only one that touches location — so it gets its own row rather than
+       being folded into the sentence below, which people skim. */
+    ...(ctxOn
+      ? [["Weather, not whereabouts", "Daily context is on. Once an hour at most, this device asks a weather service for the conditions at a latitude and longitude rounded to about a kilometre — no identifier, no name, nothing from your journal. What comes back is stored as a reading of the sky per day. Your precise location is rounded before it is used and is never written down."] as [string, string]]
+      : []),
     // This claim has to track reality, not the ideal. Turning on AI
     // observations adds exactly one outbound call — the card says so, on the
     // card, rather than leaving a promise standing that is no longer true.
@@ -8749,7 +8786,9 @@ function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEm
         ? ["One network call, on request", "AI observations are on. Nothing is sent automatically: each analysis you ask for sends a summary of your logged numbers to your AI provider, and shows you exactly what before it goes. Everything else still stays here, and the rest of the app works offline."]
         : syncOn
           ? ["Still offline-first", "Saving never waits for the network. Everything is written here first and sent afterwards, so a full day logged in airplane mode is normal — it catches up when you're back."]
-          : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations or sync in Settings is what changes this.)"],
+          : ctxOn
+            ? ["One quiet request a day", "Daily context is the only thing here that reaches the network, and it only ever asks for the weather. Everything else stays on this device, and a full day logged in airplane mode is still normal — the weather simply fills in later."]
+            : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations, sync, or daily context in Settings is what changes this.)"],
     ["Your files, your move", "Exports and backups are ordinary files saved to your device. Where they go next is entirely up to you."],
   ];
   return (
@@ -17097,7 +17136,8 @@ export default function App({ viewer = false }) {
         food={db.food || []} bowel={db.bowel || []}
         routine={db.routine || []} routineItems={db.routineItems || []}
         openLog={goToLog} goBack={() => setScreen("insights")}
-        onEnd={finishFlare} onUpdate={patchEpisode} onDelete={dropEpisode} viewer={viewer} />
+        onEnd={finishFlare} onUpdate={patchEpisode} onDelete={dropEpisode} viewer={viewer}
+        context={db.context || []} onHighlight={illuminate} />
     );
   } else if (screen === "sun") {
     content = (

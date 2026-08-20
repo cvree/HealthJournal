@@ -846,6 +846,106 @@
 > screen-reader pass not done.
 
 
+> **2026-08-20 addendum 25 — 1.21: the sun, the sky, an experiment and a lab result — and the seam
+> that makes them one product.**
+>
+> **Seven new typed modules, none of which read a clock.** Every function that needs "now" is
+> handed it, which is what lets the live session screen, the "next window" card and the test suite
+> run the same code and agree.
+>
+> - **`src/lib/solar.ts`** — NOAA low-precision solar position, sunrise/sunset/solar noon (with a
+>   real `polar: true` branch: `hourAngle` returns NaN and everything downstream becomes `null`
+>   rather than NaN o'clock), daylight duration, `daySamples()`, clear-sky UV, SED arithmetic,
+>   `minutesToBurn`, `uvbFraction`, `estimateVitaminD`, and the window finders. **Calibration is
+>   load-bearing and pinned by tests**: `clearSkyUV = 12·sin(elev)^2.2` fits the published
+>   clear-sky curve (8.7 at 60°, 5.6 at 45°, 2.6 at 30°); `IU_CONSTANT = 12500` puts the reference
+>   case (fair skin, ~80% BSA, one MED) at 8–20k IU and a realistic twenty minutes in a t-shirt in
+>   the hundreds-to-low-thousands. SPF is credited at ~40% of its label because nobody applies
+>   2 mg/cm². Synthesis **plateaus** (`1 − e^(−1.6·medFraction)`), so more sun never buys
+>   proportionally more estimate. The estimate is always a ±35% range and always carries its
+>   `assumptions[]` as *data*, so the disclosure panel cannot drift out of step with the maths.
+> - **`src/lib/sun.ts`** — `SunSession` (a snapshot: skin, exposure, shade, SPF and the sample arc
+>   are copied at log time, so correcting a skin type in Settings can never rewrite a past day),
+>   `LiveSession` held in React state and *never* in `db` (a half-finished session would sync to
+>   another device as one that is somehow still running there), `readout()` integrating dose over
+>   samples rather than UV-now × duration, `burnState()`, `finishSession()`, `manualSession()`,
+>   `sunDay`/`sunTotals`, `firstLightAfterWaking`, and `SUN_METRICS`.
+> - **`src/lib/context.ts`** — `ContextConsent` (off, `location: "device"|"manual"|"off"`),
+>   `coarse()` (2 dp ≈ 1 km, applied **before** storage or a request, in one place), `DayContext`,
+>   Open-Meteo URL builders + `parseForecast`/`mergeAir` split from the fetch so the parsing is
+>   testable without a network, `withPressureChange` (never across a gap), `mergeContexts`,
+>   `needsRefresh`, `CONTEXT_METRICS`, and the observation builders. `hardDayObservation` needs
+>   ≥20 overlapping days and ≥2/3 of the hardest days on one side of the median;
+>   `bandObservation` needs ≥8 days each side and a ≥0.5-point gap.
+> - **`src/lib/labs.ts`** — `LabResult` with `kind: "measurement" | "estimate"` (the type-level
+>   guard that keeps a sunlight estimate out of the lab column), a 21-test catalog with unit
+>   conversions, `labSeries()` (converts a mixed-unit history onto the **latest** unit, converting
+>   the lab's own range with it), `rangeStatus` (`"unknown"` when no range was captured — the
+>   catalog range is a *prefill*, never a verdict), `changesBetween()`, and `vitaminDBesideSun()`.
+> - **`src/lib/experiments.ts`** — `Experiment` (`split` | `beforeAfter`), `splitPoint()` (the
+>   **lower** median, not the upper: a bimodal factor like "9 glasses on the days I remember, 2 on
+>   the days I don't" puts every day below an upper median and produces a 50-vs-0 comparison),
+>   evidence graded on `min(high, low) × 2`, `suggestExperiments`, `STARTERS`.
+> - **`src/lib/evidence.ts`** — one ladder for the whole app.
+>   `EMERGING_AT/USEFUL_AT/ESTABLISHED_AT = 12/30/90`, plus `USEFUL_WEEKS = 3` and
+>   `ESTABLISHED_PERIODS = 3` months, so a burst of days is capped at Emerging. **No confidence
+>   percentages anywhere** — pinned by a test that greps the serialised output for `\d+%`.
+>   `STANDING_LIMITATIONS` is on every report.
+> - **`src/lib/series.ts`** — the seam. `variables(sources)` flattens survey answers, food, bowel,
+>   routine, sun, environment and labs into one list of `{ k, label, unit, dir, sec, kind,
+>   value(date) }`, which is how an experiment compares a pollen count against a symptom without
+>   either side knowing about the other.
+>
+> **New db slices**, all sanitised on every load like everything before them: `db.sun`, `db.labs`,
+> `db.experiments`, `db.context`, plus `profile.context` (consent) and `profile.sun` (skin type,
+> usual exposure, waking time). `SCHEMA_VERSION = 3`. All four are in `buildFullBackup` and in the
+> JSON export; the *consent* rides inside `profile` deliberately — unlike the AI opt-in, it
+> describes what the journal may contain rather than what a device may send.
+>
+> **New screens** (`sun`, `experiments`, `labs`), reached from three new doors on History and from
+> two new Quick Add tiles (`sun`, `lab`). New components: `SunScreen`, `SolarArc`,
+> `ExperimentsScreen`, `LabsScreen`, `EvidenceMeter`, `DayContext` (`SkyGlyph`, `ContextWash`,
+> `ContextStrip`, `TempTrace`, `washScale`).
+>
+> **`lit` — the cross-feature glue.** App-level state `{ dates: Set<string>, label: string }`, set
+> by `illuminate(dates, label)` from a context observation, an experiment half, "light these days
+> up", a lab period or a flare. History reorders to show exactly those days and shows a
+> `.fhj-lit-bar` naming what lit them; `TempTrace` and the sun history mark them. It lives in App
+> rather than in a screen precisely so it survives navigation.
+>
+> **Gotcha, and the one that nearly repeated 1.0's crash.** The shared derivations
+> (`allVariables`, `experimentResults`, `experimentSuggestions`, `experimentStarters`) sit *below*
+> the lock-flow early returns in `App()`. They were first written with `useMemo` — a conditional
+> hook, which is the exact shape of the React #310 crash documented in addendum 7. They are now
+> plain expressions gated on `screen`, so Today computes only pinned experiments and every other
+> screen computes none. **Do not add a hook below those early returns.**
+>
+> **Two other gotchas.** (1) The daily-context effect is the only unprompted network call in the
+> app; it is guarded on consent, on `contextBusy`, on once-an-hour, and on `needsRefresh`, and it
+> fails silently — an error banner over somebody's health data because a forecast API had a bad
+> minute is the tail wagging the dog. (2) Decorative tile glyphs (☀ ◎ ⌁) are `aria-hidden`, or
+> they end up inside the accessible name ("☀SunTime outside") and every query for the button
+> breaks.
+>
+> **Appointment pack + exports.** Two new pack sections (`labs`, `sun`, both default-on, both
+> explaining themselves in `omitted` when empty) and three new XLSX sheets (Measurements, Time
+> outside, Weather). The sun sheet's columns are deliberately long —
+> `vitamin_d_estimated_iu_low/high` and `vitamin_d_estimate_is_a_model_not_a_measurement` — because
+> in a spreadsheet six months later, next to a column of laboratory values, `vitamin_d_iu` would be
+> a lie by omission. `appointmentPack.ts` now imports `convertValue` from `labs.ts` so the printed
+> series matches the app's.
+>
+> **Tests: 1,278 across 53 suites** (was 1,217/52). New: `solar` (40), `sun` (31), `context` (42),
+> `labs` (36), `experiments` (41), `nextGenUi` (36, driven through the real app rather than
+> mounting screens in isolation — the release's claim is that the systems talk to each other, so a
+> test that mounts one alone would pass while the wiring was broken), plus 12 export-table and 12
+> pack-section tests. Every new module's user-facing copy passes `causalLanguageAudit`.
+>
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done. Wearables / Apple Health passive collection deliberately deferred
+> to the next expansion.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User
