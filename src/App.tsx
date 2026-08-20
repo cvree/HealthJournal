@@ -877,6 +877,19 @@ function migrateBackdropPref(prefs) {
   }
 }
 
+/** Age in whole years, from the birth year the setup stored.
+
+    The setup asks "how old are you" and writes down the year that implies,
+    which is the only version of this that survives contact with time: an age
+    typed in 2026 and printed unchanged in 2029 is a wrong number on the one
+    page whose entire job is to be handed to a clinician. */
+function profileAge(profile) {
+  const y = profile?.birthYear;
+  if (typeof y !== "number" || !Number.isFinite(y)) return null;
+  const age = new Date().getFullYear() - y;
+  return age >= 0 && age < 130 ? age : null;
+}
+
 function blankProfile() {
   const now = new Date().toISOString();
   return { id: "p_self", name: "", modules: [], disabledFields: [], customQuestions: [],
@@ -5976,7 +5989,7 @@ function AppointmentPackScreen({ db, setDb, params, goBack, viewer }) {
         <AppointmentPackView
           pack={pack}
           meta={{
-            name: profile.name, setup: tpl.label,
+            name: profile.name, age: profileAge(profile), setup: tpl.label,
             appName: APP_NAME, version: APP_VERSION, printedOn: t0,
             disclaimer: DISCLAIMER, patternNote: PATTERN_NOTE,
           }}
@@ -6220,6 +6233,7 @@ function ExportScreen({ db, setDb, goPack }) {
 
     const profRows = [{
       profile_id: profile.id, profile_name: profile.name,
+      profile_age: profileAge(profile) ?? "",
       profile_template: getProfileTemplate(profile).label,
       created_at: profile.createdAt, updated_at: profile.updatedAt,
       entries_in_export: count,
@@ -8485,6 +8499,13 @@ const VISIBILITY_FLAGS = [
 
 function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
   const [name, setName] = useState(profile.name || "");
+  /* Held as an age because that is what a person knows about themselves, and
+     written back as a birth year because that is what stays true. An empty
+     box is a real answer: it clears the year rather than storing a zero. */
+  const [age, setAge] = useState(() => {
+    const a = profileAge(profile);
+    return a == null ? "" : String(a);
+  });
   const [modules, setModules] = useState(new Set(profile.modules?.length ? profile.modules : []));
   const [disabledFields, setDisabledFields] = useState(new Set(profile.disabledFields || []));
   const [customQuestions, setCustomQuestions] = useState(profile.customQuestions || []);
@@ -8496,11 +8517,14 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
 
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }
+    const n = Number(age);
+    const validAge = age.trim() !== "" && Number.isFinite(n) && n >= 0 && n < 130;
     onSave({
       name: name.trim(), modules: Array.from(modules), disabledFields: Array.from(disabledFields),
       customQuestions, fieldOrder: order, fieldOverrides: overrides, cameraTimer, keyMetric,
+      birthYear: validAge ? new Date().getFullYear() - Math.round(n) : undefined,
     });
-  }, [name, modules, disabledFields, customQuestions, order, overrides, cameraTimer, keyMetric]); // eslint-disable-line
+  }, [name, age, modules, disabledFields, customQuestions, order, overrides, cameraTimer, keyMetric]); // eslint-disable-line
 
   const toggleModule = (k) => {
     if (modules.has(k)) {
@@ -8673,7 +8697,17 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
     <div className="px-4 pb-10 pt-3">
       <label className="fhj-eyebrow block" htmlFor="fhj-setup-name">Your name (optional)</label>
       <input id="fhj-setup-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Connor"
-        className="fhj-input mt-2 mb-6" />
+        className="fhj-input mt-2 mb-4" />
+
+      <label className="fhj-eyebrow block" htmlFor="fhj-setup-age">Your age (optional)</label>
+      <input id="fhj-setup-age" value={age} inputMode="numeric" maxLength={3}
+        onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, ""))}
+        placeholder="e.g. 34" className="fhj-input mt-2" />
+      <p className="text-[11.5px] leading-relaxed mt-2 mb-6" style={{ color: C.subtle }}>
+        Both are printed at the top of your appointment packs, summaries and exports, so a
+        clinician can see whose logs they're reading. Stored on this device like everything else —
+        the age is kept as the year you were born, so it stays right.
+      </p>
 
       <div className="fhj-eyebrow">Question packs — turn on everything that fits you</div>
       <div className="flex flex-col gap-2 mt-2.5 mb-3">
@@ -10294,6 +10328,7 @@ function ReportScreen({ db, setDb, params, goBack }) {
         <div className="print-title">{APP_NAME} — {range.type === "month" ? "monthly" : "weekly"} summary</div>
         <div className="print-meta">
           <span>{profile.name || tpl.label}</span>
+          {profileAge(profile) != null && <span>{profileAge(profile)} years old</span>}
           <span>{range.label}</span>
           <span>{range.days} daily {range.days === 1 ? "entry" : "entries"}</span>
           <span>Printed {fmtNice(todayStr())}</span>
@@ -13543,12 +13578,13 @@ function TodayNutritionStrip({ food, date }) {
 /** Time-of-day greeting. Small thing, but it is the difference between an app
     that opens with its own name — which the user already knows, they tapped
     the icon — and one that opens by acknowledging the person holding it. */
-function greetingFor(d = new Date()) {
+function greetingFor(d = new Date(), name = "") {
   const h = d.getHours();
-  if (h < 5) return "Still up";
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
+  const hello = h < 5 ? "Still up" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  /* First name only. A journal that greets somebody by their full legal name
+     is not greeting them, and the name field takes whatever they typed. */
+  const first = (name || "").trim().split(/\s+/)[0];
+  return first ? `${hello}, ${first}` : hello;
 }
 
 /** One-tap repeat.
@@ -14458,7 +14494,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
       <div className="flex items-start justify-between gap-3 pt-5 pb-1">
         <div className="min-w-0">
           <div className="text-[12.5px] font-medium" style={{ color: C.subtle }}>
-            {viewer ? "Read-only viewer · nothing is saved" : greetingFor()}
+            {viewer ? "Read-only viewer · nothing is saved" : greetingFor(new Date(), profile.name)}
           </div>
           <h1 className="font-display text-[1.75rem] leading-tight mt-0.5">{fmtNice(todayStr())}</h1>
         </div>
@@ -14783,12 +14819,6 @@ function FIRST_RUN_PACKS() {
    everybody, which is the part that matters. */
 const FIRST_RUN_EXTRAS = [
   {
-    id: "photos", label: "Photos", icon: "camera", spots: true,
-    blurb: "Line each shot up with the last one and watch it change",
-    tile: { label: "Photo", icon: "camera" },
-    suggest: ["eczema", "allergy", "carnivore", "autoimmune"],
-  },
-  {
     id: "routine", label: "Meds & creams", icon: "pill",
     blurb: "A daily checklist of what you take and use",
     tile: { label: "Routine", icon: "pill" },
@@ -14819,6 +14849,77 @@ const FIRST_RUN_EXTRAS = [
     suggest: ["carnivore", "thyroid"],
   },
 ];
+
+/* What is worth photographing.
+
+   Photos used to be one tick in the list above, and then the app guessed what
+   they were of: a body map if the pack looked like skin, a single front-on
+   progress shot if it did not. Both guesses are wrong for most people. The
+   person with IBS wants the plate; the person starting a new cream wants the
+   ingredient list on the tub; the person whose ankle swells wants the ankle.
+   None of them were ever going to find that behind a switch labelled "Photos".
+
+   So this is the same ground asked properly — *of what* — and each answer
+   becomes a real photo question with its own baseline, so every shot lines up
+   against the last one of the same subject.
+
+   `suggest` is which conditions arrive with it ticked. Same rule as the
+   extras: the app is allowed an opinion, everything is offered to everybody. */
+const FIRST_RUN_PHOTO_SUBJECTS = [
+  {
+    id: "areas", label: "Specific body areas", icon: "camera", kind: "spots", frame: "square",
+    blurb: "Pick them off a body map — each area keeps its own run of photos",
+    suggest: ["eczema", "allergy", "autoimmune", "joint"],
+  },
+  {
+    id: "flare", label: "Flare-ups, as they happen", icon: "spark", frame: "square",
+    blurb: "One shot of whatever it looks like today, wherever it is",
+    suggest: ["eczema", "allergy", "autoimmune"],
+  },
+  {
+    id: "progress", label: "Progress shots", icon: "target", kind: "progress", frame: "tall",
+    blurb: "Same pose, weeks apart — front, side or back",
+    suggest: ["carnivore", "thyroid"],
+  },
+  {
+    id: "meal", label: "Meals", icon: "food", frame: "square",
+    blurb: "The plate, before you forget what was in it",
+    suggest: ["ibs", "allergy", "carnivore", "migraine"],
+  },
+  {
+    id: "label", label: "Products & labels", icon: "tube", frame: "tall",
+    blurb: "The tub, the box, the ingredient list you'll want to re-read later",
+    suggest: ["eczema", "allergy"],
+  },
+  {
+    id: "swelling", label: "Swelling", icon: "drop", frame: "square",
+    blurb: "Hands, ankles, anywhere that changes size on a bad day",
+    suggest: ["joint", "autoimmune", "pots"],
+  },
+  {
+    id: "healing", label: "Wounds & healing", icon: "heart", frame: "square",
+    blurb: "Anything closing up, week by week",
+    suggest: [],
+  },
+  {
+    id: "anything", label: "Anything worth a picture", icon: "star", frame: "square",
+    blurb: "A catch-all shot for the day — a rash, a bruise, a swollen eye",
+    suggest: ["migraine", "fatigue", "wellness", "pots", "thyroid", "ibs"],
+  },
+];
+
+/* The photo question each subject becomes. `rated` decides whether the camera
+   also asks for a 1–10 afterwards, which is right for a flare and absurd for a
+   plate of food; `required` is whether a photo session chases it, which only
+   the deliberate, repeatable subjects should. */
+const PHOTO_SUBJECT_FIELDS = {
+  flare: { k: "c_photo_flare", label: "Flare photo", category: "skin", rated: true, required: true },
+  meal: { k: "c_photo_meal", label: "Meal photo", category: "custom", rated: false, required: false },
+  label: { k: "c_photo_label", label: "Product or label", category: "custom", rated: false, required: false },
+  swelling: { k: "c_photo_swelling", label: "Swelling", category: "skin", rated: true, required: false },
+  healing: { k: "c_photo_healing", label: "Wound / healing", category: "skin", rated: true, required: false },
+  anything: { k: "c_photo_any", label: "Photo of the day", category: "custom", rated: false, required: false },
+};
 
 /** What each extra turns on: the Quick Add buttons it lights up, and whether
     it changes the profile itself. Kept beside the catalogue so that adding an
@@ -14887,6 +14988,23 @@ function buildOnboardProfile(sel) {
     });
   }
 
+  /* The subjects that are not a body area and not a progress angle: one photo
+     question each, sitting beside the mapped ones under the same heading. A
+     pack that already asks for the same thing is left alone rather than
+     duplicated, on the same rule the body areas follow above. */
+  for (const id of sel.photoSubjects || []) {
+    const spec = PHOTO_SUBJECT_FIELDS[id];
+    if (!spec) continue;
+    const match = fields.find((f) => f.type === "photo" && f.k === spec.k);
+    if (match) { packPhotoUsed.add(match.k); continue; }
+    custom.push({
+      ...F.photo(spec.k, spec.label, {
+        sec: "Photos", category: spec.category, bodyPart: "", side: "",
+        rated: spec.rated, linkedTo: null, requiredInSession: spec.required,
+      }), custom: true,
+    });
+  }
+
   const weightInPacks = fields.some((f) => f.k === "weight");
   if (sel.weightOn && !weightInPacks) {
     custom.push({ k: "c_weight", label: "Weight", type: "number", unit: "lb", min: 0, max: 700, step: 0.1, dir: "neutral", quick: true, sec: "Body", custom: true });
@@ -14920,6 +15038,10 @@ function buildOnboardProfile(sel) {
 
   return {
     id: "p_self", name: (sel.name || "").trim(), modules: [...sel.modules],
+    /* An age typed once and stored as a number is a number that is wrong a
+       year later, on a document whose whole job is to be handed to a
+       clinician. The birth year it implies keeps telling the truth. */
+    birthYear: sel.birthYear ?? undefined,
     disabledFields: disabled, customQuestions: custom, fieldOrder: [], fieldOverrides: overrides,
     keyMetric,
     photoBaselines: {}, cameraTimer: 3, prefs: { ...DEFAULT_PREFS }, createdAt: now, updatedAt: now,
@@ -14955,11 +15077,15 @@ function firstRunProfile(choice) {
   const extras = new Set(choice.extras || []);
   const customs = (choice.customQuestions || [])
     .map((c, i) => buildCustomField({ label: c.label, kind: c.type }, i));
-  const spots = extras.has("photos") ? (choice.spots || []) : [];
-  /* Photos with no body areas behind them means the other kind of photo: one
-     progress shot, front on, which is what a journal that isn't about skin
-     takes. */
-  const progressAngles = extras.has("photos") && spots.length === 0 ? ["Front"] : [];
+
+  /* The photos act answers *of what*, so nothing here has to be guessed any
+     more: body areas only if they asked for the map, angles only if they asked
+     for progress shots, and one question per plain subject. */
+  const subjects = choice.photoSubjects || [];
+  const spots = subjects.includes("areas") ? (choice.spots || []) : [];
+  const progressAngles = subjects.includes("progress")
+    ? (choice.progressAngles || []).filter((a) => ["Front", "Side", "Back"].includes(a))
+    : [];
 
   const profile = buildOnboardProfile({
     modules: choice.modules,
@@ -14967,12 +15093,21 @@ function firstRunProfile(choice) {
     spots,
     weightOn: extras.has("weight"),
     progressAngles,
-    name: "",
+    photoSubjects: subjects,
+    name: choice.name || "",
+    birthYear: choice.age ? new Date().getFullYear() - choice.age : undefined,
     customs,
     keyMetric: choice.keyMetric,
   });
 
-  profile.quickAdd = firstRunQuickAdd(profile, extras);
+  /* The camera button is earned by having something to point at, not by a
+     switch: a Photo tile on a journal with no photo questions behind it opens
+     an apology. */
+  const hasPhotos = (profile.customQuestions || []).some((q) => q.type === "photo")
+    || spots.length > 0 || progressAngles.length > 0;
+  const tileExtras = hasPhotos ? new Set([...extras, "photos"]) : extras;
+
+  profile.quickAdd = firstRunQuickAdd(profile, tileExtras);
   if (choice.reminder) {
     profile.reminders = [newReminder({
       label: "Daily check-in", time: choice.reminder, kind: "checkin", enabled: true,
@@ -15525,6 +15660,9 @@ export default function App({ viewer = false }) {
       ...prev,
       profile: {
         ...prev.profile, name: draft.name, modules: draft.modules, disabledFields: draft.disabledFields,
+        /* Cleared on purpose when the box is emptied: "I'd rather not say" has
+           to be a thing somebody can change their mind into. */
+        birthYear: draft.birthYear,
         customQuestions: draft.customQuestions, fieldOrder: draft.fieldOrder, fieldOverrides: draft.fieldOverrides,
         keyMetric: draft.keyMetric ?? prev.profile.keyMetric,
         cameraTimer: draft.cameraTimer ?? prev.profile.cameraTimer ?? 3,
@@ -15684,6 +15822,7 @@ export default function App({ viewer = false }) {
         <FirstRun
           packs={FIRST_RUN_PACKS()}
           extras={FIRST_RUN_EXTRAS}
+          photoSubjects={FIRST_RUN_PHOTO_SUBJECTS}
           promises={PROMISES}
           Icon={Icon}
           BodyMap={BodyMap}

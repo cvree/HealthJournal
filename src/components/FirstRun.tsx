@@ -10,38 +10,63 @@
    the fast path is the cheap one and the real setup is somewhere else, and it
    makes the person who most needs help choose, on screen two, between being
    rushed and being buried. There is one path now, it is the good one, and it
-   is composed as six acts:
+   is composed as eight screens — a doorway, five numbered acts, and a birth:
 
      1. **The promise.** One line, and a glimpse of a journal already alive —
         a rating, a photograph, a note, a trend, a flare that ended. The claim
         the app is making, shown rather than explained. The privacy facts are
         one tap below it, before anything has been typed.
-     2. **The only question that cannot be defaulted.** What are you tracking?
-     3. **What it will ask you.** Their check-in, in their own words, with a
-        live count of how long a day will take and their own questions welcome
-        at the bottom. Everything is already answered — this is somebody
-        adjusting a thing that works, never filling in a form.
-     4. **What else it should keep.** Photos, meals, doses, flares, a nudge in
-        the evening. Every choice here lights up a one-tap button on their
+     2. **Who this is for.** A name and an age, both refusable, neither
+        numbered — this is a doorway, not step one of anything. It is here
+        because everything after it is warmer for having been asked: the app
+        greets them by name every morning, and the two facts a clinician asks
+        for first are already at the top of anything they print. The screen
+        says exactly what each one buys, out loud, and then leaves the door
+        open — because a journal that guilts you on screen two is one you stop
+        opening on day four.
+     3. **The only question that cannot be defaulted.** What are you tracking?
+     4. **What it will ask you.** Their check-in, in their own words. This is
+        the act that has to *teach* — most people have never been asked to
+        design a survey, so the answer control is drawn beside every question
+        rather than named, the questions can be sorted by how they are
+        answered (a 1–10, a yes or no, a number, a few words), and the whole
+        check-in can be previewed exactly as it will look tomorrow morning.
+        Everything is already answered — this is somebody adjusting a thing
+        that works, never filling in a form.
+     5. **What is worth a photograph.** Not "do you want photos" — *of what*.
+        Body areas on a map, flare-ups, progress shots, meals, the label on
+        the tub. The contact sheet fills in as they pick, and every frame on
+        it is a shot the camera button will offer them.
+     6. **What else it should keep.** Meals, doses, flares, a nudge in the
+        evening. Every choice here lights up a one-tap button on their
         dashboard, and the row of buttons assembles under their thumb as they
         pick — the app being built in front of them out of their own answers.
-     5. **The first entry.** Real, not a demo. The number they pick is written
+     7. **The first entry.** Real, not a demo. The number they pick is written
         to their journal.
-     6. **The journal beginning.** The card they just filled in physically
+     8. **The journal beginning.** The card they just filled in physically
         becomes the first card on their timeline, the rail draws itself
         downward into the days they have not lived yet, and the streak counts
         to one.
 
-   Two rules hold the middle three together, and they are the reason this can
-   be four steps without feeling like four steps:
+   Two rules hold the middle acts together, and they are the reason this can
+   be five steps without feeling like five steps:
 
    - **Nothing is ever demanded.** Every screen after the first arrives already
      answered with a sensible default, so Continue is always live and a person
      who wants to be through in thirty seconds still can be.
    - **Every choice shows its consequence immediately.** Switching a question
-     off changes the "about 25 seconds a day" line under it. Ticking Photos
-     puts a camera button in the preview row. Nothing is filed away to be
-     discovered later; the app is assembled in front of the person making it.
+     off changes the "about 25 seconds a day" line under it. Typing a name
+     changes the greeting quoted underneath it. Choosing a photo subject puts
+     a frame on the contact sheet and a camera button in the preview row.
+     Nothing is filed away to be discovered later; the app is assembled in
+     front of the person making it.
+
+   And one rule holds the personal screen on its own:
+
+   - **Encouraged, never extracted.** Every optional thing this flow asks for
+     says what it is for, in the same breath, and has a visible way past it.
+     "Why we ask" is on the screen rather than behind a link, and skipping is
+     a real button rather than a greyed-out apology.
 
    Every animation here is a no-op under `prefers-reduced-motion`, and each act
    is composed so the still frame *is* the finished layout. Nothing is animated
@@ -102,8 +127,23 @@ export interface FirstRunExtra {
   tile?: { label: string; icon: string };
   /** Modules this is pre-ticked for. Everything is always *offered*. */
   suggest?: string[];
-  /** Photos: opens the body map underneath when it is on. */
-  spots?: boolean;
+}
+
+/** Something worth photographing. The photos act is not "do you want photos"
+    — it is *of what*, because "photos: on" is a setting and "the inside of my
+    left elbow, every Sunday" is a journal. */
+export interface FirstRunPhotoSubject {
+  id: string;
+  label: string;
+  blurb: string;
+  icon: string;
+  /** `spots` opens the body map beneath it; `progress` opens the front / side
+      / back chips; anything else is one plain shot. */
+  kind?: "spots" | "progress" | "photo";
+  /** Modules this is pre-ticked for. Everything is always *offered*. */
+  suggest?: string[];
+  /** How the frame is drawn on the contact sheet. */
+  frame?: "tall" | "square";
 }
 
 export interface FirstRunCustom {
@@ -118,6 +158,11 @@ export interface FirstRunSpot {
 }
 
 export interface FirstRunChoice {
+  /** What they want to be called. Empty when they skipped it. */
+  name: string;
+  /** Age in whole years at setup, or null when they skipped it. The journal
+      stores the birth year this implies, so it never goes stale. */
+  age: number | null;
   modules: string[];
   keyMetric: string | null;
   score: number | null;
@@ -127,6 +172,10 @@ export interface FirstRunChoice {
   /** Questions the person wrote themselves. */
   customQuestions: { label: string; type: string }[];
   extras: string[];
+  /** Photo subject ids, from the catalogue passed in. */
+  photoSubjects: string[];
+  /** Which progress angles, when the progress subject is on. */
+  progressAngles: string[];
   spots: FirstRunSpot[];
   /** "HH:MM" for a daily nudge, or null for none. */
   reminder: string | null;
@@ -135,6 +184,8 @@ export interface FirstRunChoice {
 type Props = {
   packs: FirstRunPack[];
   extras: FirstRunExtra[];
+  /** What the photos act is allowed to offer. */
+  photoSubjects?: FirstRunPhotoSubject[];
   onComplete: (choice: FirstRunChoice) => void;
   onLoadSample: () => void;
   /** The app's icon set, passed in so this file draws nothing of its own. */
@@ -153,11 +204,15 @@ type Props = {
   promises?: [string, string][];
 };
 
-type Act = "hero" | "focus" | "tune" | "extras" | "entry" | "born";
+type Act = "hero" | "you" | "focus" | "tune" | "photos" | "extras" | "entry" | "born";
 
-/** The numbered part of the flow. The hero is before it and the birth is
-    after it — neither is a step somebody is being walked through. */
-const FLOW: Act[] = ["focus", "tune", "extras", "entry"];
+/** The numbered part of the flow. The hero, the personal screen and the birth
+    all sit outside it — none of them is a step somebody is being walked
+    through, and numbering the one that asks for a name would turn a welcome
+    into paperwork. */
+const FLOW: Act[] = ["focus", "tune", "photos", "extras", "entry"];
+
+const RAIL = ["Tracking", "Questions", "Photos", "Extras", "First entry"];
 
 const ramp = (v: number, dir?: string): string => {
   const bad = dir === "pos" ? 11 - v : v;
@@ -204,7 +259,40 @@ const CUSTOM_TYPES: [string, string, string][] = [
   ["scale", "1–10", "A severity or a rating"],
   ["toggle", "Yes / no", "Did it happen or not"],
   ["number", "A number", "Counts, minutes, anything measured"],
+  ["text", "A few words", "Whatever you want to say"],
 ];
+
+/* ---------- the four ways a question can be answered ----------
+
+   Almost nobody has designed a survey before, and the words for the parts of
+   one ("field type", "boolean") are worse than useless to somebody who is
+   trying to describe their own body. So the lens row names them the way an
+   answer feels — a 1–10, a yes or no, a number, a few words — and every
+   question in the list is drawn *with the control it will actually use*.
+   Nobody has to be taught what a yes/no question is once they can see the Yes
+   and the No sitting there. */
+type Lens = "all" | "scale" | "toggle" | "other";
+
+const LENSES: [Lens, string][] = [
+  ["all", "Everything"],
+  ["scale", "1–10"],
+  ["toggle", "Yes / no"],
+  ["other", "Numbers & words"],
+];
+
+const inLens = (type: string, lens: Lens): boolean =>
+  lens === "all" ? true : lens === "other" ? type !== "scale" && type !== "toggle" : type === lens;
+
+/* ---------- the age dial ----------
+
+   Stored as a birth year rather than an age, which is the whole reason the
+   readout says "born around 1991" underneath: a journal kept for three years
+   by somebody whose age was typed once and never touched again is a journal
+   that lies to a clinician about its author. The dial says out loud what is
+   being written down. */
+const AGE_MIN = 5;
+const AGE_MAX = 100;
+const AGE_DEFAULT = 32;
 
 const REMINDERS: [string | null, string, string][] = [
   ["08:00", "Morning", "8:00 am"],
@@ -382,12 +470,169 @@ function BigScale({ label, dir, value, onPick }: {
   );
 }
 
+/* ---------- drawing the answer, rather than naming it ----------
+
+   The old list said "yes / no" in six-point grey under each question, which is
+   a label about a control rather than the control. These draw the thing: ten
+   rungs, or a Yes beside a No, or a box with a number in it. It costs a few
+   pixels per row and it removes the entire class of "what does that mean"
+   from a screen that is asking somebody to design their own survey. */
+function MiniControl({ type }: { type: string }) {
+  if (type === "toggle") {
+    return (
+      <span className="fhj-fr-mini-ctl is-toggle" aria-hidden="true">
+        <span className="is-yes">Yes</span>
+        <span className="is-no">No</span>
+      </span>
+    );
+  }
+  if (type === "scale") {
+    return (
+      <span className="fhj-fr-mini-ctl is-scale" aria-hidden="true">
+        {Array.from({ length: 10 }, (_, i) => (
+          <span key={i} className={i < 4 ? "is-lit" : ""} />
+        ))}
+      </span>
+    );
+  }
+  if (type === "chips") {
+    return (
+      <span className="fhj-fr-mini-ctl is-chips" aria-hidden="true">
+        <span className="is-lit" /><span /><span />
+      </span>
+    );
+  }
+  if (type === "number") {
+    return <span className="fhj-fr-mini-ctl is-box" aria-hidden="true">12</span>;
+  }
+  if (type === "time") {
+    return <span className="fhj-fr-mini-ctl is-box" aria-hidden="true">08:00</span>;
+  }
+  if (type === "date") {
+    return <span className="fhj-fr-mini-ctl is-box" aria-hidden="true">12 Mar</span>;
+  }
+  return (
+    <span className="fhj-fr-mini-ctl is-lines" aria-hidden="true">
+      <span /><span /><span />
+    </span>
+  );
+}
+
+/** The same four controls at the size they are answered at, for the preview.
+    Not interactive on purpose: this is tomorrow morning being shown, and a
+    number tapped here would be a number that goes nowhere. */
+function PreviewField({ q }: { q: FirstRunQuestion }) {
+  return (
+    <div className="fhj-fr-pv-field">
+      <span className="fhj-fr-pv-label">{q.label}</span>
+      {q.type === "scale" && (
+        <>
+          <span className="fhj-fr-pv-scale">
+            {Array.from({ length: 10 }, (_, i) => <span key={i}>{i + 1}</span>)}
+          </span>
+          <span className="fhj-fr-pv-ends">
+            <span>{q.dir === "pos" ? "1 · low" : "1 · none"}</span>
+            <span>{q.dir === "pos" ? "10 · great" : "10 · severe"}</span>
+          </span>
+        </>
+      )}
+      {q.type === "toggle" && (
+        <span className="fhj-fr-pv-yn">
+          <span>Yes</span>
+          <span>No</span>
+        </span>
+      )}
+      {q.type === "chips" && (
+        <span className="fhj-fr-pv-chips">
+          <span>Pick any</span><span>that</span><span>apply</span>
+        </span>
+      )}
+      {q.type === "number" && <span className="fhj-fr-pv-box">A number, on a keypad</span>}
+      {q.type === "text" && <span className="fhj-fr-pv-box is-tall">A few words, in your own</span>}
+      {(q.type === "time" || q.type === "date") && (
+        <span className="fhj-fr-pv-box">{q.type === "time" ? "A time" : "A date"}</span>
+      )}
+    </div>
+  );
+}
+
+/* ---------- the age dial ----------
+
+   A number field with a keyboard over it is the fastest way to make somebody
+   feel like they are filling in a government form, and this is the screen that
+   can least afford it. So: a ruler with a decade marked every ten years, a
+   numeral big enough to read at arm's length, and the birth year written
+   underneath so what is actually being stored is never a mystery.
+
+   It is a real range input under the paint, which is what keeps it usable
+   with a keyboard, with a screen reader, and by anybody who cannot drag. */
+function AgeDial({ value, onChange, onClear }: {
+  value: number | null;
+  onChange: (n: number) => void;
+  onClear: () => void;
+}) {
+  const readRef = useRef<HTMLDivElement>(null);
+  const shown = value ?? AGE_DEFAULT;
+  const born = new Date().getFullYear() - shown;
+
+  useEffect(() => {
+    if (value != null) readoutSwap(readRef.current);
+  }, [value]);
+
+  return (
+    <div className={"fhj-fr-age" + (value == null ? " is-unset" : "")}>
+      <div className="fhj-fr-age-read" ref={readRef}>
+        <span className="fhj-fr-age-num">{value == null ? "—" : value}</span>
+        <span className="fhj-fr-age-word">
+          {value == null ? <>years old<br /><b>not set</b></> : <>years old<br /><b>born around {born}</b></>}
+        </span>
+      </div>
+
+      <div className="fhj-fr-age-track">
+        <span className="fhj-fr-age-ticks" aria-hidden="true">
+          {Array.from({ length: (AGE_MAX - AGE_MIN) / 5 + 1 }, (_, i) => (
+            <span key={i} className={(AGE_MIN + i * 5) % 10 === 0 ? "is-decade" : ""} />
+          ))}
+        </span>
+        <input
+          type="range" min={AGE_MIN} max={AGE_MAX} step={1} value={shown}
+          className="fhj-fr-age-input"
+          aria-label="Your age"
+          aria-valuetext={value == null ? "not set" : `${value} years old`}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (n !== value) feedback("select");
+            onChange(n);
+          }}
+        />
+      </div>
+
+      <div className="fhj-fr-age-ends">
+        <span>{AGE_MIN}</span>
+        {value == null
+          ? <span className="fhj-fr-age-note">drag to set</span>
+          : <button type="button" className="fhj-fr-age-clear"
+              onClick={() => { feedback("erase"); onClear(); }}>
+              Rather not say
+            </button>}
+        <span>{AGE_MAX}+</span>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- the component ---------- */
 
 export default function FirstRun({
-  packs, extras, onComplete, onLoadSample, Icon, BodyMap, spotLabel, appName, disclaimer, promises = [],
+  packs, extras, photoSubjects = [], onComplete, onLoadSample, Icon, BodyMap, spotLabel,
+  appName, disclaimer, promises = [],
 }: Props) {
   const [act, setAct] = useState<Act>("hero");
+
+  /* The doorway. Both refusable, and both are the difference between an app
+     that says "Good morning" and one that says "Good morning, Sam". */
+  const [name, setName] = useState("");
+  const [age, setAge] = useState<number | null>(null);
   const [mods, setMods] = useState<string[]>([]);
   const [metricKey, setMetricKey] = useState<string | null>(null);
   const [score, setScore] = useState<number | null>(null);
@@ -409,9 +654,18 @@ export default function FirstRun({
   const [draftType, setDraftType] = useState("scale");
   const [openSecs, setOpenSecs] = useState<Set<string> | null>(null);
 
-  /* Act four. */
-  const [picked, setPicked] = useState<Set<string> | null>(null);
+  /* Act three's teaching aids: which slice of the survey is on screen, and
+     whether the whole thing is being previewed as it will look tomorrow. */
+  const [lens, setLens] = useState<Lens>("all");
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  /* Act four: what is worth photographing. */
+  const [photoPicked, setPhotoPicked] = useState<Set<string> | null>(null);
   const [spots, setSpots] = useState<FirstRunSpot[]>([]);
+  const [angles, setAngles] = useState<string[]>(["Front"]);
+
+  /* Act five. */
+  const [picked, setPicked] = useState<Set<string> | null>(null);
   const [reminder, setReminder] = useState<string | null>("20:00");
 
   const heroRef = useRef<HTMLDivElement>(null);
@@ -531,20 +785,67 @@ export default function FirstRun({
   }, [extras, mods]);
   const chosenExtras = picked ?? suggestedExtras;
 
+  /* ---------- act four: what is worth a photograph ----------
+
+     Which subjects arrive ticked follows the packs, on the same rule the
+     extras use: the app is allowed an opinion, everything is still offered to
+     everybody, and the opinion is frozen the moment somebody touches one. */
+  const suggestedSubjects = useMemo(() => {
+    const out = new Set<string>();
+    for (const sub of photoSubjects) {
+      if ((sub.suggest || []).some((m) => mods.includes(m))) out.add(sub.id);
+    }
+    /* A body map is no use to somebody tracking migraines. Where the packs
+       don't photograph body areas, the map subject is dropped from the
+       suggestion even if a pack asked for it. */
+    if (!BodyMap || !chosen.some((p) => p.photoKind === "skin")) out.delete("areas");
+    return out;
+  }, [photoSubjects, mods, chosen, BodyMap]);
+  const chosenSubjects = photoPicked ?? suggestedSubjects;
+
   const wantsSpots = useMemo(
-    () => chosenExtras.has("photos") && chosen.some((p) => p.photoKind === "skin") && !!BodyMap,
-    [chosenExtras, chosen, BodyMap]
+    () => chosenSubjects.has("areas") && !!BodyMap,
+    [chosenSubjects, BodyMap]
   );
+  const wantsProgress = chosenSubjects.has("progress");
+
+  /* The contact sheet: one frame per shot the camera button will offer. This
+     is the payoff of the photos act — "photos: on" is a setting, and a row of
+     labelled frames is a journal. */
+  const shots = useMemo(() => {
+    const out: { key: string; label: string; frame: string }[] = [];
+    for (const sub of photoSubjects) {
+      if (!chosenSubjects.has(sub.id)) continue;
+      if (sub.kind === "spots") {
+        if (!BodyMap) continue;
+        for (const sp of spots) {
+          const l = spotLabel ? spotLabel(sp) : `${sp.side} ${sp.part}`.trim();
+          out.push({ key: `spot|${sp.part}|${sp.side}`, label: l.charAt(0).toUpperCase() + l.slice(1), frame: "square" });
+        }
+        continue;
+      }
+      if (sub.kind === "progress") {
+        for (const a of angles) out.push({ key: `angle|${a}`, label: `Progress · ${a.toLowerCase()}`, frame: "tall" });
+        continue;
+      }
+      out.push({ key: sub.id, label: sub.label, frame: sub.frame || "square" });
+    }
+    return out;
+  }, [photoSubjects, chosenSubjects, spots, angles, spotLabel, BodyMap]);
+
+  const photosOn = shots.length > 0;
 
   /* The row of one-tap buttons this setup is building, drawn as it is chosen.
-     Check-in always leads it — it is the one thing worth doing every day. */
+     Check-in always leads it — it is the one thing worth doing every day, and
+     the camera comes second whenever there is anything to point it at. */
   const previewTiles = useMemo(() => {
     const out = [{ label: "Check-in", icon: "log" }];
+    if (photosOn) out.push({ label: "Photo", icon: "camera" });
     for (const e of extras) {
       if (e.tile && chosenExtras.has(e.id)) out.push(e.tile);
     }
     return out;
-  }, [extras, chosenExtras]);
+  }, [extras, chosenExtras, photosOn]);
 
   const metric = useMemo(
     () => scales.find((s) => s.k === activeMetric) || scales.find((s) => enabled.has(s.k)) || scales[0] || null,
@@ -613,7 +914,20 @@ export default function FirstRun({
 
   /* ---------- actions ---------- */
 
-  const start = () => { feedback("complete"); dir.current = 1; setAct("focus"); };
+  const start = () => { feedback("complete"); dir.current = 1; setAct("you"); };
+
+  /* The name, as it will be said out loud. A journal that greets somebody by
+     their full legal name is not greeting them. */
+  const first = name.trim().split(/\s+/)[0] || "";
+
+  /* Refusing is a button, not a greyed-out apology — and it clears rather than
+     merely walks past, so nothing half-typed is kept by accident. */
+  const skipYou = () => {
+    feedback("skip");
+    setName("");
+    setAge(null);
+    go("focus");
+  };
 
   const togglePack = (key: string) => {
     feedback("select");
@@ -659,6 +973,21 @@ export default function FirstRun({
     setWriting(false);
   };
 
+  const toggleSubject = (id: string) => {
+    feedback("select");
+    setPhotoPicked((prev) => {
+      const next = new Set(prev ?? suggestedSubjects);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAngle = (a: string) => {
+    feedback("select");
+    setAngles((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
+  };
+
   const toggleExtra = (id: string) => {
     feedback("select");
     setPicked((prev) => {
@@ -698,6 +1027,8 @@ export default function FirstRun({
   const finish = () => {
     feedback("complete");
     onComplete({
+      name: name.trim(),
+      age,
       modules: mods,
       keyMetric: metric?.k ?? null,
       score,
@@ -707,6 +1038,8 @@ export default function FirstRun({
         .filter((c) => enabled.has(c.id))
         .map((c) => ({ label: c.label, type: c.type })),
       extras: [...chosenExtras],
+      photoSubjects: [...chosenSubjects].filter((id) => photoSubjects.some((s) => s.id === id)),
+      progressAngles: wantsProgress ? angles : [],
       spots: wantsSpots ? spots : [],
       reminder,
     });
@@ -772,6 +1105,111 @@ export default function FirstRun({
     );
   }
 
+  /* ---------- the doorway: who this is for ----------
+
+     Deliberately unnumbered. The moment this screen says "Step 1 of 6" it
+     becomes a registration form, and a registration form is the thing this
+     whole app exists to not be. It is a welcome that happens to ask two
+     things, says what each one is for in the same breath, and holds the door
+     open for anybody who would rather not.
+
+     The encouragement is entirely made of *consequence*: the greeting is
+     quoted back with their own name in it as they type, and the printed
+     header is drawn with their name and age in place. Nothing here nags, and
+     nothing here is greyed out until they comply. */
+
+  if (act === "you") {
+    const hasName = first.length > 0;
+    return (
+      <div className="fhj-fr" ref={actRef}>
+        <div className="fhj-fr-act">
+          <div className="fhj-fr-eyebrow" data-act-block>Before the questions</div>
+          <h1 className="fhj-fr-display is-small" data-act-block>
+            {hasName ? `Hello, ${first}.` : "Who is this journal for?"}
+          </h1>
+          <p className="fhj-fr-sub" data-act-block>
+            Both of these are optional and both stay on this device — but a journal that knows
+            who it belongs to is a different object to one that doesn't. Here's exactly what
+            each one changes.
+          </p>
+
+          <div className="fhj-fr-you" data-act-block>
+            <label className="fhj-fr-you-label" htmlFor="fhj-fr-name">What should it call you?</label>
+            <input id="fhj-fr-name" className="fhj-fr-you-input" value={name} maxLength={40}
+              autoComplete="given-name" autoCapitalize="words" spellCheck={false}
+              placeholder="Your name"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+            <div className="fhj-fr-you-echo" aria-live="polite">
+              <span className="fhj-fr-you-echo-mark"><Icon name="sun" size={12} color={C.accentText} /></span>
+              <span>
+                {hasName
+                  ? <>Every morning, this app will open with <b>“Good morning, {first}.”</b></>
+                  : <>Every morning, this app will open with <b>“Good morning.”</b> — add a name and it says yours.</>}
+              </span>
+            </div>
+          </div>
+
+          <div className="fhj-fr-you" data-act-block>
+            <div className="fhj-fr-you-label" id="fhj-fr-age-label">How old are you?</div>
+            <AgeDial value={age} onChange={setAge} onClear={() => setAge(null)} />
+            <p className="fhj-fr-hint">
+              Stored as the year you were born, so it is still right in three years' time. It is
+              the second thing every clinician asks, and it is on the pack before they ask it.
+            </p>
+          </div>
+
+          {/* What the two answers are actually for, drawn rather than
+              promised: the header of the page they will one day hand to a
+              doctor, with their own name and age already set into it. */}
+          <div className="fhj-fr-letter" data-act-block>
+            <div className="fhj-fr-eyebrow">On everything you print or export</div>
+            <div className="fhj-fr-letter-paper">
+              <div className="fhj-fr-letter-title">Appointment pack</div>
+              <div className="fhj-fr-letter-meta">
+                <span className={hasName ? "is-set" : ""}>{hasName ? name.trim() : "Name not given"}</span>
+                <span className={age != null ? "is-set" : ""}>{age != null ? `${age} years old` : "Age not given"}</span>
+                <span>Last 30 days · printed today</span>
+              </div>
+              <div className="fhj-fr-letter-rules" aria-hidden="true">
+                <span /><span /><span />
+              </div>
+            </div>
+          </div>
+
+          <ul className="fhj-fr-why" data-act-block>
+            {[
+              ["spark", "It stops sounding like software",
+                "Your name in the greeting, in your milestones, on your streak — not “the user”."],
+              ["note", "A clinician knows whose logs these are",
+                "Name and age head every export, every summary and every appointment pack. Without them the page is anonymous, and an anonymous page is one more thing to explain in a ten-minute visit."],
+              ["device", "It never leaves this device",
+                "Same as your symptoms, your notes and your photos. There is no account to attach them to and nowhere to send them."],
+            ].map(([icon, title, body]) => (
+              <li key={title}>
+                <span className="fhj-fr-why-mark"><Icon name={icon} size={13} color={C.accentText} /></span>
+                <span>
+                  <b>{title}</b>
+                  <span>{body}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="fhj-fr-foot">
+          <button type="button" onClick={() => go("focus")} className="fhj-fr-primary">
+            <span>{hasName ? `Continue, ${first}` : "Continue"}</span>
+            <Icon name="right" size={17} color={C.onAccent} />
+          </button>
+          <button type="button" className="fhj-fr-ghost" onClick={skipYou}>
+            Skip this — I'd rather not say
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   /* ---------- act two: the only question ---------- */
 
   if (act === "focus") {
@@ -780,9 +1218,11 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={0} labels={["Tracking", "Questions", "Extras", "First entry"]} />
-          <div className="fhj-fr-step" data-act-block>Step 1 of 4</div>
-          <h1 className="fhj-fr-display is-small" data-act-block>What are you tracking?</h1>
+          <StepRail index={0} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>Step 1 of 5</div>
+          <h1 className="fhj-fr-display is-small" data-act-block>
+            {first ? `${first} — what are you tracking?` : "What are you tracking?"}
+          </h1>
           <p className="fhj-fr-sub" data-act-block>
             Pick one or more. It only sets your starting questions — you'll shape them on the
             next screen, and change them any time after that.
@@ -828,6 +1268,7 @@ export default function FirstRun({
             <span>{mods.length ? "Continue" : "Pick what you're tracking"}</span>
             {mods.length ? <Icon name="right" size={17} color={C.onAccent} /> : null}
           </button>
+          <button type="button" className="fhj-fr-ghost" onClick={() => go("you", true)}>Back</button>
         </div>
       </div>
     );
@@ -839,12 +1280,14 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={1} labels={["Tracking", "Questions", "Extras", "First entry"]} />
-          <div className="fhj-fr-step" data-act-block>Step 2 of 4</div>
+          <StepRail index={1} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>Step 2 of 5</div>
           <h1 className="fhj-fr-display is-small" data-act-block>What should it ask you?</h1>
           <p className="fhj-fr-sub" data-act-block>
-            This is your daily check-in. It's already set up — adjust it if you want to, or keep
-            going and change it later.
+            {first ? `${first}, this is your check-in — the same few questions, every day.` :
+              "This is your check-in — the same few questions, every day."}{" "}
+            It's already set up. Switch anything off, add anything missing, or just keep going and
+            change it later.
           </p>
 
           {/* The cost of the thing being built, live. A journal is abandoned
@@ -869,14 +1312,73 @@ export default function FirstRun({
             </div>
           </div>
 
+          {/* The four ways a question can be answered, named the way an answer
+              feels and counted so the shape of the check-in is legible at a
+              glance: "six 1–10s and four yes/nos" is a survey somebody
+              understands; a list of forty rows is not. Tapping one narrows the
+              list to that kind, which is how somebody who came here to add
+              three yes/no questions finds the eleven that already exist. */}
+          <div className="fhj-fr-lenses" data-act-block>
+            <div className="fhj-fr-lens-head">
+              <span className="fhj-fr-eyebrow">How you'll answer</span>
+              <button type="button" className="fhj-fr-lens-preview"
+                aria-expanded={previewOpen}
+                onClick={() => { feedback("expand"); setPreviewOpen((v) => !v); }}>
+                {previewOpen ? "Hide the preview" : "See it as it'll look"}
+                <Icon name={previewOpen ? "up" : "down"} size={12} color={C.accentText} />
+              </button>
+            </div>
+            <div className="fhj-fr-lens-row" role="group" aria-label="Show questions by answer type">
+              {LENSES.map(([id, label]) => {
+                const n = id === "all"
+                  ? enabledQs.length
+                  : enabledQs.filter((q) => inLens(q.type, id)).length;
+                return (
+                  <button key={id} type="button" aria-pressed={lens === id}
+                    onClick={() => { feedback("select"); setLens(id); }}
+                    className={"fhj-fr-lens" + (lens === id ? " is-on" : "")}>
+                    {id !== "all" && <MiniControl type={id === "other" ? "number" : id} />}
+                    <b>{label}</b>
+                    <span>{n} on</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tomorrow morning, drawn. Every question that survived, with the
+              control it will actually use, in the order it will be asked. This
+              is the answer to "what am I signing up for", and it is worth more
+              than any amount of explaining. */}
+          {previewOpen && (
+            <div className="fhj-fr-pv" data-act-block>
+              <div className="fhj-fr-pv-head">
+                <span className="fhj-fr-pv-date">{todayLabel()}</span>
+                <span className="fhj-fr-pv-tag">Preview</span>
+              </div>
+              <div className="fhj-fr-pv-body">
+                {enabledQs.map((q) => <PreviewField key={q.k} q={q} />)}
+              </div>
+              <div className="fhj-fr-pv-foot">
+                <span>Then one button, and the day is on the record.</span>
+                <b>{checkInTimeLabel(seconds)}</b>
+              </div>
+            </div>
+          )}
+
           <div className="fhj-fr-qs" data-act-block>
-            {sections.map(([sec, qs]) => {
+            {sections.map(([sec, all]) => {
+              /* A lens narrows what is listed, never what is kept: switching
+                 to "Yes / no" and back has to leave the check-in exactly as it
+                 was, so the filter lives here and touches nothing else. */
+              const qs = lens === "all" ? all : all.filter((q) => inLens(q.type, lens));
+              if (!qs.length) return null;
               const onCount = qs.filter((q) => enabled.has(q.k)).length;
-              const open = openNow.has(sec);
+              const open = lens === "all" ? openNow.has(sec) : true;
               return (
                 <div key={sec} className="fhj-fr-qsec">
                   <button type="button" className="fhj-fr-qsec-head"
-                    aria-expanded={open}
+                    aria-expanded={open} disabled={lens !== "all"}
                     onClick={() => {
                       feedback("tap");
                       setOpenSecs(() => {
@@ -888,7 +1390,7 @@ export default function FirstRun({
                     }}>
                     <span className="fhj-fr-qsec-name">{sec}</span>
                     <span className="fhj-fr-qsec-count">{onCount} of {qs.length}</span>
-                    <Icon name={open ? "up" : "down"} size={13} color={C.subtle} />
+                    {lens === "all" && <Icon name={open ? "up" : "down"} size={13} color={C.subtle} />}
                   </button>
                   {open && (
                     <div className="fhj-fr-qlist">
@@ -912,6 +1414,10 @@ export default function FirstRun({
                             {customs.some((c) => c.id === q.k) && (
                               <span className="fhj-fr-q-own">yours</span>
                             )}
+                            {/* The control itself, at the end of the row.
+                                Nobody has to be told what a yes/no question is
+                                once the Yes and the No are sitting there. */}
+                            <MiniControl type={q.type} />
                           </button>
                         );
                       })}
@@ -931,16 +1437,31 @@ export default function FirstRun({
                 onChange={(e) => setDraftLabel(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") addCustom(); }}
                 placeholder="e.g. Hands · how bad today?" />
+              <div className="fhj-fr-own-hint">How do you want to answer it?</div>
               <div className="fhj-fr-own-types" role="group" aria-label="Answer type">
                 {CUSTOM_TYPES.map(([t, l, hint]) => (
                   <button key={t} type="button" aria-pressed={draftType === t}
                     onClick={() => { feedback("select"); setDraftType(t); }}
                     className={"fhj-fr-own-type" + (draftType === t ? " is-on" : "")}>
+                    <MiniControl type={t} />
                     <b>{l}</b>
                     <span>{hint}</span>
                   </button>
                 ))}
               </div>
+
+              {/* The question they are writing, drawn as it will be asked.
+                  A yes/no question is an abstraction until the Yes and the No
+                  are on the screen with their own words above them. */}
+              <div className="fhj-fr-own-pv">
+                <span className="fhj-fr-eyebrow">In your check-in</span>
+                <PreviewField q={{
+                  k: "draft",
+                  label: draftLabel.trim() || "Your question",
+                  type: draftType,
+                }} />
+              </div>
+
               <div className="fhj-fr-own-actions">
                 <button type="button" className="fhj-fr-ghost"
                   onClick={() => { feedback("tap"); setWriting(false); setDraftLabel(""); }}>
@@ -960,7 +1481,7 @@ export default function FirstRun({
         </div>
 
         <div className="fhj-fr-foot">
-          <button type="button" onClick={() => go("extras")} className="fhj-fr-primary">
+          <button type="button" onClick={() => go("photos")} className="fhj-fr-primary">
             <span>Continue</span>
             <Icon name="right" size={17} color={C.onAccent} />
           </button>
@@ -970,18 +1491,161 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act four: what else it should keep ---------- */
+  /* ---------- act four: what is worth a photograph ----------
+
+     The old flow asked "photos?" as one tick among six, and then guessed: a
+     body map if the pack looked like skin, one front-on progress shot if it
+     didn't. Both guesses are wrong for most people. Somebody with IBS wants a
+     picture of the plate; somebody on a new cream wants the tub's ingredient
+     list; somebody whose ankle swells wants the ankle, and nobody was ever
+     going to find that behind a setting called "Photos".
+
+     So the question is not whether but *of what*, and the answer draws itself
+     into a contact sheet as it is given. Choosing nothing is a first-class
+     outcome — the CTA says so rather than going grey. */
+
+  if (act === "photos") {
+    return (
+      <div className="fhj-fr" ref={actRef}>
+        <div className="fhj-fr-act">
+          <StepRail index={2} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>Step 3 of 5</div>
+          <h1 className="fhj-fr-display is-small" data-act-block>What's worth a photo?</h1>
+          <p className="fhj-fr-sub" data-act-block>
+            You will not remember what week three looked like. The camera will. Pick what's worth
+            a picture — every one you choose becomes a shot the camera button offers, lined up
+            against the last time you took it.
+          </p>
+
+          <div className="fhj-fr-subjects" data-act-block>
+            {photoSubjects.map((sub) => {
+              const on = chosenSubjects.has(sub.id);
+              const suggested = suggestedSubjects.has(sub.id);
+              if (sub.kind === "spots" && !BodyMap) return null;
+              return (
+                <button key={sub.id} type="button" aria-pressed={on}
+                  onClick={() => toggleSubject(sub.id)}
+                  className={"fhj-fr-subject" + (on ? " is-on" : "")}>
+                  <span className="fhj-fr-subject-mark">
+                    <Icon name={on ? "check" : sub.icon} size={15} color={on ? C.onAccent : C.sub} />
+                  </span>
+                  <span className="fhj-fr-subject-body">
+                    <span className="fhj-fr-subject-name">
+                      {sub.label}
+                      {suggested && <span className="fhj-fr-extra-tag">for what you track</span>}
+                    </span>
+                    <span className="fhj-fr-subject-blurb">{sub.blurb}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Body areas, on a map, because "left elbow" typed into a box is a
+              different thing from a spot somebody pointed at. Only ever shown
+              once they've asked for it — a body diagram on a screen nobody
+              opened is startling. */}
+          {wantsSpots && BodyMap && (
+            <div className="fhj-fr-spots" data-act-block>
+              <div className="fhj-fr-eyebrow">Which areas?</div>
+              <p className="fhj-fr-sub is-tight">
+                Tap the ones you want to watch over time. Add more later, and a photo is never
+                required to log a day.
+              </p>
+              <BodyMap spots={spots} onToggle={toggleSpot} tint={chosen[0]?.color || C.accent} />
+              {spots.length > 0 && (
+                <div className="fhj-fr-spot-chips">
+                  {spots.map((sp) => (
+                    <span key={`${sp.part}|${sp.side}`} className="fhj-fr-spot-chip">
+                      {spotLabel ? spotLabel(sp) : `${sp.side} ${sp.part}`.trim()}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {wantsProgress && (
+            <div className="fhj-fr-spots" data-act-block>
+              <div className="fhj-fr-eyebrow">Which angles?</div>
+              <p className="fhj-fr-sub is-tight">
+                Same pose, same spot, weeks apart. Front on its own is plenty to start with.
+              </p>
+              <div className="fhj-fr-angles" role="group" aria-label="Progress photo angles">
+                {["Front", "Side", "Back"].map((a) => (
+                  <button key={a} type="button" aria-pressed={angles.includes(a)}
+                    onClick={() => toggleAngle(a)}
+                    className={"fhj-fr-angle" + (angles.includes(a) ? " is-on" : "")}>
+                    <Icon name="camera" size={14} color={angles.includes(a) ? C.onAccent : C.sub} />
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* The contact sheet. Empty frames with real labels under them, one
+              per shot — the same trick the last act plays with the timeline:
+              show the shape of the thing before there is anything in it. */}
+          <div className="fhj-fr-sheet" data-act-block>
+            <div className="fhj-fr-eyebrow">
+              {photosOn
+                ? `Your camera · ${shots.length} shot${shots.length === 1 ? "" : "s"}`
+                : "Your camera"}
+            </div>
+            {photosOn ? (
+              <>
+                <div className="fhj-fr-sheet-row">
+                  {shots.slice(0, 8).map((sh) => (
+                    <span key={sh.key} className={"fhj-fr-frame is-" + sh.frame}>
+                      <span className="fhj-fr-frame-win" aria-hidden="true">
+                        <Icon name="camera" size={13} color={C.subtle} />
+                      </span>
+                      <span className="fhj-fr-frame-label">{sh.label}</span>
+                    </span>
+                  ))}
+                  {shots.length > 8 && (
+                    <span className="fhj-fr-frame is-more">+{shots.length - 8}</span>
+                  )}
+                </div>
+                <p className="fhj-fr-hint">
+                  Each one remembers its last shot and lines the next one up against it, so a
+                  slow change over two months is something you can see rather than something you
+                  have to remember. Photos stay on this device — they are never uploaded.
+                </p>
+              </>
+            ) : (
+              <p className="fhj-fr-hint">
+                Nothing picked, and that's a real answer — plenty of journals are numbers and
+                notes. You can turn the camera on any time from Settings.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="fhj-fr-foot">
+          <button type="button" onClick={() => go("extras")} className="fhj-fr-primary">
+            <span>{photosOn ? "Continue" : "Continue without photos"}</span>
+            <Icon name="right" size={17} color={C.onAccent} />
+          </button>
+          <button type="button" className="fhj-fr-ghost" onClick={() => go("tune", true)}>Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- act five: what else it should keep ---------- */
 
   if (act === "extras") {
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={2} labels={["Tracking", "Questions", "Extras", "First entry"]} />
-          <div className="fhj-fr-step" data-act-block>Step 3 of 4</div>
+          <StepRail index={3} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>Step 4 of 5</div>
           <h1 className="fhj-fr-display is-small" data-act-block>What else should it keep?</h1>
           <p className="fhj-fr-sub" data-act-block>
-            A day holds more than a number. Everything you pick here becomes a one-tap button on
-            your home screen — nothing else does, so keep it to what you'll actually use.
+            A day holds more than a number and a photo. Everything you pick here becomes a one-tap
+            button on your home screen — nothing else does, so keep it to what you'll actually use.
           </p>
 
           <div className="fhj-fr-extras" data-act-block>
@@ -1006,29 +1670,6 @@ export default function FirstRun({
               );
             })}
           </div>
-
-          {/* Photos of body areas need to know which ones. The map only
-              appears once photos are on, because a body diagram on a screen
-              nobody asked for it on is startling. */}
-          {wantsSpots && BodyMap && (
-            <div className="fhj-fr-spots" data-act-block>
-              <div className="fhj-fr-eyebrow">Where do you want to photograph?</div>
-              <p className="fhj-fr-sub is-tight">
-                Tap the areas you want to track over time. You can add more later, and a photo is
-                never required to log a day.
-              </p>
-              <BodyMap spots={spots} onToggle={toggleSpot} tint={chosen[0]?.color || C.accent} />
-              {spots.length > 0 && (
-                <div className="fhj-fr-spot-chips">
-                  {spots.map((s) => (
-                    <span key={`${s.part}|${s.side}`} className="fhj-fr-spot-chip">
-                      {spotLabel ? spotLabel(s) : `${s.side} ${s.part}`.trim()}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* The dashboard, assembling. This is the payoff of the screen: the
               choices above are not filed away somewhere, they are the row of
@@ -1073,21 +1714,21 @@ export default function FirstRun({
             <span>Continue</span>
             <Icon name="right" size={17} color={C.onAccent} />
           </button>
-          <button type="button" className="fhj-fr-ghost" onClick={() => go("tune", true)}>Back</button>
+          <button type="button" className="fhj-fr-ghost" onClick={() => go("photos", true)}>Back</button>
         </div>
       </div>
     );
   }
 
-  /* ---------- act five: the first entry ---------- */
+  /* ---------- act six: the first entry ---------- */
 
   if (act === "entry") {
     const ask = metric?.ask || (metric ? `${metric.label} today?` : "How is today?");
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={3} labels={["Tracking", "Questions", "Extras", "First entry"]} />
-          <div className="fhj-fr-step" data-act-block>Step 4 of 4</div>
+          <StepRail index={4} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>Step 5 of 5</div>
           <h1 className="fhj-fr-display is-small" data-act-block>{ask}</h1>
 
           {/* This card is the thing that flies. It is laid out here exactly as
@@ -1165,7 +1806,7 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act six: the journal begins ---------- */
+  /* ---------- act seven: the journal begins ---------- */
 
   /* The three beats, said back in terms of what this person actually set up.
      Generic copy here would be the one place in the flow where the app stops
@@ -1174,7 +1815,7 @@ export default function FirstRun({
     const bits: string[] = [];
     if (chosenExtras.has("food")) bits.push("meals");
     if (chosenExtras.has("routine")) bits.push("doses");
-    if (chosenExtras.has("photos")) bits.push("photos");
+    if (photosOn) bits.push(shots.length === 1 ? "one photo" : `${shots.length} photos`);
     if (chosenExtras.has("bowel")) bits.push("bathroom");
     if (chosenExtras.has("weight")) bits.push("weight");
     bits.push("notes");
@@ -1228,7 +1869,9 @@ export default function FirstRun({
             <span className="fhj-fr-streak-num" ref={streakRef}>1</span>
             <span className="fhj-fr-streak-label">day on the record</span>
           </div>
-          <h1 className="fhj-fr-display is-small" data-tl-line>Your journal has begun.</h1>
+          <h1 className="fhj-fr-display is-small" data-tl-line>
+            {first ? `Your journal has begun, ${first}.` : "Your journal has begun."}
+          </h1>
           <p className="fhj-fr-sub" data-tl-line>
             Keep going and it answers what memory cannot.
           </p>

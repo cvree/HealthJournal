@@ -102,6 +102,10 @@ export interface UserSettings {
 export interface TrackingSetup {
   id: string;
   name: string;
+  /** The year this person was born, from the age they gave during setup.
+      Stored as a year rather than an age so it never goes stale on the
+      documents it is printed on. Absent when they'd rather not say. */
+  birthYear?: number;
   templateType: string; // primary pack key
   modules?: string[]; // enabled pack keys
   customQuestions?: CustomQuestion[];

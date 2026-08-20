@@ -34,25 +34,45 @@ everything else working exactly as it does now:
 because the point of tracking food is logging it while you eat. Add as many named times as suit
 your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
 
-**The first two minutes.** First run is six acts, not a wizard, and there is one path through it.
-A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a rating, a
-photograph fourteen days apart, a note about a bad night, a dose ticked off, a flare that ended,
-three months of trend with the flare shaded behind it, with the five checkable promises about the
-build one tap below it. Then the only question that cannot be defaulted (*what are you tracking?*),
-and then the two screens that shape the app around the answer.
+**The first two minutes.** First run is eight screens, not a wizard, and there is one path through
+it. A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a
+rating, a photograph fourteen days apart, a note about a bad night, a dose ticked off, a flare that
+ended, three months of trend with the flare shaded behind it, with the five checkable promises
+about the build one tap below it. Then a doorway, and five numbered acts.
+
+**Who is this journal for?** A name and an age, both refusable, neither numbered — a doorway, not
+step one of a registration. It is here because everything after it is warmer for having been
+asked: the app opens with *Good morning, Sam* rather than *Good morning*, and the two facts a
+clinician asks for first are already at the top of anything you print. The screen argues by
+consequence rather than by nagging: the greeting is quoted back with your own name in it as you
+type, and the header of an appointment pack fills in beside it. Skipping is a button, not a
+greyed-out apology, and the age is stored as the year you were born so it is still right in three
+years. Both are editable in Edit Setup afterwards.
+
+**What are you tracking?** The only question that cannot be defaulted.
 
 **What should it ask you?** Your daily check-in, already set up from the packs you picked, with
 the honest cost of it printed above in the largest number on the screen — *14 questions, about 50
 seconds a day* — that changes as you switch one on or off. Quick, Balanced and Thorough are one
-tap each; sections fold; the daily number is locked on because a journal without one is not one;
-and *ask me something of my own* takes a question in your own words as a 1–10, a yes/no or a
-number.
+tap each; sections fold; the daily number is locked on because a journal without one is not one.
+Most people have never been asked to design a survey, so this act teaches rather than asks:
+**every question is drawn with the control it will actually use** — ten rungs, a Yes beside a No,
+a keypad, three lines of text — the whole thing can be sorted by *how* it is answered (1–10 /
+yes-no / numbers & words, each with a live count), and **See it as it'll look** prints the entire
+check-in exactly as it will be answered tomorrow morning. *Ask me something of my own* takes a
+question in your own words as a 1–10, a yes/no, a number or a few words, drawn as you write it.
 
-**What else should it keep?** Photos (with the body map for the areas you want to line up over
-time), meds and creams, meals, flares, the bathroom, weight — and each one you tick draws itself
-into the row of one-tap buttons underneath, so the dashboard is assembled in front of you out of
-your own answers rather than filed away to be discovered later. A nudge, if you want one, at a
-time you choose.
+**What's worth a photo?** Not a switch — a question about subjects. Specific body areas off a
+tappable map, flare-ups as they happen, progress shots (front, side, back), meals, products and
+labels, swelling, wounds and healing, or anything worth a picture. Each one becomes a real photo
+question with its own baseline, so every shot lines up against the last one *of the same thing*,
+and a contact sheet of labelled empty frames assembles as you pick. Wanting none of it is a
+first-class answer the screen says out loud.
+
+**What else should it keep?** Meds and creams, meals, flares, the bathroom, weight — and each one
+you tick draws itself into the row of one-tap buttons underneath, so the dashboard is assembled in
+front of you out of your own answers rather than filed away to be discovered later. A nudge, if
+you want one, at a time you choose.
 
 Then your first real entry — ten large targets you can tap or slide a thumb across, with the card
 taking the colour of the day as soon as there is a number — and the part that is the point: **the
@@ -387,7 +407,7 @@ npm run dev
 Open the printed URL (usually `http://localhost:5173`) and use a mobile viewport (~390px) —
 the app is designed phone-first.
 
-First run shows the six acts. To jump straight into a fully populated app, pick
+First run shows the whole flow. To jump straight into a fully populated app, pick
 **"Look around with example data"** — an Eczema/Skin + Carnivore setup with ~34 days of
 history, enough to exercise the dashboard, charts, calendar, patterns, reports, and exports.
 
@@ -641,7 +661,7 @@ health-journal/
 │   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
-│   │                           #   first run (the six acts)
+│   │                           #   first run (the doorway and five acts)
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving

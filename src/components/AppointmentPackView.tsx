@@ -20,6 +20,9 @@ import {
 
 type Meta = {
   name: string;
+  /** Whole years, when the journal knows it. The second thing every clinician
+      asks for, printed before they have to ask. */
+  age?: number | null;
   setup: string;
   appName: string;
   version: string;
@@ -111,6 +114,7 @@ export default function AppointmentPackView({
         <div className="fhj-pack-title print-title">Appointment pack</div>
         <div className="fhj-pack-meta print-meta">
           <span>{meta.name || meta.setup}</span>
+          {meta.age != null && <span>{meta.age} years old</span>}
           <span>{pack.range.label} · {pack.range.start} to {pack.range.end}</span>
           <span>Printed {fmtDate(meta.printedOn)}</span>
         </div>

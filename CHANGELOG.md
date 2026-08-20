@@ -1,5 +1,84 @@
 # Changelog
 
+## 1.20.0
+
+### The first run knows who it is for
+
+The app opened by asking what was wrong with you and never once asked who you
+were. Every export, every printed summary and every appointment pack came out
+anonymous — a page of ratings a clinician has to be told the owner of — and
+every morning the app said "Good morning" to nobody in particular.
+
+So there is a screen between the hero and the questions now, and it is
+deliberately not numbered: a step count would turn a welcome into a
+registration form, which is the thing this app exists to not be. It asks two
+things and refuses to nag about either.
+
+**Your name**, set at headline size, with the consequence quoted back as you
+type it: *Every morning, this app will open with "Good morning, Sam."* It
+does, from the next screen onward — the greeting on Today, the heading on the
+screen where your journal is born, the pack you hand to a doctor.
+
+**Your age**, on a ruler rather than a number pad, with the year you were born
+printed under it — because that is what actually gets written down. An age
+typed once and stored as a number is a wrong number three years later on the
+one document whose entire job is to be handed to a clinician.
+
+Underneath both, the argument for answering, drawn rather than promised: the
+header of an appointment pack with your name and age filling into it. And
+underneath *that*, a **Skip this — I'd rather not say** button that clears both
+and never mentions it again. Nothing here is greyed out until you comply.
+Both are editable in Edit Setup, and both are printed on appointment packs,
+weekly and monthly summaries, and the Profile sheet of every export.
+
+### You can see the survey you are signing up for
+
+Most people have never designed a survey, and the words for the parts of one
+are worse than useless to somebody trying to describe their own body. The
+question list used to say "yes / no" in small grey type under each row, which
+is a label *about* a control rather than the control.
+
+Every question is now drawn with the answer it will actually take: ten rungs
+for a 1–10, a Yes beside a No, a box with a number in it, three lines for a few
+words. Nobody has to be told what a yes/no question is once the Yes and the No
+are sitting on the row.
+
+Above the list, the same four shapes are a **lens**: *Everything · 1–10 · Yes /
+no · Numbers & words*, each with a live count of how many of that kind are
+switched on. "Six 1–10s and four yes/nos" is a survey somebody understands; a
+list of forty rows is not. Tapping one narrows the list to that kind — which is
+how somebody who came here to add three yes/no questions finds the eleven that
+already exist — and narrows only what is *shown*, never what is kept.
+
+And **See it as it'll look** prints the whole check-in as it will be answered
+tomorrow morning: your questions, in order, with the real controls at the size
+you will tap them, and the honest seconds-a-day at the foot. A question of your
+own is drawn the same way while you write it, so choosing "Yes / no" for it is
+a thing you can see rather than a word you have to trust.
+
+### Photos ask what they are of
+
+Photos used to be one tick in a list of six, and then the app guessed what they
+were of: a body map if your pack looked like skin, a single front-on progress
+shot if it did not. Both guesses are wrong for most people. Somebody with IBS
+wants a picture of the plate. Somebody starting a new cream wants the
+ingredient list on the tub. Somebody whose ankle swells wants the ankle. None
+of them were ever going to find that behind a switch labelled *Photos*.
+
+So photos are their own act, and the question is *what*: specific body areas
+off the tappable map, flare-ups as they happen, progress shots (front, side,
+back), meals, products and labels, swelling, wounds and healing, or anything
+worth a picture. Each subject becomes a real photo question with its own
+baseline, so every shot lines up against the last one **of the same thing** —
+and each knows whether to ask for a 1–10 afterwards, which a flare wants and a
+plate of food does not.
+
+As you pick, a contact sheet of labelled empty frames assembles underneath —
+the same argument the last act makes with an empty timeline: show the shape of
+the thing before there is anything in it. Wanting no photos at all is a
+first-class answer the screen says out loud, and it is honoured: no camera
+button appears on a journal with nothing to point it at.
+
 ## 1.19.0
 
 ### Quick Add is shaped like your condition

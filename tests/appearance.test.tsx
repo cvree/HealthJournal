@@ -193,14 +193,22 @@ describe("first launch", () => {
     );
     fireEvent.click(start);
 
-    // The screen after the hero asks what somebody is tracking. Choosing a
-    // theme before the app has asked a single question about why they
-    // installed it is a first run telling you what it thinks it is.
+    // The screen after the hero asks who the journal is for, and the one after
+    // that asks what they are tracking. Choosing a theme before the app has
+    // asked a single question about why they installed it is a first run
+    // telling you what it thinks it is.
+    await waitFor(() => expect(document.body.textContent).toMatch(/who is this journal for/i));
+    const noLook = () => {
+      const text = document.body.textContent || "";
+      expect(text).not.toMatch(/make it yours/i);
+      for (const name of ["Aurora", "Night Light"]) expect(text).not.toContain(name);
+      expect(screen.queryByLabelText(/hue/i)).toBeNull();
+    };
+    noLook();
+
+    fireEvent.click(screen.getAllByRole("button").find((b) => /skip this/i.test(b.textContent || ""))!);
     await waitFor(() => expect(document.body.textContent).toMatch(/what are you tracking/i));
-    const text = document.body.textContent || "";
-    expect(text).not.toMatch(/make it yours/i);
-    for (const name of ["Aurora", "Night Light"]) expect(text).not.toContain(name);
-    expect(screen.queryByLabelText(/hue/i)).toBeNull();
+    noLook();
   });
 
   it("still runs the real backdrop behind the hero, at whatever the theme already is", async () => {

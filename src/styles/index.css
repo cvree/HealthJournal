@@ -4106,12 +4106,19 @@ button.fhj-section:disabled {
   font-size: 0.75rem;
   font-weight: 700;
 }
-.fhj-fr-own-type span {
+.fhj-fr-own-type > span:not([class]) {
   display: block;
   font-size: 0.625rem;
   line-height: 1.3;
   color: var(--fhj-subtle, #9a9ca6);
   margin-top: 0.125rem;
+}
+
+/* Four answer types now, so they wrap two-up rather than squeezing to a
+   quarter of a phone each. */
+.fhj-fr-own-types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
 
 .fhj-fr-own-actions {
@@ -4481,6 +4488,759 @@ button.fhj-section:disabled {
     animation: none;
   }
   .fhj-fr-primary::after { display: none; }
+}
+
+
+/* ============================================================
+   First run, part two: the doorway, the survey, the camera
+   ============================================================ */
+
+/* ---------- the doorway: who this is for ----------
+
+   The one screen in the flow with no step number on it, and it is written to
+   feel like one: a name field the size of a headline, an age dial rather than
+   a number pad, and — the part that does the actual persuading — a drawn
+   preview of the printed header their answers land in. Nothing here is
+   required, so nothing here is allowed to nag; the argument is made by showing
+   the consequence, not by dimming the way out. */
+
+.fhj-fr-you {
+  margin-top: 1.5rem;
+}
+
+.fhj-fr-you-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-bottom: 0.5rem;
+}
+
+/* Set at display size. A name typed into a 15px input is data being
+   collected; a name typed at 28px is somebody signing something of theirs. */
+.fhj-fr-you-input {
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0 1rem;
+  border-radius: var(--fhj-radius-lg);
+  font-family: var(--fhj-font-display);
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  color: var(--fhj-ink, #ecebe7);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  outline: none;
+  transition: border-color var(--fhj-quick) ease, box-shadow var(--fhj-quick) ease;
+}
+.fhj-fr-you-input::placeholder {
+  color: var(--fhj-muted, #787b86);
+  font-size: 1.25rem;
+}
+.fhj-fr-you-input:focus {
+  border-color: var(--fhj-accent, #8fb0e3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fhj-accent, #8fb0e3) 18%, transparent);
+}
+
+.fhj-fr-you-echo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #b9bac2);
+}
+.fhj-fr-you-echo b {
+  color: var(--fhj-ink, #ecebe7);
+  font-weight: 600;
+}
+.fhj-fr-you-echo-mark {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* ---------- the age dial ----------
+   A ruler and a numeral. The range input underneath is invisible but entirely
+   real, which is what keeps this usable with a keyboard and a screen reader. */
+
+.fhj-fr-age {
+  padding: 0.875rem 1rem 0.75rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+
+.fhj-fr-age-read {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+}
+
+.fhj-fr-age-num {
+  font-family: var(--fhj-font-display);
+  font-size: 2.75rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-fr-age.is-unset .fhj-fr-age-num { color: var(--fhj-muted, #787b86); }
+
+.fhj-fr-age-word {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-age-word b {
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-weight: 700;
+}
+
+.fhj-fr-age-track {
+  position: relative;
+  margin-top: 0.75rem;
+  height: 2.25rem;
+}
+
+.fhj-fr-age-ticks {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1.25rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.fhj-fr-age-ticks > span {
+  width: 1px;
+  height: 0.5rem;
+  background: var(--fhj-line-strong, #464a55);
+  opacity: 0.6;
+}
+.fhj-fr-age-ticks > span.is-decade {
+  height: 1rem;
+  opacity: 1;
+}
+
+/* The input is the whole width of the track and carries its own thumb; the
+   ruler above is decoration that the thumb travels along. */
+.fhj-fr-age-input {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: 1.75rem;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+.fhj-fr-age-input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-fr-age-input::-moz-range-track {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-fr-age-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: -0.625rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  border: 3px solid var(--fhj-card, #1e2026);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+}
+.fhj-fr-age-input::-moz-range-thumb {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  border: 3px solid var(--fhj-card, #1e2026);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+}
+.fhj-fr-age.is-unset .fhj-fr-age-input::-webkit-slider-thumb {
+  background: var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-age.is-unset .fhj-fr-age-input::-moz-range-thumb {
+  background: var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-age-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fhj-accent, #8fb0e3) 40%, transparent);
+}
+
+.fhj-fr-age-ends {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-muted, #787b86);
+  font-variant-numeric: tabular-nums;
+}
+
+.fhj-fr-age-note {
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-age-clear {
+  min-height: 1.75rem;
+  padding: 0 0.625rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--fhj-subtle, #9a9ca6);
+  border: 1px solid var(--fhj-line, #31343d);
+}
+
+/* ---------- the printed header, drawn ----------
+   The actual argument for giving a name and an age: this is the top of the
+   page they will one day hand to a doctor, filling in as they type. */
+
+.fhj-fr-letter {
+  margin-top: 1.75rem;
+}
+
+.fhj-fr-letter-paper {
+  margin-top: 0.5rem;
+  padding: 0.875rem 1rem 1rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.35));
+}
+
+.fhj-fr-letter-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.375rem;
+}
+
+.fhj-fr-letter-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.625rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-muted, #787b86);
+}
+.fhj-fr-letter-meta > span.is-set {
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-weight: 700;
+}
+
+.fhj-fr-letter-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+}
+.fhj-fr-letter-rules > span {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-fr-letter-rules > span:nth-child(2) { width: 88%; }
+.fhj-fr-letter-rules > span:nth-child(3) { width: 62%; }
+
+/* ---------- why it is worth answering ---------- */
+
+.fhj-fr-why {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  margin-top: 1.75rem;
+}
+.fhj-fr-why li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+.fhj-fr-why b {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.fhj-fr-why span span {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.125rem;
+}
+.fhj-fr-why-mark {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--fhj-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  border: 1px solid color-mix(in srgb, var(--fhj-accent, #8fb0e3) 25%, transparent);
+}
+
+/* ---------- drawn answer controls ----------
+
+   These appear at three sizes and in three places — beside every question in
+   the list, inside the lens chips, and inside the answer-type picker — and
+   they are all the same six shapes. A yes/no question stops needing a label
+   the moment a Yes and a No are drawn on the row. */
+
+.fhj-fr-mini-ctl {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.fhj-fr-mini-ctl.is-scale > span {
+  width: 3px;
+  height: 0.625rem;
+  border-radius: 1px;
+  background: var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-mini-ctl.is-scale > span.is-lit {
+  background: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-mini-ctl.is-toggle > span {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 0.1875rem 0.3125rem;
+  border-radius: var(--fhj-radius-pill);
+  border: 1px solid var(--fhj-line-strong, #464a55);
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-mini-ctl.is-toggle > span.is-yes {
+  border-color: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 55%, transparent);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+.fhj-fr-mini-ctl.is-chips > span {
+  width: 0.625rem;
+  height: 0.5rem;
+  border-radius: var(--fhj-radius-pill);
+  border: 1px solid var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-mini-ctl.is-chips > span.is-lit {
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-mini-ctl.is-box {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1875rem 0.3125rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--fhj-line-strong, #464a55);
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-mini-ctl.is-lines {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.fhj-fr-mini-ctl.is-lines > span {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-mini-ctl.is-lines > span:nth-child(1) { width: 1.25rem; }
+.fhj-fr-mini-ctl.is-lines > span:nth-child(2) { width: 1rem; }
+.fhj-fr-mini-ctl.is-lines > span:nth-child(3) { width: 0.625rem; }
+
+/* ---------- the lens row: the survey, by how it is answered ---------- */
+
+.fhj-fr-lenses {
+  margin-top: 1.125rem;
+}
+
+.fhj-fr-lens-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.fhj-fr-lens-head .fhj-fr-eyebrow { margin-bottom: 0; }
+
+.fhj-fr-lens-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+.fhj-fr-lens-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-fr-lens {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-height: 3.5rem;
+  padding: 0.5rem 0.4375rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid transparent;
+  transition: background var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
+}
+.fhj-fr-lens.is-on {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+.fhj-fr-lens b {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.fhj-fr-lens > span:not([class]) {
+  font-size: 0.5625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-lens.is-on > span:not([class]) { color: var(--fhj-accent-text, #a6c3ea); }
+
+/* ---------- tomorrow morning, drawn ----------
+   The check-in exactly as it will be answered: same order, same controls,
+   inert on purpose. */
+
+.fhj-fr-pv {
+  margin-top: 0.75rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  overflow: hidden;
+  animation: fhjFrFine 260ms var(--fhj-out) both;
+}
+
+.fhj-fr-pv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--fhj-line, #31343d);
+}
+
+.fhj-fr-pv-date {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+.fhj-fr-pv-tag {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.1875rem 0.4375rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+.fhj-fr-pv-body {
+  max-height: 20rem;
+  overflow-y: auto;
+  padding: 0.25rem 0.875rem 0.5rem;
+}
+
+.fhj-fr-pv-field {
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--fhj-line, #31343d);
+}
+.fhj-fr-pv-field:last-child { border-bottom: 0; }
+
+.fhj-fr-pv-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+}
+
+.fhj-fr-pv-scale {
+  display: flex;
+  gap: 2px;
+}
+.fhj-fr-pv-scale > span {
+  flex: 1;
+  height: 1.625rem;
+  border-radius: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: var(--fhj-faint, #2a2d35);
+}
+
+.fhj-fr-pv-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: 0.5625rem;
+  color: var(--fhj-muted, #787b86);
+}
+
+.fhj-fr-pv-yn {
+  display: flex;
+  gap: 0.375rem;
+}
+.fhj-fr-pv-yn > span {
+  flex: 1;
+  height: 2rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+}
+.fhj-fr-pv-yn > span:first-child {
+  color: var(--fhj-accent-text, #a6c3ea);
+  border-color: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 45%, transparent);
+}
+
+.fhj-fr-pv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3125rem;
+}
+.fhj-fr-pv-chips > span {
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: var(--fhj-faint, #2a2d35);
+}
+
+.fhj-fr-pv-box {
+  display: block;
+  padding: 0.4375rem 0.625rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.75rem;
+  color: var(--fhj-muted, #787b86);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px dashed var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-pv-box.is-tall { padding-bottom: 1.375rem; }
+
+.fhj-fr-pv-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem 0.625rem;
+  border-top: 1px solid var(--fhj-line, #31343d);
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-pv-foot b { color: var(--fhj-accent-text, #a6c3ea); }
+
+.fhj-fr-own-hint {
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin: 0.625rem 0 0;
+}
+
+.fhj-fr-own-pv {
+  margin-top: 0.625rem;
+  padding: 0.625rem 0.75rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-fr-own-pv .fhj-fr-pv-field { border-bottom: 0; padding: 0.25rem 0 0; }
+
+/* ---------- the photos act ---------- */
+
+.fhj-fr-subjects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.fhj-fr-subject {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  transition: transform 90ms var(--fhj-out), border-color var(--fhj-quick) ease, background var(--fhj-quick) ease;
+}
+.fhj-fr-subject:active { transform: scale(0.985); }
+.fhj-fr-subject.is-on {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+.fhj-fr-subject-mark {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--fhj-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-faint, #2a2d35);
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-fr-subject.is-on .fhj-fr-subject-mark { background: var(--fhj-accent, #8fb0e3); }
+
+.fhj-fr-subject-body { min-width: 0; }
+
+.fhj-fr-subject-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.fhj-fr-subject-blurb {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fhj-subtle, #9a9ca6);
+  margin-top: 0.125rem;
+}
+
+.fhj-fr-angles {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.625rem;
+}
+
+.fhj-fr-angle {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3125rem;
+  min-height: 2.5rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid transparent;
+}
+.fhj-fr-angle.is-on {
+  background: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #121419);
+}
+
+/* The contact sheet: empty frames with real labels. The same argument the
+   last act makes with an empty timeline — show the shape of the thing before
+   there is anything in it. */
+
+.fhj-fr-sheet {
+  margin-top: 1.75rem;
+  padding: 0.875rem 1rem 1rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+
+.fhj-fr-sheet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.fhj-fr-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3125rem;
+  width: 4.25rem;
+  animation: fhjFrFrame 320ms var(--fhj-spring) both;
+}
+
+.fhj-fr-frame-win {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px dashed var(--fhj-line-strong, #464a55);
+}
+.fhj-fr-frame.is-square .fhj-fr-frame-win { height: 4.25rem; }
+.fhj-fr-frame.is-tall .fhj-fr-frame-win { height: 5.5rem; }
+
+.fhj-fr-frame-label {
+  font-size: 0.5625rem;
+  line-height: 1.3;
+  color: var(--fhj-subtle, #9a9ca6);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.fhj-fr-frame.is-more {
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+@keyframes fhjFrFrame {
+  from { opacity: 0; transform: scale(0.86); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-fr-frame,
+  .fhj-fr-pv {
+    animation: none;
+  }
 }
 
 /* ============================================================

@@ -780,6 +780,71 @@
 > **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
 > screen-reader pass not done.
 
+> **2026-08-20 addendum 24 — 1.20: the first run knows who it is for; the survey act teaches;
+> photos ask what they are of.**
+>
+> **Eight screens, five numbered.** `Act` is now
+> `hero | you | focus | tune | photos | extras | entry | born`; `FLOW` is the five numbered ones
+> and `RAIL = ["Tracking","Questions","Photos","Extras","First entry"]` is the single source for
+> every `StepRail`. The hero's CTA lands on `you`, not `focus`.
+>
+> **The doorway (`you`).** Deliberately outside `FLOW` — a step number turns a welcome into a
+> registration form. Holds `name` and `age`, both refusable. `skipYou()` *clears* both rather
+> than walking past them, so nothing half-typed is kept by accident. `first` (the first token of
+> the trimmed name) is what the greeting, the focus heading, the tune sub-copy, the CTA and the
+> born headline all use. New `AgeDial` is a real `<input type="range">` under the paint (keyboard
+> + screen reader for free, and `fireEvent.change` in jsdom), `AGE_MIN/MAX/DEFAULT = 5/100/32`,
+> with the implied birth year printed under the numeral. The persuasion is `.fhj-fr-letter` — the
+> appointment-pack masthead drawn with their own answers filling into it — plus `.fhj-fr-why`.
+>
+> **Age is stored as `profile.birthYear`, never as an age.** `profileAge(profile)` (App.tsx,
+> beside `blankProfile`) derives it and is the only reader; it clamps to 0–130 and returns null
+> otherwise. `TrackingSetup.birthYear?: number` added to `types/models.ts`. Surfaced on the
+> appointment pack (`Meta.age`, new optional field on `AppointmentPackView`), the printed
+> weekly/monthly masthead, the XLSX Profile sheet (`profile_age`), and `greetingFor(d, name)` on
+> Today. `EditSetupScreen` gained an age box that writes `birthYear` back through `updateProfile`
+> — an emptied box clears it, because "I'd rather not say" has to be reversible.
+>
+> **The tune act teaches the survey system.** New `MiniControl({type})` draws the answer control
+> (ten rungs / Yes+No / chips / a boxed number / three lines) and appears in three places: the end
+> of every question row, inside the lens chips, and inside the custom-question type picker. New
+> `PreviewField({q})` is the same six shapes at answering size. `Lens = all | scale | toggle |
+> other` + `LENSES` + `inLens(type, lens)` drive the chip row (each with a live *n on* count);
+> the lens filters `sections` at render time only and force-opens every section while active, so
+> it can never change what is kept. `previewOpen` renders `.fhj-fr-pv` — the whole enabled
+> check-in in order, with the seconds-a-day at the foot. `CUSTOM_TYPES` gained `text`, the picker
+> is a 2×2 grid, and the composer draws the question being written via `PreviewField`.
+>
+> **Photos are their own act.** `FirstRunPhotoSubject` + the `photoSubjects` prop;
+> `FIRST_RUN_PHOTO_SUBJECTS` (App.tsx) offers areas / flare / progress / meal / label / swelling /
+> healing / anything, pre-ticked by `suggest` per module, with `areas` dropped unless a `skin`
+> pack and a `BodyMap` are both in play. `kind: "spots"` opens the body map (moved here out of
+> `extras`), `kind: "progress"` opens the Front/Side/Back chips (`angles`). `shots` flattens
+> subjects + spots + angles into the labelled contact sheet (`.fhj-fr-sheet`), and `photosOn =
+> shots.length > 0` is what puts the Photo tile in the preview row. **`photos` is deleted from
+> `FIRST_RUN_EXTRAS`** and `FirstRunExtra.spots` with it.
+>
+> `PHOTO_SUBJECT_FIELDS` maps each plain subject to a photo question (`c_photo_flare`,
+> `c_photo_meal`, `c_photo_label`, `c_photo_swelling`, `c_photo_healing`, `c_photo_any`) with its
+> own `rated` and `requiredInSession` — a flare is rated and chased, a plate of food is neither.
+> `buildOnboardProfile` builds them beside the mapped body areas and re-uses a pack's own photo
+> field where the key matches rather than duplicating it. `FirstRunChoice` grew `name`, `age`,
+> `photoSubjects`, `progressAngles`; `firstRunProfile` no longer guesses angles or spots, and
+> synthesises a `photos` entry for `firstRunQuickAdd` only when a photo question actually exists.
+>
+> **CSS.** A second first-run block: `.fhj-fr-you*`, `.fhj-fr-age*`, `.fhj-fr-letter*`,
+> `.fhj-fr-why*`, `.fhj-fr-mini-ctl*`, `.fhj-fr-lens*`, `.fhj-fr-pv*`, `.fhj-fr-own-pv`,
+> `.fhj-fr-subject*`, `.fhj-fr-angle*`, `.fhj-fr-sheet` / `.fhj-fr-frame*`. `.fhj-fr-own-type
+> span` was re-scoped to `> span:not([class])` so it stops catching the drawn control now sitting
+> beside it. Both new animations (`fhjFrFrame`, the preview reveal) are no-ops under
+> reduced motion.
+>
+> Tests: **1027 across 47 suites** (was 1014/47) — `firstRun` 21 → 34 (three new describes: the
+> doorway, understanding the survey you are designing, what is worth a photograph);
+> `appearance`'s "does not ask about the look" now checks the doorway *and* the tracking screen.
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
