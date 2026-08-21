@@ -5247,27 +5247,6 @@ button.fhj-section:disabled {
    Navigation: two destinations and one verb
    ============================================================ */
 
-/* The + is the most-tapped control in the app and the only one that is a
-   *verb*, so it is the only thing in the bar drawn as a solid. It sits proud
-   of the bar rather than inside it — a filled circle among two quiet icons is
-   unmistakable at a glance, which is the whole job. */
-.fhj-nav-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: var(--fhj-radius-pill);
-  background: var(--fhj-accent, #8fb0e3);
-  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.5));
-  border: var(--fhj-bw) solid var(--fhj-bw-color, transparent);
-  transition: transform 90ms var(--fhj-out), box-shadow 90ms var(--fhj-out);
-}
-button:active > .fhj-nav-add {
-  transform: translate(var(--fhj-press), var(--fhj-press));
-  box-shadow: none;
-}
-
 /* The + sheet: everything a day can hold, two across. */
 .fhj-add-grid {
   display: grid;
@@ -7179,6 +7158,508 @@ button:active > .fhj-nav-add {
 }
 
 /* ============================================================
+   The thumb layer — bar, fan, edge-back, reach
+   ============================================================
+   Everything here is drawn for a hand that is already holding something else.
+   The rules are: nothing that matters lives above the fold's midpoint, every
+   target clears 44px, and every animation is a *consequence* of the thumb
+   rather than a decoration playing over it.
+
+   The register is the app's own — soft clinical, warm graphite, one accent —
+   turned up exactly one notch, because this is the only chrome on screen at
+   all times and it should feel like the surface of the app rather than a
+   widget sitting on top of it. */
+
+.fhj-thumbnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  padding: 0 0.75rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+
+.fhj-thumbnav-inner {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: 0.3rem;
+  pointer-events: auto;
+  border-radius: var(--fhj-radius-lg);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  /* Frosted rather than solid: the journal keeps scrolling underneath, which
+     is the one cue that says the bar is floating over the page rather than
+     ending it. The fallback below is a flat card for anything that can't
+     blur — the bar must never be transparent enough to lose its own edges. */
+  background: color-mix(in srgb, var(--fhj-card, #1e2026) 82%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  box-shadow: var(--fhj-shadow-lg, 0 14px 38px rgba(0, 0, 0, 0.46));
+}
+@supports not (backdrop-filter: blur(4px)) {
+  .fhj-thumbnav-inner {
+    background: var(--fhj-card, #1e2026);
+  }
+}
+
+/* Back, in its own place.
+
+   Not one of the three — those never change, which is the whole point of them
+   — but directly above them, on the side the phone is held, saying where back
+   actually goes. It rises into place when there is somewhere to return to and
+   drops out when there is not, so the bar below it never moves. */
+.fhj-thumb-backrow {
+  display: flex;
+  max-width: 28rem;
+  margin: 0 auto 0.4rem;
+  padding: 0 0.3rem;
+  pointer-events: none;
+}
+.fhj-thumb-backrow[data-hand="right"] {
+  justify-content: flex-end;
+}
+.fhj-thumb-backrow[data-hand="left"] {
+  justify-content: flex-start;
+}
+
+.fhj-thumb-back {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 60%;
+  min-height: 40px;
+  padding: 0 0.9rem 0 0.6rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--fhj-ink, #ecebe7);
+  background: color-mix(in srgb, var(--fhj-card, #1e2026) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  border: var(--fhj-bw) solid var(--fhj-line-strong, #464a55);
+  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.34));
+  animation: fhjBackIn 320ms var(--fhj-spring) both;
+}
+.fhj-thumb-back > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fhj-thumb-back-arrow,
+.fhj-thumb-glyph {
+  display: inline-flex;
+  flex: none;
+}
+.fhj-thumb-back:active {
+  transform: scale(0.95);
+}
+@supports not (backdrop-filter: blur(4px)) {
+  .fhj-thumb-back {
+    background: var(--fhj-card, #1e2026);
+  }
+}
+@keyframes fhjBackIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-thumb-back {
+    animation: fhjFade 140ms ease both;
+  }
+}
+
+.fhj-thumb-tab {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 0.25rem;
+  border-radius: calc(var(--fhj-radius) - 2px);
+  color: var(--fhj-sub, #adafb8);
+  background: transparent;
+  transition: color var(--fhj-ease) var(--fhj-out), background var(--fhj-ease) var(--fhj-out),
+    transform var(--fhj-quick) var(--fhj-out);
+}
+.fhj-thumb-tab:active {
+  transform: scale(0.95);
+}
+.fhj-thumb-tab.is-active {
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+/* The cap over the active tab. It grows rather than appearing, so switching
+   tabs reads as one movement across the bar instead of two separate flashes. */
+.fhj-thumb-tab::before {
+  content: "";
+  position: absolute;
+  top: 0.3rem;
+  width: 0;
+  height: 2px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  transition: width 240ms var(--fhj-out), opacity 240ms var(--fhj-out);
+  opacity: 0;
+}
+.fhj-thumb-tab.is-active::before {
+  width: 1.75rem;
+  opacity: 1;
+}
+
+.fhj-thumb-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The + is three controls in one place: tap to add, hold to fan out every
+   destination, pull down to bring the top of the screen into reach. It is
+   drawn as the only filled thing in the bar because it is the only thing in
+   the bar that *does* something rather than going somewhere. */
+.fhj-thumb-add {
+  flex: 0 0 auto;
+  width: 4.25rem;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The gesture belongs to the button, not to the page: without this a pull
+     down on the + scrolls the journal behind it and the reach gesture never
+     fires. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fhj-thumb-add-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-on-accent, #121419);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--fhj-accent-hover, #a3c0ea) 92%, white) 0%,
+    var(--fhj-accent, #8fb0e3) 62%,
+    color-mix(in srgb, var(--fhj-accent, #8fb0e3) 88%, black) 100%
+  );
+  border: var(--fhj-bw) solid color-mix(in srgb, var(--fhj-accent, #8fb0e3) 60%, black);
+  box-shadow:
+    0 6px 18px color-mix(in srgb, var(--fhj-accent, #8fb0e3) 34%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 180ms var(--fhj-spring), box-shadow 240ms var(--fhj-out);
+}
+/* The halo. One slow breath every six seconds at four percent opacity — it is
+   there to say the button is live, and it is under the threshold where a
+   moving thing on a health screen becomes something you have to ignore. */
+.fhj-thumb-add-disc::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--fhj-accent, #8fb0e3) 40%, transparent) 0%,
+    transparent 68%
+  );
+  opacity: 0;
+  animation: fhjThumbBreath 6.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes fhjThumbBreath {
+  0%, 100% { opacity: 0; transform: scale(0.92); }
+  50% { opacity: 0.5; transform: scale(1.06); }
+}
+.fhj-thumb-add:active .fhj-thumb-add-disc {
+  transform: scale(0.9);
+  box-shadow:
+    0 2px 8px color-mix(in srgb, var(--fhj-accent, #8fb0e3) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- the fan ----------
+   Anchored to the bottom corner on the held side. Items arc out from that
+   corner along the sweep a thumb actually makes, so choosing one is a
+   direction rather than a destination — which is what makes it usable without
+   looking down at the phone. */
+
+.fhj-fan {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+}
+
+.fhj-fan-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: var(--fhj-overlay, rgba(10, 11, 14, 0.72));
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  animation: fhjFanScrim 260ms var(--fhj-out) both;
+}
+@keyframes fhjFanScrim {
+  from { opacity: 0; }
+}
+
+.fhj-fan-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* The corner the thumb pivots around: half a bar's height up, a thumb's width
+   in. Every item is positioned from here, so moving the pivot moves the whole
+   fan and nothing else has to know. */
+.fhj-fan-pivot {
+  position: absolute;
+  bottom: calc(3.1rem + env(safe-area-inset-bottom));
+  width: 0;
+  height: 0;
+}
+.fhj-fan[data-hand="right"] .fhj-fan-pivot {
+  right: 2.6rem;
+}
+.fhj-fan[data-hand="left"] .fhj-fan-pivot {
+  left: 2.6rem;
+}
+
+.fhj-fan-items {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fhj-fan-slot {
+  position: absolute;
+  bottom: calc(3.1rem + env(safe-area-inset-bottom));
+  width: 0;
+  height: 0;
+  display: flex;
+  justify-content: center;
+}
+.fhj-fan[data-hand="right"] .fhj-fan-slot {
+  right: 2.6rem;
+}
+.fhj-fan[data-hand="left"] .fhj-fan-slot {
+  left: 2.6rem;
+}
+
+.fhj-fan-item {
+  position: absolute;
+  bottom: -1.75rem;
+  left: -3.25rem;
+  width: 6.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  pointer-events: auto;
+  color: var(--fhj-ink, #ecebe7);
+  /* Every item starts stacked on the pivot and flies to its own place on the
+     arc. The spring is the same one the rest of the app uses, and the stagger
+     is what turns twelve simultaneous arrivals into one gesture opening. */
+  transform: translate3d(0, 0, 0) scale(0.4);
+  opacity: 0;
+  transition:
+    transform 420ms var(--fhj-spring) var(--fd, 0ms),
+    opacity 200ms ease var(--fd, 0ms);
+}
+.fhj-fan-stage.is-in .fhj-fan-item {
+  transform: translate3d(var(--fx, 0px), var(--fy, 0px), 0) scale(1);
+  opacity: 1;
+}
+
+.fhj-fan-disc {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-ink, #ecebe7);
+  background: color-mix(in srgb, var(--fhj-card, #1e2026) 88%, transparent);
+  border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
+  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.34));
+  transition: transform 200ms var(--fhj-spring), background 200ms var(--fhj-out),
+    border-color 200ms var(--fhj-out), box-shadow 200ms var(--fhj-out), color 200ms var(--fhj-out);
+}
+
+.fhj-fan-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--fhj-sub, #adafb8);
+  text-shadow: 0 1px 6px var(--fhj-bg, #141519);
+  transition: color 200ms var(--fhj-out);
+}
+
+/* Where you already are, said quietly — a ring, not a fill, because the fan
+   is for leaving rather than for confirming. */
+.fhj-fan-item.is-here .fhj-fan-disc {
+  border-color: var(--fhj-accent-line, rgba(143, 176, 227, 0.4));
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+
+/* Under the thumb. The lift is large on purpose: this is the state somebody
+   is reading out of the corner of their eye, at a red light, and a subtle
+   highlight is not a highlight. */
+.fhj-fan-item.is-hot .fhj-fan-disc,
+.fhj-fan-item:active .fhj-fan-disc {
+  transform: scale(1.18);
+  color: var(--fhj-on-accent, #121419);
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 62%, black);
+  box-shadow:
+    0 10px 28px color-mix(in srgb, var(--fhj-accent, #8fb0e3) 46%, transparent),
+    0 0 0 6px var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+.fhj-fan-item.is-hot .fhj-fan-label {
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-fan-hint {
+  position: absolute;
+  left: 1.25rem;
+  right: 1.25rem;
+  top: max(1.25rem, env(safe-area-inset-top));
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fhj-subtle, #9a9ca6);
+  animation: fhjFanScrim 320ms ease both 120ms;
+  pointer-events: none;
+}
+
+.fhj-fan-hand {
+  position: absolute;
+  top: calc(max(1.25rem, env(safe-area-inset-top)) + 1.75rem);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  border: var(--fhj-bw) solid var(--fhj-accent-line, rgba(143, 176, 227, 0.4));
+  animation: fhjFanScrim 320ms ease both 200ms;
+}
+
+/* ---------- edge-back ----------
+   The puck is the whole affordance: it appears the moment the gesture is
+   claimed, grows with the drag, and fills once letting go would complete the
+   back. Somebody can therefore tell what will happen before it happens, which
+   is the difference between a gesture and a gamble. */
+
+.fhj-edgeback {
+  position: fixed;
+  top: 50%;
+  z-index: 29;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.fhj-edgeback[data-side="right"] {
+  right: calc(6px + var(--ep, 0) * 26px);
+}
+.fhj-edgeback[data-side="left"] {
+  left: calc(6px + var(--ep, 0) * 26px);
+}
+
+.fhj-edgeback-puck {
+  display: grid;
+  place-items: center;
+  width: calc(2.25rem + var(--ep, 0) * 0.9rem);
+  height: calc(2.75rem + var(--ep, 0) * 1.6rem);
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-on-accent, #121419);
+  background: color-mix(in srgb, var(--fhj-accent, #8fb0e3) calc(55% + var(--ep, 0) * 45%), var(--fhj-card, #1e2026));
+  border: var(--fhj-bw) solid color-mix(in srgb, var(--fhj-accent, #8fb0e3) 60%, black);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+  opacity: calc(0.45 + var(--ep, 0) * 0.55);
+}
+
+/* ---------- reach ----------
+   iOS calls it Reachability and it is the only honest answer to a 6.7" screen:
+   rather than asking the hand to travel to the top of the page, the page comes
+   down to the hand. The bar does not move — it is fixed *outside* the shell,
+   which is the whole reason the two are separate elements. */
+
+.fhj-shell {
+  transition: transform 420ms var(--fhj-spring);
+}
+.fhj-shell.is-reaching {
+  transform: translate3d(0, var(--fhj-reach, 34vh), 0);
+}
+
+/* Tapping anywhere in the gap puts the screen back. It is above the shell but
+   below the bar, so the one control that is always reachable stays live. */
+.fhj-reach-catch {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  animation: fhjFade 200ms ease;
+}
+.fhj-reach-catch::after {
+  content: "Tap to put it back";
+  position: absolute;
+  left: 50%;
+  top: calc(var(--fhj-reach, 34vh) / 2);
+  transform: translate(-50%, -50%);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fhj-muted, #787b86);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-thumb-add-disc::after {
+    animation: none;
+    opacity: 0;
+  }
+  .fhj-fan-item {
+    transition: opacity 120ms linear;
+    transform: translate3d(var(--fx, 0px), var(--fy, 0px), 0) scale(1);
+  }
+  .fhj-fan-stage.is-in .fhj-fan-item {
+    transition: opacity 120ms linear;
+  }
+  .fhj-shell,
+  .fhj-fan-disc,
+  .fhj-thumb-tab,
+  .fhj-thumb-add-disc {
+    transition: none;
+  }
+}
+
+/* ============================================================
    Print
    ============================================================
    A printed report is what gets handed to a clinician, so it is its own
@@ -7197,6 +7678,9 @@ button:active > .fhj-nav-add {
   nav,
   header,
   .no-print,
+  .fhj-fan,
+  .fhj-edgeback,
+  .fhj-reach-catch,
   .fhj-glow,
   .fhj-backdrop,
   .fhj-picker-arrow {

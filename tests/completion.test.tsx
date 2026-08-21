@@ -100,7 +100,7 @@ describe("when every question was skipped", () => {
 describe("skipping is not erasing", () => {
   it("leaves an answer already given alone when the batch is skipped", async () => {
     await mountQuickLog();
-    fireEvent.click(screen.getByRole("button", { name: "Back to dashboard" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Today" }));
     fireEvent.click(await screen.findByRole("button", { name: /Overall skin severity 7 out of 10/ }));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(7));
 
@@ -117,7 +117,7 @@ describe("when something was written", () => {
   it("celebrates, once, on the strength of the value", async () => {
     await mountQuickLog();
     // Recorded on Today with one tap, before the survey was even opened.
-    fireEvent.click(screen.getByRole("button", { name: "Back to dashboard" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Today" }));
     fireEvent.click(await screen.findByRole("button", { name: /Overall skin severity 6 out of 10/ }));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(6));
     fireEvent.click(await screen.findByRole("button", { name: /Add more detail/ }));

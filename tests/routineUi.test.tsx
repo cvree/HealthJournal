@@ -180,7 +180,7 @@ describe("setting a routine up", () => {
     expect(db.routineItems[0]).toMatchObject({ name: "Magnesium", dose: "400 mg", times: ["bed"], daily: true });
 
     // And it is asking to be ticked, on the screen the user starts every day on.
-    fireEvent.click(screen.getByRole("button", { name: "Back to dashboard" }));
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Today" }));
     expect(await screen.findByRole("button", { name: "Mark taken: Magnesium, Bedtime" })).toBeTruthy();
   });
 

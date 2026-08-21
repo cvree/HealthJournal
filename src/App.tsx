@@ -7,7 +7,12 @@ import {
   BarChart, Bar, CartesianGrid, ComposedChart, Area, Cell,
 } from "recharts";
 import * as XLSX from "xlsx";
-import { initSmoothScroll, scrollToTop, animateScreenIn, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll } from "./lib/motion";
+import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll } from "./lib/motion";
+import { ThumbNav, EdgeBack } from "./components/ThumbNav";
+import {
+  ROOT, applyHand, canGoBack, destinationsFor, navBack, navGo, navParent, navTop,
+  onHandChange, onSystemBack, otherHand, readHand, reachDrop, screenLabel, setHand,
+} from "./lib/oneHanded";
 import AmbientBackdrop from "./components/AmbientBackdrop";
 import AppearancePanel from "./components/AppearancePanel";
 import RecoveryScreen from "./components/RecoveryScreen";
@@ -15768,20 +15773,20 @@ function BodyMap({ spots, onToggle, tint }) {
    lives at the foot of Insights and in Settings — two places, both of them
    where someone would go looking for it — and the tab it vacated went to the
    screen that earns a daily visit. */
-/* Two destinations and one verb.
+/* Two destinations, one verb, and a way back.
 
    The five-tab bar (Today, Log, Diary, Insights, Calendar) asked somebody to
-   know which shelf a thing lived on before they could put anything on it —
-   a tax charged on every visit, paid most often by the person feeling worst.
+   know which shelf a thing lived on before they could put anything on it — a
+   tax charged on every visit, paid most often by the person feeling worst.
    What is left is the only division that survives contact with a bad day:
-   what is happening now, what has happened, and *add*. Everything the old
-   tabs led to is one tap from one of the three (see the + sheet and History),
-   and Settings moved into the header where a preference belongs. */
-const NAV = [
-  { id: "dashboard", label: "Today", icon: "home" },
-  { id: "add", label: "Add", icon: "plus", action: true },
-  { id: "history", label: "History", icon: "calendar" },
-];
+   what is happening now, what has happened, and *add*.
+
+   The bar itself now lives in src/components/ThumbNav.tsx, because it grew a
+   fourth job: on any screen you navigated into, the left slot becomes Back and
+   says where back goes, and the + is also the handle for the destination fan
+   and for pulling the page into reach. Everything the old tabs led to is one
+   hold-and-slide from wherever you are, and Settings stayed in the header
+   where a preference belongs. */
 
 /* One rounded fix, or nothing.
 
@@ -15973,7 +15978,43 @@ class ErrorBoundary extends React.Component {
 
 export default function App({ viewer = false }) {
   const [db, setDb] = useState(null);
-  const [screen, setScreen] = useState("dashboard");
+  /* Not a screen name — a *stack* of them.
+
+     Every "back" in the app used to be a guess. The header arrow went to
+     Today from wherever you were, so Export → Appointment Pack → back landed
+     two screens away from the thing you were reading, and History → Sun →
+     back forgot that History existed at all. One array fixes the whole class
+     of it, and it is what lets Back become something a thumb can do — from
+     the bar, from the side edge, from the phone's own back button — because
+     all three now mean the same unambiguous thing.
+
+     `setScreen` keeps its old shape deliberately: forty-odd call sites hand it
+     a string and none of them need to know a stack exists. */
+  const [navStack, setNavStack] = useState([ROOT]);
+  const screen = navTop(navStack);
+  const setScreen = (id) => {
+    const next = navGo(navStack, id);
+    navDir.current = next.length > navStack.length ? 1 : next.length < navStack.length ? -1 : 0;
+    setNavStack(next);
+  };
+  const goBack = () => { navDir.current = -1; setNavStack(navBack(navStack)); };
+  const backTo = navParent(navStack);
+  const canBack = canGoBack(navStack);
+  /* Which direction the last navigation travelled, so the arriving screen can
+     answer the departing one. A ref, not state: it is read during the layout
+     effect that plays the transition and must never cause a render of its own. */
+  const navDir = useRef(0);
+  /* Which hand is holding the phone. A device fact, not a journal one — it
+     lives in localStorage beside the theme, works before there is a profile,
+     and works in the read-only viewer where there is nothing to write to. */
+  const [hand, setHandState] = useState(readHand);
+  useEffect(() => { applyHand(hand); return onHandChange(setHandState); }, [hand]);
+  const flipHand = () => { feedback("toggleOn"); setHandState(setHand(otherHand(hand))); };
+  /* Reachability: the top of the screen slid down into the thumb arc. Held in
+     the shell rather than the page, so the bar — the one control that must
+     always be under the thumb — stays exactly where it is. */
+  const [reaching, setReaching] = useState(false);
+  const shellRef = useRef(null);
   const [logDate, setLogDate] = useState(todayStr());
   const [logMode, setLogMode] = useState("quick");
   const [logPhotos, setLogPhotos] = useState(false);
@@ -16063,8 +16104,42 @@ export default function App({ viewer = false }) {
       vv.removeEventListener("scroll", apply);
     };
   }, []);
-  // GSAP screen transition + scroll reset on navigation (pre-paint, no flash)
-  useLayoutEffect(() => { scrollToTop(true); animateScreenIn(screenRef.current); }, [screen]);
+  /* How far "bring it into reach" moves the page, in px, kept on the root so
+     the stylesheet and the gesture cannot disagree about it. A third of the
+     viewport on a phone; capped, because a tablet does not need half a metre
+     of empty space slid into view to put a header under a thumb. */
+  useEffect(() => {
+    const apply = () => document.documentElement.style.setProperty("--fhj-reach", `${reachDrop(window.innerHeight)}px`);
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, []);
+
+  /* The phone's own Back means what the bar's Back means. Read through a ref
+     so the listener is mounted once and still sees the current stack — a
+     listener rebuilt on every navigation would re-arm the history buffer on
+     every navigation too, and the entries would pile up. */
+  const stackRef = useRef(navStack);
+  stackRef.current = navStack;
+  useEffect(() => onSystemBack(() => {
+    if (!canGoBack(stackRef.current)) return false;
+    navDir.current = -1;
+    setNavStack(navBack(stackRef.current));
+    return true;
+  }), []);
+
+  /* GSAP screen transition + scroll reset on navigation (pre-paint, no flash).
+     The direction is the one the stack just moved in, mirrored for a left hand
+     so the arrival always comes from the side the gesture pushed towards. */
+  useLayoutEffect(() => {
+    scrollToTop(true);
+    const dir = navDir.current;
+    navDir.current = 0;
+    animateScreenChange(screenRef.current, dir, hand === "left" ? -34 : 34);
+  }, [screen]);
+  /* A screen change under a reached-down page would leave the new screen
+     hanging halfway down the display. Arriving somewhere puts it back. */
+  useEffect(() => { setReaching(false); }, [screen]);
   // belt-and-braces: editing screens are unreachable in the read-only viewer
   useEffect(() => {
     if (viewer && ["log", "settings", "setup", "fitbit"].includes(screen)) setScreen("dashboard");
@@ -17250,7 +17325,9 @@ export default function App({ viewer = false }) {
           fraction of itself. Widening it there is the difference between
           scrolling a form and seeing one. Below 900px this class does nothing
           at all, so nothing about the phone changes. */}
-      <div className={"fhj-shell relative" + (screen === "log" && logMode === "detailed" ? " is-wide" : "")}
+      <div ref={shellRef}
+        className={"fhj-shell relative" + (screen === "log" && logMode === "detailed" ? " is-wide" : "")
+          + (reaching ? " is-reaching" : "")}
         style={{ paddingBottom: "6rem", zIndex: 1 }}>
         {showHeader && (
           <header className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
@@ -17261,9 +17338,14 @@ export default function App({ viewer = false }) {
                  title legible without a hard bar across the screen. */
               backdropFilter: "saturate(140%) blur(8px)",
             }}>
-            <button onClick={goHome} aria-label="Back to dashboard" className="fhj-icon-btn"
-              style={{ width: "2.5rem", height: "2.5rem" }}>
-              <Icon name="home" size={18} color={C.sub} />
+            {/* Still here, and still the obvious thing to reach for — but no
+                longer the *only* way out: the same Back is on the bar, on the
+                side edge, and on the phone's own back button. It also goes
+                where you came from now rather than always to Today. */}
+            <button onClick={canBack ? goBack : goHome}
+              aria-label={canBack ? `Back to ${screenLabel(backTo)}` : "Back to dashboard"}
+              className="fhj-icon-btn" style={{ width: "2.5rem", height: "2.5rem" }}>
+              <Icon name={canBack ? "left" : "home"} size={18} color={C.sub} />
             </button>
             {screen !== "settings" && (
               <SyncAlert status={syncStatus} onOpen={() => setScreen("settings")} />
@@ -17320,48 +17402,31 @@ export default function App({ viewer = false }) {
 
         <ToastHost />
 
-        <nav className="fixed bottom-0 left-0 right-0 z-30" aria-label="Main">
-          <div className="max-w-md mx-auto px-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
-            <div className="flex rounded-2xl overflow-hidden"
-              style={{ background: C.card, border: `1px solid ${C.line}`, boxShadow: C.shadowLg }}>
-              {(viewer ? NAV.filter((n) => !n.action) : NAV).map((n) => {
-                /* The + is not a destination and never shows as one — it opens
-                   the add sheet over whatever screen you are on, and lands you
-                   on Today, which is the day it adds to. */
-                if (n.action) {
-                  return (
-                    <button key={n.id} aria-label="Add to today" aria-haspopup="dialog"
-                      onClick={() => { feedback("nav"); setScreen("dashboard"); setAddSheet(true); }}
-                      className="flex-1 flex items-center justify-center" style={{ minHeight: 56 }}>
-                      <span className="fhj-nav-add"><Icon name="plus" size={22} color={C.onAccent} /></span>
-                    </button>
-                  );
-                }
-                const active = screen === n.id;
-                const color = active ? C.accentText : C.sub;
-                return (
-                  <button key={n.id}
-                    onClick={() => { if (screen !== n.id) feedback("nav"); setScreen(n.id); }}
-                    aria-current={active ? "page" : undefined}
-                    className="flex-1 flex flex-col items-center justify-center gap-1 relative"
-                    style={{ minHeight: 56, background: active ? C.accentSoft : "transparent" }}>
-                    {/* A 2px cap rather than a filled pill: the active tab is
-                        obvious without the nav turning into a block of colour. */}
-                    <span aria-hidden="true" className="absolute top-0 rounded-full"
-                      style={{
-                        height: 2, width: active ? "1.75rem" : 0,
-                        background: C.accent,
-                        transition: "width 220ms cubic-bezier(0.22,1,0.36,1)",
-                      }} />
-                    <Icon name={n.icon} size={19} color={color} />
-                    <span className="text-[10px] font-medium" style={{ color }}>{n.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </nav>
       </div>
+
+      {/* Outside the shell on purpose, all three of them.
+
+          The shell is what moves — it slides sideways under an edge-back drag
+          and downwards when somebody pulls the page into reach — and a
+          `position: fixed` child of a transformed element stops being fixed to
+          the viewport and starts being fixed to its moving parent. The bar
+          would ride away with the page it is supposed to be steering. */}
+      {reaching && (
+        <button type="button" className="fhj-reach-catch" aria-label="Put the screen back"
+          onClick={() => { feedback("tap"); setReaching(false); }} />
+      )}
+
+      <EdgeBack enabled={canBack && !reaching} hand={hand} shellRef={shellRef} onBack={goBack} />
+
+      <ThumbNav
+        screen={screen} canBack={canBack} backLabel={screenLabel(backTo)}
+        destinations={destinationsFor({ viewer, exclude: [] })}
+        hand={hand} viewer={viewer} Icon={Icon}
+        onBack={() => { feedback("nav"); goBack(); }}
+        onGo={(id) => { if (screen !== id) feedback("nav"); setScreen(id); }}
+        onAdd={() => { feedback("nav"); setScreen("dashboard"); setAddSheet(true); }}
+        onFlipHand={flipHand}
+        onReach={() => setReaching(true)} />
     </div>
   );
 }

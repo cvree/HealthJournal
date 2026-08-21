@@ -147,6 +147,31 @@ export function animateScreenIn(el: HTMLElement | null) {
   );
 }
 
+/** Screen-change transition that knows which way you went.
+
+    A flat fade is honest but it is also mute: it says a screen changed and
+    nothing about whether you went deeper or came back out. Once Back is a
+    gesture your thumb performs — a peel that travels sideways under the finger
+    — the arrival has to answer the departure, or the app appears to teleport
+    at the exact moment the person is watching the movement most closely.
+
+    `dir` is the direction of travel: +1 deeper into the app, -1 back out of
+    it, 0 for a sideways move between two roots, which is the old fade because
+    neither screen is inside the other. `sideways` is the axis in px, signed by
+    the caller so a left-handed layout can mirror the whole thing. */
+export function animateScreenChange(el: HTMLElement | null, dir: -1 | 0 | 1, sideways = 34) {
+  if (!el || prefersReducedMotion()) return;
+  if (!dir) { animateScreenIn(el); return; }
+  gsap.fromTo(
+    el,
+    { autoAlpha: 0, x: dir * sideways, scale: 0.985 },
+    {
+      autoAlpha: 1, x: 0, scale: 1,
+      duration: 0.38, ease: "power3.out", clearProps: "all",
+    }
+  );
+}
+
 /** Setup wizard: the step's own blocks arrive in reading order.
 
     This is the one place in the app where a stagger is doing real work rather

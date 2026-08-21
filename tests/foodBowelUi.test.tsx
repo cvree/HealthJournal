@@ -829,7 +829,9 @@ describe("letting AI answer the form is opt-in, per device", () => {
       screen.getByRole("switch", { name: /Let AI fill in the log for you/ }).getAttribute("aria-checked")
     ).toBe("false");
     // With it off, the bowel sheet still routes through the consent button.
-    fireEvent.click(screen.getByRole("button", { name: /back to dashboard/i }));
+    // Out of Settings the way a thumb would: the Today tab, which is in the
+    // same place on every screen in the app.
+    fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Today" }));
     await screen.findByText(/Quick Add/);
     await openTile(/^Bowel/);
     await screen.findByText("Log bowel movement");
