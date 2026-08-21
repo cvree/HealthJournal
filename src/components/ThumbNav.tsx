@@ -41,6 +41,11 @@ interface FanProps {
   destinations: Destination[];
   active: string;
   hand: Hand;
+  /** Viewport coordinates of the + button's centre, measured when the fan
+      opened. The fan blooms out of the control that was pressed, and the
+      thumb is already resting on that point — which is what makes sliding
+      onto an item a push in a direction rather than a journey to a place. */
+  pivot: { x: number; y: number };
   Icon: IconComponent;
   /** Set while a press is still down, so the fan can be steered by sliding. */
   steerRef: React.MutableRefObject<((x: number, y: number) => void) | null>;
@@ -52,7 +57,7 @@ interface FanProps {
   onClose: () => void;
 }
 
-function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFlipHand, onClose }: FanProps) {
+function Fan({ destinations, active, hand, pivot, Icon, steerRef, commitRef, onGo, onFlipHand, onClose }: FanProps) {
   const [size, setSize] = useState(() => ({
     w: typeof window === "undefined" ? 390 : window.innerWidth,
     h: typeof window === "undefined" ? 780 : window.innerHeight,
@@ -64,7 +69,6 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
      pointerup, which runs before React has re-rendered anything. */
   const hotRef = useRef(-1);
   const [shown, setShown] = useState(false);
-  const pivotRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef<HTMLUListElement | null>(null);
 
   useEffect(() => {
@@ -108,10 +112,7 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
      rest. */
   useEffect(() => {
     steerRef.current = (x: number, y: number) => {
-      const el = pivotRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const i = pickArcTarget(points, x - (r.left + r.width / 2), y - (r.top + r.height / 2));
+      const i = pickArcTarget(points, x - pivot.x, y - pivot.y);
       if (i === hotRef.current) return;
       hotRef.current = i;
       /* A tick as the thumb crosses onto each item is what lets somebody use
@@ -130,11 +131,15 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
 
   const hint = hot >= 0 ? destinations[hot].hint : "Slide to choose · let go to open";
 
+
   return (
-    <div className="fhj-fan" data-hand={hand} role="dialog" aria-modal="true" aria-label="Go anywhere">
+    <div className="fhj-fan" data-hand={hand} role="dialog" aria-modal="true" aria-label="Go anywhere"
+      style={{
+        ["--fan-x" as string]: `${Math.round(pivot.x)}px`,
+        ["--fan-y" as string]: `${Math.round(pivot.y)}px`,
+      }}>
       <button type="button" className="fhj-fan-scrim" aria-label="Close" onClick={onClose} />
       <div className={"fhj-fan-stage" + (shown ? " is-in" : "")}>
-        <div ref={pivotRef} className="fhj-fan-pivot" aria-hidden="true" />
         <ul className="fhj-fan-items" ref={itemsRef}>
           {destinations.map((d, i) => {
             const p = points[i];
@@ -142,6 +147,8 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
             return (
               <li key={d.id} className="fhj-fan-slot"
                 style={{
+                  left: `${Math.round(pivot.x)}px`,
+                  top: `${Math.round(pivot.y)}px`,
                   ["--fx" as string]: `${Math.round(p.x)}px`,
                   ["--fy" as string]: `${Math.round(p.y)}px`,
                   ["--fd" as string]: `${i * 26}ms`,
@@ -160,13 +167,20 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
           })}
         </ul>
       </div>
-      {/* One line, live: what the thumb is currently resting on. It is the
-          only text in the fan that changes, so it reads as an answer rather
-          than as chrome. */}
-      <p className="fhj-fan-hint" aria-live="polite">{hint}</p>
-      <button type="button" className="fhj-fan-hand" onClick={onFlipHand}>
-        {hand === "right" ? "Left-handed?" : "Right-handed?"}
-      </button>
+      {/* The upper half of the screen is empty while the fan is open — it has
+          to be, because none of it is anywhere a thumb can go. Rather than
+          leave it dark, it reads back what the thumb is resting on, in the
+          app's own display face. It is the only text here that changes, so it
+          lands as an answer rather than as chrome, and it is legible from
+          further away than a 10px label on a disc ever could be. */}
+      <div className="fhj-fan-read" aria-live="polite">
+        <span className="fhj-fan-eyebrow">Go anywhere</span>
+        <strong className="fhj-fan-name">{hot >= 0 ? destinations[hot].label : "Where to?"}</strong>
+        <span className="fhj-fan-hint">{hint}</span>
+        <button type="button" className="fhj-fan-hand" onClick={onFlipHand}>
+          {hand === "right" ? "Left-handed?" : "Right-handed?"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -195,6 +209,11 @@ export function ThumbNav({
   onBack, onGo, onAdd, onFlipHand, onReach,
 }: ThumbNavProps) {
   const [fan, setFan] = useState(false);
+  const addRef = useRef<HTMLButtonElement | null>(null);
+  /* Where the fan pivots: the + button's centre, measured at the moment it
+     opens rather than assumed from the stylesheet, so a narrow phone, a wide
+     window and a left-handed layout all pivot on the real control. */
+  const pivotRef = useRef({ x: 0, y: 0 });
   const steerRef = useRef<((x: number, y: number) => void) | null>(null);
   const commitRef = useRef<(() => boolean) | null>(null);
   /* The click that follows a press the fan already answered. The browser
@@ -208,13 +227,23 @@ export function ThumbNav({
   const [coach, setCoach] = useState(() => !fanSeen());
 
   const openFan = useCallback(() => {
+    const r = addRef.current?.getBoundingClientRect();
+    if (r) pivotRef.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    else if (typeof window !== "undefined") {
+      /* No layout to measure (jsdom, or a fan opened before first paint):
+         the bottom corner on the held side is where the button would be. */
+      pivotRef.current = {
+        x: hand === "right" ? window.innerWidth - 56 : 56,
+        y: window.innerHeight - 56,
+      };
+    }
     markFanSeen();
     setCoach(false);
     setFan((was) => {
       if (!was) feedback("menu");
       return true;
     });
-  }, []);
+  }, [hand]);
 
   const closeFan = useCallback(() => setFan(false), []);
 
@@ -230,7 +259,12 @@ export function ThumbNav({
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button > 0 || viewer) return;
     const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture?.(e.pointerId);
+    /* Capture is what keeps the steering moves coming to this button after
+       the thumb has travelled two hundred pixels up the screen. Not every
+       browser will grant it — Safari refuses for a pointer it has already
+       let go of, and it throws rather than returning false — and a fan that
+       opens is worth more than a fan that steers. */
+    try { target.setPointerCapture?.(e.pointerId); } catch { /* steering only */ }
     press.current = {
       id: e.pointerId, x: e.clientX, y: e.clientY, opened: false, moved: false,
       timer: window.setTimeout(() => { const p = press.current; if (p) { p.opened = true; openFan(); } }, LONG_PRESS_MS),
@@ -267,6 +301,38 @@ export function ThumbNav({
 
   const go = (id: string) => { closeFan(); onGo(id); };
 
+  /* The + is three controls in one place: tap to add, hold to fan out every
+     destination, pull down to bring the top of the screen into reach. All
+     three are the same thumb without moving it, which is the only reason it
+     is worth stacking three meanings on one button.
+
+     It sits at the end of the bar on the side the phone is held, not in the
+     middle: that corner is where a thumb rests, and it is also the pivot the
+     fan blooms from. The two used to be a hundred pixels apart, and the slide
+     that chose an item was therefore a slide relative to a point the thumb
+     was not on. */
+  const plus = !viewer ? (
+    <button key="add" type="button" className="fhj-thumb-add" ref={addRef}
+      aria-label="Add to today" aria-haspopup="dialog"
+      onClick={() => {
+        if (handled.current) { handled.current = false; return; }
+        if (!fan) onAdd();
+      }}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+      onPointerUp={endPress} onPointerCancel={endPress}
+      /* The keyboard route to the same place. Long-press has no key, and
+         "every destination in the app" is not a thing to leave behind a
+         gesture only a thumb can make. */
+      onKeyDown={(e) => { if (e.key === "ArrowUp") { e.preventDefault(); openFan(); } }}
+      aria-keyshortcuts="ArrowUp"
+      title="Tap to add · hold to go anywhere · pull down to reach"
+      onContextMenu={(e) => e.preventDefault()}>
+      <span className="fhj-thumb-add-disc" aria-hidden="true">
+        <Icon name="plus" size={22} color="currentColor" />
+      </span>
+    </button>
+  ) : null;
+
   /* The bar never changes what is under a given position.
 
      An earlier version of this morphed the left slot into Back on any screen
@@ -295,7 +361,7 @@ export function ThumbNav({
   return (
     <>
       {fan && (
-        <Fan destinations={destinations} active={screen} hand={hand} Icon={Icon}
+        <Fan destinations={destinations} active={screen} hand={hand} pivot={pivotRef.current} Icon={Icon}
           steerRef={steerRef} commitRef={commitRef} onGo={go} onFlipHand={onFlipHand} onClose={closeFan} />
       )}
       {coach && !viewer && !canBack && (
@@ -305,7 +371,10 @@ export function ThumbNav({
         <button type="button" className="fhj-thumb-coach" data-hand={hand}
           onClick={() => { markFanSeen(); setCoach(false); openFan(); }}>
           <span className="fhj-thumb-coach-dot" aria-hidden="true" />
-          Hold <b>+</b> to go anywhere
+          {/* One flex item, not four: a bare text node beside an element in a
+              flex row is its own anonymous box, and "Hold + to go anywhere"
+              came apart into three of them at three different widths. */}
+          <span>Hold <b>+</b> to go anywhere</span>
         </button>
       )}
       <nav className="fhj-thumbnav" aria-label="Main">
@@ -326,32 +395,10 @@ export function ThumbNav({
           </div>
         )}
         <div className="fhj-thumbnav-inner" data-hand={hand}>
+          {hand === "left" && plus}
           {tab("dashboard", "home", "Today")}
-          {!viewer && (
-            /* The one control that is both a button and a handle: tap to add,
-               hold to go anywhere, pull down to bring the screen into reach.
-               All three are the same thumb in the same place. */
-            <button type="button" className="fhj-thumb-add"
-              aria-label="Add to today" aria-haspopup="dialog"
-              onClick={() => {
-                if (handled.current) { handled.current = false; return; }
-                if (!fan) onAdd();
-              }}
-              onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-              onPointerUp={endPress} onPointerCancel={endPress}
-              /* The keyboard route to the same place. Long-press has no key,
-                 and "every destination in the app" is not a thing to leave
-                 behind a gesture only a thumb can make. */
-              onKeyDown={(e) => { if (e.key === "ArrowUp") { e.preventDefault(); openFan(); } }}
-              aria-keyshortcuts="ArrowUp"
-              title="Tap to add · hold to go anywhere · pull down to reach"
-              onContextMenu={(e) => e.preventDefault()}>
-              <span className="fhj-thumb-add-disc" aria-hidden="true">
-                <Icon name="plus" size={22} color="currentColor" />
-              </span>
-            </button>
-          )}
           {tab("history", "calendar", "History")}
+          {hand === "right" && plus}
         </div>
       </nav>
     </>

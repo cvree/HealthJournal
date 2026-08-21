@@ -17328,7 +17328,9 @@ export default function App({ viewer = false }) {
       <div ref={shellRef}
         className={"fhj-shell relative" + (screen === "log" && logMode === "detailed" ? " is-wide" : "")
           + (reaching ? " is-reaching" : "")}
-        style={{ paddingBottom: "6rem", zIndex: 1 }}>
+        /* Room for the bar, plus room for the Back pill above it when there
+           is one — without this the last card on a screen sits under it. */
+        style={{ paddingBottom: canBack ? "8.75rem" : "6rem", zIndex: 1 }}>
         {showHeader && (
           <header className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
             style={{

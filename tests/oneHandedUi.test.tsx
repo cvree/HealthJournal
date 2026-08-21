@@ -62,16 +62,15 @@ describe("the bar does not move under the thumb", () => {
   it("is the same three controls in the same three places, on every screen", async () => {
     await mountApp();
     const shape = () => nav().getAllByRole("button")
-      .map((b) => b.textContent!.trim() || b.getAttribute("aria-label"))
-      .filter((t) => t !== "History" || true);
-    expect(shape().slice(0, 3)).toEqual(["Today", "Add to today", "History"]);
+      .map((b) => b.textContent!.trim() || b.getAttribute("aria-label"));
+    expect(shape()).toEqual(["Today", "History", "Add to today"]);
 
     fireEvent.click(nav().getByRole("button", { name: "History" }));
     // Back joins it, but the three keep their places rather than being
     // displaced — the whole point of a bar a thumb can use without looking.
     await waitFor(() => expect(nav().queryByRole("button", { name: "Back to Today" })).toBeTruthy());
     const labels = nav().getAllByRole("button").map((b) => b.textContent!.trim() || b.getAttribute("aria-label"));
-    expect(labels.slice(-3)).toEqual(["Today", "Add to today", "History"]);
+    expect(labels.slice(-3)).toEqual(["Today", "History", "Add to today"]);
   });
 
   it("offers nothing to go back to on the screen the app opens on", async () => {
@@ -150,13 +149,17 @@ describe("the fan", () => {
     expect(await screen.findByRole("dialog", { name: "Go anywhere" })).toBeTruthy();
   });
 
-  it("moves to the other hand, and stays there", async () => {
+  it("moves to the other hand, and takes the + with it", async () => {
     await mountApp();
     const fan = await openFan();
     expect(fan.getAttribute("data-hand")).toBe("right");
     fireEvent.click(within(fan).getByRole("button", { name: /Left-handed/ }));
     await waitFor(() => expect(document.documentElement.getAttribute("data-hand")).toBe("left"));
     expect(localStorage.getItem(HAND_STORAGE_KEY)).toBe("left");
+    // The whole point: the + is under the thumb that is actually holding the
+    // phone, so it leads the bar rather than ending it.
+    const labels = nav().getAllByRole("button").map((b) => b.textContent!.trim() || b.getAttribute("aria-label"));
+    expect(labels).toEqual(["Add to today", "Today", "History"]);
   });
 
   it("is said once and then never again", async () => {

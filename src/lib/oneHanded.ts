@@ -284,8 +284,19 @@ export interface ArcPoint {
 
 export const ARC_FROM = 10;
 export const ARC_TO = 84;
-/** Disc plus the air around it: the arc length one item needs to itself. */
-export const ARC_ITEM_PX = 62;
+/** Disc plus the air around it: the arc length one item needs to itself.
+    Wide enough that the *labels* clear each other, not just the discs — two
+    circles with a comfortable gap and their captions overlapping is the same
+    mess, in smaller type. */
+export const ARC_ITEM_PX = 68;
+
+/** The same measurement on a phone too narrow for it. Below ~360px the fan is
+    drawn one notch smaller (see the media query in index.css), and the
+    geometry has to agree with the stylesheet or the spacing it is protecting
+    is not the spacing on screen. */
+export function itemSizeFor(width: number): number {
+  return width < 360 ? 56 : ARC_ITEM_PX;
+}
 /** A fourth ring is not a thumb movement, it is a reach. */
 export const ARC_MAX_RINGS = 3;
 
@@ -392,7 +403,7 @@ export function fanLayout(
   count: number,
   opts: { hand: Hand; width: number; height: number; itemPx?: number }
 ): ArcPoint[] {
-  const itemPx = opts.itemPx ?? ARC_ITEM_PX;
+  const itemPx = opts.itemPx ?? itemSizeFor(opts.width);
   const radii = fanRadii(opts.width, opts.height, ringsNeeded(count, opts.width, opts.height, itemPx));
   return arcLayout(ringPlan(count, radii, itemPx), { hand: opts.hand, radii });
 }

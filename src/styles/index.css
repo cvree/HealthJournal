@@ -7216,13 +7216,14 @@ button.fhj-section:disabled {
 .fhj-thumb-coach {
   position: fixed;
   left: 50%;
-  bottom: calc(5.4rem + env(safe-area-inset-bottom));
+  bottom: calc(5.1rem + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 29;
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.85rem;
+  gap: 0.4rem;
+  white-space: nowrap;
+  padding: 0.4rem 0.8rem;
   border-radius: var(--fhj-radius-pill);
   font-size: 12px;
   font-weight: 600;
@@ -7239,8 +7240,9 @@ button.fhj-section:disabled {
   color: var(--fhj-accent-text, #a6c3ea);
 }
 .fhj-thumb-coach-dot {
-  width: 9px;
-  height: 9px;
+  flex: none;
+  width: 8px;
+  height: 8px;
   border-radius: var(--fhj-radius-pill);
   background: var(--fhj-accent, #8fb0e3);
   animation: fhjCoachPress 2.4s ease-in-out infinite;
@@ -7476,7 +7478,7 @@ button.fhj-section:disabled {
   border: 0;
   background:
     radial-gradient(
-      120% 90% at var(--fan-x, 88%) 92%,
+      120% 90% at var(--fan-x, 88%) var(--fan-y, 92%),
       color-mix(in srgb, var(--fhj-accent, #8fb0e3) 16%, transparent) 0%,
       transparent 58%
     ),
@@ -7495,25 +7497,10 @@ button.fhj-section:disabled {
   pointer-events: none;
 }
 
-/* The corner the thumb pivots around: half a bar's height up, a thumb's width
-   in. Every item is positioned from here, so moving the pivot moves the whole
-   fan and nothing else has to know. */
-.fhj-fan-pivot {
-  position: absolute;
-  bottom: calc(3.1rem + env(safe-area-inset-bottom));
-  width: 0;
-  height: 0;
-}
-.fhj-fan[data-hand="right"] .fhj-fan-pivot {
-  right: 2.6rem;
-}
-.fhj-fan[data-hand="left"] .fhj-fan-pivot {
-  left: 2.6rem;
-}
-.fhj-fan[data-hand="left"] .fhj-fan-scrim {
-  --fan-x: 12%;
-}
-
+/* Every item is positioned from the pivot the component measured — the +
+   button's own centre — so the whole fan follows the control it grew out of,
+   on any width and in either hand, and nothing here has to guess where that
+   button ended up. */
 .fhj-fan-items {
   position: absolute;
   inset: 0;
@@ -7524,24 +7511,15 @@ button.fhj-section:disabled {
 
 .fhj-fan-slot {
   position: absolute;
-  bottom: calc(3.1rem + env(safe-area-inset-bottom));
   width: 0;
   height: 0;
-  display: flex;
-  justify-content: center;
-}
-.fhj-fan[data-hand="right"] .fhj-fan-slot {
-  right: 2.6rem;
-}
-.fhj-fan[data-hand="left"] .fhj-fan-slot {
-  left: 2.6rem;
 }
 
 .fhj-fan-item {
   position: absolute;
-  bottom: -1.75rem;
-  left: -3.25rem;
-  width: 6.5rem;
+  bottom: -1.6rem;
+  left: -2.3rem;
+  width: 4.6rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -7565,8 +7543,8 @@ button.fhj-section:disabled {
 .fhj-fan-disc {
   display: grid;
   place-items: center;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 2.9rem;
+  height: 2.9rem;
   border-radius: var(--fhj-radius-pill);
   color: var(--fhj-ink, #ecebe7);
   background: color-mix(in srgb, var(--fhj-card, #1e2026) 88%, transparent);
@@ -7577,10 +7555,14 @@ button.fhj-section:disabled {
 }
 
 .fhj-fan-label {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.15;
   text-align: center;
+  /* One line, never hyphenated mid-word: the arc reserved this much room for
+     each item, and a label that breaks "Experiments" across two lines reads
+     as a rendering fault rather than as a name. */
+  white-space: nowrap;
   color: var(--fhj-sub, #adafb8);
   text-shadow: 0 1px 6px var(--fhj-bg, #141519);
   transition: color 200ms var(--fhj-out);
@@ -7610,33 +7592,89 @@ button.fhj-section:disabled {
   color: var(--fhj-ink, #ecebe7);
 }
 
-.fhj-fan-hint {
+/* The readout. It sits in the top third — the part of the screen the fan
+   deliberately does not use, because none of it is within reach — and says in
+   full size what the thumb is currently on. */
+.fhj-fan-read {
   position: absolute;
   left: 1.25rem;
   right: 1.25rem;
-  top: max(1.25rem, env(safe-area-inset-top));
-  margin: 0;
+  top: max(2.25rem, calc(env(safe-area-inset-top) + 1.5rem));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
   text-align: center;
+  pointer-events: none;
+  animation: fhjFanRead 380ms var(--fhj-out) both 100ms;
+}
+
+.fhj-fan-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fhj-muted, #787b86);
+}
+
+.fhj-fan-name {
+  font-family: var(--fhj-font-display);
+  font-optical-sizing: auto;
+  font-size: clamp(28px, 9vw, 40px);
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-fan-hint {
+  margin: 0;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--fhj-subtle, #9a9ca6);
-  animation: fhjFanScrim 320ms ease both 120ms;
-  pointer-events: none;
+  max-width: 22rem;
+}
+
+.fhj-fan-read .fhj-fan-hand {
+  pointer-events: auto;
+  margin-top: 0.5rem;
+}
+
+@keyframes fhjFanRead {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
 }
 
 .fhj-fan-hand {
-  position: absolute;
-  top: calc(max(1.25rem, env(safe-area-inset-top)) + 1.75rem);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0.4rem 0.85rem;
+  padding: 0.35rem 0.8rem;
   border-radius: var(--fhj-radius-pill);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--fhj-accent-text, #a6c3ea);
-  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
-  border: var(--fhj-bw) solid var(--fhj-accent-line, rgba(143, 176, 227, 0.4));
-  animation: fhjFanScrim 320ms ease both 200ms;
+  color: var(--fhj-subtle, #9a9ca6);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+@media (hover: hover) {
+  .fhj-fan-hand:hover {
+    color: var(--fhj-accent-text, #a6c3ea);
+    border-color: var(--fhj-accent-line, rgba(143, 176, 227, 0.4));
+  }
+}
+
+/* One notch smaller on a narrow phone, matching itemSizeFor() in
+   lib/oneHanded.ts — the geometry reserves the space, this is what fits in it. */
+@media (max-width: 359px) {
+  .fhj-fan-item {
+    width: 3.7rem;
+    left: -1.85rem;
+  }
+  .fhj-fan-disc {
+    width: 2.6rem;
+    height: 2.6rem;
+  }
+  .fhj-fan-label {
+    font-size: 10px;
+  }
 }
 
 /* ---------- edge-back ----------
@@ -7710,6 +7748,9 @@ button.fhj-section:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .fhj-fan-read {
+    animation: fhjFade 140ms ease both;
+  }
   .fhj-thumb-add-disc::after {
     animation: none;
     opacity: 0;

@@ -53,10 +53,13 @@ const today = () => {
 beforeEach(() => cleanup());
 
 describe("the bar", () => {
-  it("is Today, add, History — and nothing else", async () => {
+  it("is Today, History, add — and nothing else", async () => {
     await mountApp();
     const buttons = nav().getAllByRole("button").map((b) => b.textContent!.trim() || b.getAttribute("aria-label"));
-    expect(buttons).toEqual(["Today", "Add to today", "History"]);
+    // The + moved to the end of the bar in 1.22: that corner is where a thumb
+    // rests, and it is the point the destination fan pivots on. Left-handed,
+    // it moves to the other end (see tests/oneHandedUi.test.tsx).
+    expect(buttons).toEqual(["Today", "History", "Add to today"]);
   });
 
   it("keeps the add button out of the read-only viewer, which cannot write", async () => {
