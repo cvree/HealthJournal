@@ -89,6 +89,30 @@ export function onHandChange(fn: HandListener): () => void {
 
 export const otherHand = (hand: Hand): Hand => (hand === "right" ? "left" : "right");
 
+/* ---------- has anybody been told about the fan? ----------
+
+   A gesture nobody discovers is a feature nobody has. One line above the bar,
+   once, until it has been used — not a tour, not a modal, and never again
+   afterwards. Per device for the same reason the hand is: it describes this
+   phone's chrome, not the journal. */
+export const FAN_SEEN_KEY = "fhj_fan_seen_v1";
+
+export function fanSeen(): boolean {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(FAN_SEEN_KEY) === "1";
+  } catch {
+    /* No storage means the hint shows every cold start, which is a far smaller
+       problem than it never showing at all. */
+    return false;
+  }
+}
+
+export function markFanSeen(): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(FAN_SEEN_KEY, "1");
+  } catch { /* ignore */ }
+}
+
 /* ---------- the navigation stack ----------
 
    `screen` used to be one string, and every "back" in the app was therefore a
@@ -233,10 +257,20 @@ export function destinationsFor(opts: { viewer?: boolean; exclude?: ScreenId[] }
    x for a right hand and positive x for a left one. Mirroring lives here and
    nowhere else, so no component ever has to remember which way round it is.
 
-   The sweep starts a little off vertical (`FROM`) rather than at 0: an item
-   directly above the pivot sits under the knuckle of the thumb rather than
-   under its tip, and reads as harder to hit than one a few degrees inboard.
-   It stops short of horizontal (`TO`) for the same reason at the other end. */
+   The sweep starts a little off vertical (`ARC_FROM`) rather than at 0: an
+   item directly above the pivot sits under the knuckle of the thumb rather
+   than under its tip, and reads as harder to hit than one a few degrees
+   inboard. It stops short of horizontal (`ARC_TO`) for the same reason at the
+   other end.
+
+   How many items go on each ring is *computed*, never chosen. A fixed "five
+   per ring" is a number that is right for one phone: on a 320px screen five
+   items at a comfortable radius overlap each other, and on a tall one the
+   second ring is a stretch nobody needed to make. So each ring is asked how
+   many items its own arc length can hold, the smallest number of rings that
+   can hold everything wins, and the items are shared out in proportion to what
+   each ring can take — which is what keeps the spacing even across all of
+   them rather than packing the inner ring and stranding two on the outside. */
 
 export interface ArcPoint {
   /** Pivot-relative, in px. */
@@ -250,59 +284,126 @@ export interface ArcPoint {
 
 export const ARC_FROM = 10;
 export const ARC_TO = 84;
-/** More than this on one arc and neighbours start to collide at a comfortable
-    radius; the overflow moves to the next ring out. */
-export const ARC_PER_RING = 5;
+/** Disc plus the air around it: the arc length one item needs to itself. */
+export const ARC_ITEM_PX = 62;
+/** A fourth ring is not a thumb movement, it is a reach. */
+export const ARC_MAX_RINGS = 3;
+
+const rad = (deg: number) => (deg * Math.PI) / 180;
+const span = (from: number, to: number) => to - from;
+
+/** How many items fit on one ring without crowding. Two is the floor: a ring
+    that can only hold one item is a ring that should not exist, and the plan
+    below will have moved on to a larger radius before it matters. */
+export function ringCapacity(radius: number, itemPx = ARC_ITEM_PX, from = ARC_FROM, to = ARC_TO): number {
+  const length = radius * rad(span(from, to));
+  return Math.max(2, Math.floor(length / itemPx) + 1);
+}
+
+/** The radii for `rings` rings, spread between a comfortable inner arc and the
+    furthest the fan may reach on this screen.
+
+    The outer bound is the constraint that matters: it is what keeps the widest
+    item on screen on a small phone and stops a tablet from throwing the fan
+    halfway across the page when the thumb is still at the corner. */
+export function fanRadii(width: number, height: number, rings = 2): number[] {
+  /* 104px is the width of one item, label included — the fan is measured to
+     the item's *edge*, not to its centre, or the outermost label runs off the
+     side of a small phone. */
+  const max = Math.max(140, Math.min(width - 104, height * 0.62, 340));
+  const inner = Math.max(96, Math.round(max * 0.42));
+  const n = Math.max(1, rings);
+  if (n === 1) return [inner];
+  const step = (max - inner) / (n - 1);
+  return Array.from({ length: n }, (_, i) => Math.round(inner + step * i));
+}
+
+/** How many items go on each ring. Rings fill in proportion to what they can
+    hold, so the spacing looks the same on the inside arc as on the outside
+    one; largest remainder settles the rounding, and anything still left over
+    (a screen too small for the fan it was asked for) goes to the outermost
+    ring rather than being dropped. */
+export function ringPlan(count: number, radii: number[], itemPx = ARC_ITEM_PX, from = ARC_FROM, to = ARC_TO): number[] {
+  if (count <= 0) return radii.map(() => 0);
+  const caps = radii.map((r) => ringCapacity(r, itemPx, from, to));
+  const total = caps.reduce((a, b) => a + b, 0);
+  const share = caps.map((c) => (count * c) / total);
+  const plan = share.map((v) => Math.min(Math.floor(v), count));
+  let left = count - plan.reduce((a, b) => a + b, 0);
+  const order = share
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    if (plan[i] < caps[i]) { plan[i]++; left--; }
+  }
+  if (left > 0) plan[plan.length - 1] += left;
+  return plan;
+}
+
+/** The fewest rings that can hold `count` items on this screen. */
+export function ringsNeeded(count: number, width: number, height: number, itemPx = ARC_ITEM_PX): number {
+  for (let n = 1; n < ARC_MAX_RINGS; n++) {
+    const caps = fanRadii(width, height, n).map((r) => ringCapacity(r, itemPx));
+    if (caps.reduce((a, b) => a + b, 0) >= count) return n;
+  }
+  return ARC_MAX_RINGS;
+}
 
 export interface ArcOptions {
   hand: Hand;
-  /** Radius per ring, innermost first. The component measures these from the
-      viewport so the fan fits a small phone and uses a large one. */
+  /** Radius per ring, innermost first. */
   radii: number[];
-  perRing?: number;
   from?: number;
   to?: number;
 }
 
-const rad = (deg: number) => (deg * Math.PI) / 180;
-
-/** Fan `count` items across one or more rings. Ring 0 is nearest the pivot and
-    fills first, so on a journal with few destinations everything sits in the
-    closest arc and nothing is further away than it needs to be. */
-export function arcLayout(count: number, opts: ArcOptions): ArcPoint[] {
-  const per = Math.max(1, opts.perRing ?? ARC_PER_RING);
+/** Lay out `counts[r]` items on ring `r`. The primitive: everything about
+    *how many* go where has already been decided by the time this runs. */
+export function arcLayout(counts: number[], opts: ArcOptions): ArcPoint[] {
   const from = opts.from ?? ARC_FROM;
   const to = opts.to ?? ARC_TO;
-  const radii = opts.radii.length ? opts.radii : [180];
   const sign = opts.hand === "right" ? -1 : 1;
   const points: ArcPoint[] = [];
-  for (let i = 0; i < count; i++) {
-    const ring = Math.min(Math.floor(i / per), radii.length - 1);
-    const inRing = i - ring * per;
-    /* How many items land on *this* ring, so the last, part-full ring spreads
-       its two or three items across the same sweep rather than bunching them
-       at the bottom of it. */
-    const ringCount = Math.min(per, count - ring * per);
-    const span = to - from;
-    const angle = ringCount <= 1 ? from + span / 2 : from + (span * inRing) / (ringCount - 1);
-    const r = radii[ring];
-    points.push({
-      x: sign * Math.sin(rad(angle)) * r,
-      y: -Math.cos(rad(angle)) * r,
-      angle,
-      ring,
-      index: i,
-    });
-  }
+  let index = 0;
+  counts.forEach((n, ring) => {
+    const r = opts.radii[Math.min(ring, opts.radii.length - 1)];
+    for (let i = 0; i < n; i++) {
+      /* One item on a ring sits in the middle of the sweep rather than at the
+         start of it — an arc of one is a point, and the point belongs where
+         the thumb rests. */
+      const angle = n <= 1 ? from + span(from, to) / 2 : from + (span(from, to) * i) / (n - 1);
+      points.push({
+        x: sign * Math.sin(rad(angle)) * r,
+        y: -Math.cos(rad(angle)) * r,
+        angle,
+        ring,
+        index: index++,
+      });
+    }
+  });
   return points;
+}
+
+/** The whole fan, from a count and a viewport. This is what the component
+    calls; everything above it is the reasoning, exposed so it can be tested
+    without a browser. */
+export function fanLayout(
+  count: number,
+  opts: { hand: Hand; width: number; height: number; itemPx?: number }
+): ArcPoint[] {
+  const itemPx = opts.itemPx ?? ARC_ITEM_PX;
+  const radii = fanRadii(opts.width, opts.height, ringsNeeded(count, opts.width, opts.height, itemPx));
+  return arcLayout(ringPlan(count, radii, itemPx), { hand: opts.hand, radii });
 }
 
 /** Which item a thumb at (x, y) — pivot-relative — is choosing, or -1.
 
-    Nearest-centre inside `slop`, which is generous on purpose: this is meant
+    Nearest centre inside `slop`, which is generous on purpose: this is meant
     to be usable without looking, and a menu that demands a 44px landing is a
-    menu that demands a glance. */
-export function pickArcTarget(points: ArcPoint[], x: number, y: number, slop = 56): number {
+    menu that demands a glance. Nearest, rather than first-inside, so the
+    answer is never ambiguous where two catch areas overlap. */
+export function pickArcTarget(points: ArcPoint[], x: number, y: number, slop = 46): number {
   let best = -1;
   let bestD = slop;
   points.forEach((p, i) => {
@@ -310,20 +411,6 @@ export function pickArcTarget(points: ArcPoint[], x: number, y: number, slop = 5
     if (d < bestD) { bestD = d; best = i; }
   });
   return best;
-}
-
-/** Radii that fit the fan inside the viewport with room for the labels.
-
-    Two rings, the outer 1.44× the inner, both clamped so the widest item stays
-    on screen and the tallest stays clear of the status bar. The upper bound on
-    the inner radius is what keeps a tablet from throwing the fan halfway
-    across a 1024px page when the thumb is still at the corner. */
-export function arcRadii(width: number, height: number, rings = 2): number[] {
-  const room = Math.max(120, Math.min(width - 96, height * 0.68 - 96));
-  const inner = Math.max(104, Math.min(room * 0.56, 208));
-  const out: number[] = [];
-  for (let i = 0; i < rings; i++) out.push(Math.round(inner * Math.pow(1.44, i)));
-  return out;
 }
 
 /* ---------- gestures ----------

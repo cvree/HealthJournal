@@ -7207,6 +7207,64 @@ button.fhj-section:disabled {
   }
 }
 
+/* Said once.
+
+   The fan is the best thing in this release and it is behind a press-and-hold,
+   which is to say behind a gesture nobody has any reason to try. So the app
+   says so, once, in one line above the bar, and never again after it has been
+   used. The dot is the only moving part: a slow press-and-hold, drawn. */
+.fhj-thumb-coach {
+  position: fixed;
+  left: 50%;
+  bottom: calc(5.4rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 29;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+  background: color-mix(in srgb, var(--fhj-card, #1e2026) 90%, transparent);
+  backdrop-filter: saturate(150%) blur(12px);
+  -webkit-backdrop-filter: saturate(150%) blur(12px);
+  border: var(--fhj-bw) solid var(--fhj-accent-line, rgba(143, 176, 227, 0.4));
+  box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.34));
+  animation: fhjCoachIn 520ms var(--fhj-spring) both 900ms;
+}
+.fhj-thumb-coach b {
+  font-weight: 800;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+.fhj-thumb-coach-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  animation: fhjCoachPress 2.4s ease-in-out infinite;
+}
+@keyframes fhjCoachIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.92);
+  }
+}
+@keyframes fhjCoachPress {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  22% { transform: scale(0.72); opacity: 1; }
+  60% { transform: scale(0.72); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-thumb-coach {
+    animation: fhjFade 200ms ease both 600ms;
+  }
+  .fhj-thumb-coach-dot {
+    animation: none;
+  }
+}
+
 /* Back, in its own place.
 
    Not one of the three — those never change, which is the whole point of them
@@ -7408,12 +7466,21 @@ button.fhj-section:disabled {
   overflow: hidden;
 }
 
+/* The scrim is lit from the corner the hand is in. It is a two-degree effect
+   and it does one useful thing: the eye lands where the thumb already is,
+   before a single label has been read. */
 .fhj-fan-scrim {
   position: absolute;
   inset: 0;
   width: 100%;
   border: 0;
-  background: var(--fhj-overlay, rgba(10, 11, 14, 0.72));
+  background:
+    radial-gradient(
+      120% 90% at var(--fan-x, 88%) 92%,
+      color-mix(in srgb, var(--fhj-accent, #8fb0e3) 16%, transparent) 0%,
+      transparent 58%
+    ),
+    var(--fhj-overlay, rgba(10, 11, 14, 0.72));
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
   animation: fhjFanScrim 260ms var(--fhj-out) both;
@@ -7442,6 +7509,9 @@ button.fhj-section:disabled {
 }
 .fhj-fan[data-hand="left"] .fhj-fan-pivot {
   left: 2.6rem;
+}
+.fhj-fan[data-hand="left"] .fhj-fan-scrim {
+  --fan-x: 12%;
 }
 
 .fhj-fan-items {

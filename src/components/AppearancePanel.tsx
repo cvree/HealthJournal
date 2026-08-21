@@ -16,6 +16,7 @@ import {
   getNightLight, getThemePreference, hslToHex, onAppearanceChange, readableInk,
   setBackdrop, setHue, setNightLight, setThemePreference,
 } from "../lib/theme";
+import { HANDS, onHandChange, readHand, setHand, type Hand } from "../lib/oneHanded";
 
 /** Re-render whenever anything about the appearance changes, including changes
     made by the *other* copy of this panel or by the OS flipping dark/light. */
@@ -147,6 +148,47 @@ const THEMES: { value: ThemePreference; name: string }[] = [
   { value: "system", name: "System" },
 ];
 
+/* Which hand holds the phone.
+
+   It lives here rather than in some ergonomics submenu because it is the same
+   kind of decision as the theme: one tap, no consequences, and the whole app
+   is already wearing the answer by the time your finger leaves the screen. It
+   moves the fan's pivot, the Back pill, and which side edge the back gesture
+   is tuned for — all of which are on the wrong side of the phone for a third
+   of the people using it until they are told they can say so. */
+function HandChoice({ onChoice }: { onChoice?: () => void }) {
+  const [hand, setLocal] = useState<Hand>(readHand);
+  useEffect(() => onHandChange(setLocal), []);
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ ...label, color: C.subtle, marginBottom: 8 }}>Which hand</div>
+      <div className="fhj-seg" role="group" aria-label="Which hand holds the phone">
+        {HANDS.map((h) => {
+          const active = hand === h;
+          return (
+            <button
+              key={h}
+              type="button"
+              aria-pressed={active}
+              onClick={() => { setLocal(setHand(h)); onChoice?.(); }}
+              style={{
+                background: active ? C.accent : "transparent",
+                color: active ? C.onAccent : C.sub,
+              }}
+            >
+              {h === "right" ? "Right" : "Left"}
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: 11.5, color: C.subtle, lineHeight: 1.45, marginTop: 8 }}>
+        Puts Back, the destination fan and the swipe-back edge on the side your
+        thumb already is. Hold the + on the bar to see it.
+      </p>
+    </div>
+  );
+}
+
 export default function AppearancePanel({ onChoice }: { onChoice?: () => void }) {
   useAppearance();
   const hue = getHue();
@@ -207,6 +249,8 @@ export default function AppearancePanel({ onChoice }: { onChoice?: () => void })
           })}
         </div>
       </div>
+
+      <HandChoice onChoice={ping} />
 
       <button
         type="button"

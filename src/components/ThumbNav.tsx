@@ -27,11 +27,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ARC_OPEN_DY, EDGE_ZONE, LONG_PRESS_MS, REACH_TRIGGER,
-  arcLayout, arcRadii, backProgress, edgeDirection, edgeStart, pickArcTarget,
-  shouldCompleteBack, type Destination, type Hand,
+  backProgress, edgeDirection, edgeStart, fanLayout, fanSeen,
+  markFanSeen, pickArcTarget, shouldCompleteBack, type Destination, type Hand,
 } from "../lib/oneHanded";
 import { feedback } from "../lib/feedback";
-import { prefersReducedMotion } from "../lib/motion";
+import { lockPageScroll, prefersReducedMotion } from "../lib/motion";
 
 type IconComponent = React.ComponentType<{ name: string; size?: number; color?: string }>;
 
@@ -65,6 +65,7 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
   const hotRef = useRef(-1);
   const [shown, setShown] = useState(false);
   const pivotRef = useRef<HTMLDivElement | null>(null);
+  const itemsRef = useRef<HTMLUListElement | null>(null);
 
   useEffect(() => {
     const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
@@ -86,8 +87,20 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const radii = arcRadii(size.w, size.h, destinations.length > 5 ? 2 : 1);
-  const points = arcLayout(destinations.length, { hand, radii });
+  /* The page underneath must not move while the fan is over it — Lenis owns
+     the document scroller and has no idea this exists. Same lock the sheets
+     use, and reference-counted for the same reason. */
+  useEffect(() => lockPageScroll(), []);
+
+  /* Opened from a keyboard, the fan has to *be* somewhere: without this the
+     focus ring stays on the + and Tab walks the screen behind the scrim.
+     Opened by a thumb this is invisible and costs nothing. */
+  useEffect(() => {
+    const first = itemsRef.current?.querySelector<HTMLElement>(".fhj-fan-item");
+    first?.focus({ preventScroll: true });
+  }, []);
+
+  const points = fanLayout(destinations.length, { hand, width: size.w, height: size.h });
 
   /* The press that opened the fan is still down and still captured by the bar,
      so steering arrives here as plain coordinates rather than as events. They
@@ -122,7 +135,7 @@ function Fan({ destinations, active, hand, Icon, steerRef, commitRef, onGo, onFl
       <button type="button" className="fhj-fan-scrim" aria-label="Close" onClick={onClose} />
       <div className={"fhj-fan-stage" + (shown ? " is-in" : "")}>
         <div ref={pivotRef} className="fhj-fan-pivot" aria-hidden="true" />
-        <ul className="fhj-fan-items">
+        <ul className="fhj-fan-items" ref={itemsRef}>
           {destinations.map((d, i) => {
             const p = points[i];
             const isHot = i === hot;
@@ -191,7 +204,12 @@ export function ThumbNav({
   const handled = useRef(false);
   const press = useRef<{ id: number; x: number; y: number; timer: number | null; opened: boolean; moved: boolean } | null>(null);
 
+  /* Shown above the bar until the fan has been opened once. */
+  const [coach, setCoach] = useState(() => !fanSeen());
+
   const openFan = useCallback(() => {
+    markFanSeen();
+    setCoach(false);
     setFan((was) => {
       if (!was) feedback("menu");
       return true;
@@ -280,6 +298,16 @@ export function ThumbNav({
         <Fan destinations={destinations} active={screen} hand={hand} Icon={Icon}
           steerRef={steerRef} commitRef={commitRef} onGo={go} onFlipHand={onFlipHand} onClose={closeFan} />
       )}
+      {coach && !viewer && !canBack && (
+        /* Outside the <nav> deliberately: it is a note about the bar, not a
+           destination in it, and a fourth thing inside the landmark would be
+           announced as one. */
+        <button type="button" className="fhj-thumb-coach" data-hand={hand}
+          onClick={() => { markFanSeen(); setCoach(false); openFan(); }}>
+          <span className="fhj-thumb-coach-dot" aria-hidden="true" />
+          Hold <b>+</b> to go anywhere
+        </button>
+      )}
       <nav className="fhj-thumbnav" aria-label="Main">
         {canBack && (
           <div className="fhj-thumb-backrow" data-hand={hand}>
@@ -311,6 +339,12 @@ export function ThumbNav({
               }}
               onPointerDown={onPointerDown} onPointerMove={onPointerMove}
               onPointerUp={endPress} onPointerCancel={endPress}
+              /* The keyboard route to the same place. Long-press has no key,
+                 and "every destination in the app" is not a thing to leave
+                 behind a gesture only a thumb can make. */
+              onKeyDown={(e) => { if (e.key === "ArrowUp") { e.preventDefault(); openFan(); } }}
+              aria-keyshortcuts="ArrowUp"
+              title="Tap to add · hold to go anywhere · pull down to reach"
               onContextMenu={(e) => e.preventDefault()}>
               <span className="fhj-thumb-add-disc" aria-hidden="true">
                 <Icon name="plus" size={22} color="currentColor" />
@@ -393,6 +427,14 @@ export function EdgeBack({ enabled, hand, shellRef, onBack }: EdgeBackProps) {
       if (drag.current || e.pointerType === "mouse") return;
       const width = window.innerWidth || 390;
       if (!edgeStart(e.clientX, width, hand)) return;
+      /* Some surfaces own sideways movement already: the report's period
+         pager, the metric rail, the photo A/B slider. A back gesture that
+         started on one of them would be two things happening at once, and the
+         one the person meant would lose. */
+      const t = e.target;
+      if (t instanceof Element && t.closest(
+        "[data-noswipe], input[type=range], .fhj-scroller, .fhj-picker-scroll, .overflow-x-auto, .fhj-sheet, .fhj-scrim, .fhj-fan"
+      )) return;
       drag.current = { id: e.pointerId, x0: e.clientX, dir: edgeDirection(e.clientX, width), t: Date.now(), travel: 0, live: false };
     };
     const onMove = (e: PointerEvent) => {
