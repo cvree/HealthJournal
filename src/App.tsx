@@ -1,7 +1,7 @@
 // @ts-nocheck — this file is the migrated single-file artifact, written as
 // untyped JS. Incremental typing is planned (see README roadmap); new code in
 // src/lib and src/components is fully typechecked.
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, CartesianGrid, ComposedChart, Area, Cell,
@@ -86,6 +86,9 @@ import { followUps, pulseState, scoreWord } from "./lib/pulse";
 import {
   noteUse, rankIds, repeatSuggestions, sanitizeActionStats,
 } from "./lib/quickActions";
+import {
+  moveItem, slotAt, shiftOffsets, applyVisibleOrder, describeMove,
+} from "./lib/dragOrder";
 import {
   PACK_SECTIONS, sanitizePackPrefs, buildAppointmentPack,
   candidateNotes, rangeOfDays, rangeSinceAppointment, rangeCustom, pageLabel,
@@ -1282,6 +1285,11 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     right: <path {...p} d="M10 6l6 6-6 6" />,
     up: <path {...p} d="M6 15l6-6 6 6" />,
     down: <path {...p} d="M6 9l6 6 6-6" />,
+    /* Six dots — the universal "this can be moved" mark, and the one icon in
+       this set that describes a gesture rather than a thing. */
+    grip: <g>{[8, 12, 16].flatMap((y) => [9, 15].map((x) => (
+      <circle key={`${x}-${y}`} cx={x} cy={y} r="1.35" fill={color} stroke="none" />
+    )))}</g>,
     sliders: <g><path {...p} d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="2.2" fill={color} stroke="none" /><circle cx="15" cy="17" r="2.2" fill={color} stroke="none" /></g>,
     check: <path {...p} d="M5 12.5l4.5 4.5L19 7" />,
     plus: <path {...p} d="M12 5v14M5 12h14" />,
@@ -13676,18 +13684,26 @@ function sanitizeQuickAdd(list) {
 }
 
 /** The ids to draw, after the user's choice, what their setup can actually
-    support, and what they actually use are all accounted for.
+    support, and — only if they asked for it — what they actually use.
 
-    Learned ordering is the default and manual arrangement always beats it:
-    dragging a tile into place is a decision, and an app that re-sorts the
-    screen afterwards has overruled somebody about their own thumb. Choosing
-    the order in the editor sets `quickAddOrder: "manual"`; the switch there
-    hands it back. */
+    **The order holds still.** This is the default now, and it used to be the
+    opposite. Sorting the row by what somebody taps most is a good idea on
+    paper and a bad one in the hand: the whole value of a button on a phone is
+    that after a week the thumb goes there without the eyes, and a row that
+    quietly re-sorts itself overnight spends that every time it is right. A
+    misfire costs a wrong log to undo, and it costs the person the sense that
+    they know their own screen.
+
+    So the position of every button is the position it had yesterday, unless
+    the person moved it — which they can now do by holding it and dragging,
+    right there on the dashboard. Learned ordering still exists for anybody who
+    wants it, one switch away in the editor, and `quickAddOrder: "auto"` is the
+    only thing that turns it on. */
 function resolveQuickAdd(profile, { caps, stats, today }) {
   const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? defaultQuickAdd(profile?.modules);
   const usable = chosen.filter((id) => tileSupported(quickAddTile(id), caps));
   return rankIds(usable, stats || {}, today || todayStr(),
-    profile?.quickAddOrder === "manual" ? "manual" : "auto");
+    profile?.quickAddOrder === "auto" ? "auto" : "manual");
 }
 
 /* A tile that knows what today looks like.
@@ -13702,21 +13718,286 @@ function tileFace(t, live) {
   return { ...t, ...l };
 }
 
-function QuickAdd({ ids, actions, live }) {
+/* ---------- hold, then move ----------
+
+   The row of buttons on Today is the most-pressed thing in this app, and the
+   thing that makes it fast is not the size of the tiles — it is that after a
+   week the thumb knows where food is and goes there without the eyes. Which
+   is why the order now holds still, and why *changing* it had to stop being a
+   trip to a screen with little arrows on it. You move a button the way you
+   move anything: hold it until it comes up, put it where you want it, let go.
+
+   Press and keep pressing. A third of a second later the tile lifts under the
+   finger — a heavier shadow, a degree of tilt, one tick from the haptic motor
+   — and from that moment the row is a thing being rearranged rather than a set
+   of buttons being pressed. Drag; the others slide out of the way and the gap
+   follows the thumb. Let go; it lands in the gap, and that is the save.
+
+   Three details are the whole difference between this and a list with arrows:
+
+   **The hold is patient and the slop is small.** A finger that has moved ten
+   pixels in the first third of a second is scrolling the page, not picking
+   anything up, and a dashboard that steals that gesture feels broken in a way
+   people cannot name but do not forgive. Movement before the hold cancels it,
+   and everything up to that moment is still an ordinary tap that logs a meal.
+
+   **The slots stand still; the tiles move between them.** Every position is
+   measured once, at pick-up, and nothing is re-measured mid-drag. So a tile
+   crossing from the end of one row to the start of the next travels a real
+   diagonal, and the arrangement cannot jitter, because the layout it is
+   compared against never changes underneath it.
+
+   **The commit is invisible.** On release the tile animates into its slot, and
+   only then does the stored order change — in a frame with every transition
+   switched off, so the pixels before and after are identical. The instant the
+   app writes down what happened is the one instant nothing moves.
+
+   The gesture is an addition, not the only door: the editor still lists the
+   buttons with arrows beside them, and Alt with an arrow key moves the focused
+   tile for anybody driving this from a keyboard. */
+
+const HOLD_MS = 320;
+const HOLD_SLOP = 10;
+const LAND_MS = 220;
+
+/** How many tiles share the top row, read off the measured slots rather than
+    assumed — the grid is two across on a phone and this code should not be the
+    reason that can never change. */
+function columnsOf(rects) {
+  if (!rects || !rects.length) return 1;
+  let cols = 0;
+  for (const r of rects) if (Math.abs(r.top - rects[0].top) < 1) cols++;
+  return Math.max(1, cols);
+}
+
+function useHoldToReorder({ ids, onReorder, nameOf, enabled = true }) {
+  const boxRef = useRef(null);
+  const hintId = useId();
+  /* The live gesture, deliberately in a ref: a finger moving produces sixty
+     events a second and none of them are state — the only thing worth a
+     re-render is which slot the gap is in. */
+  const sess = useRef(null);
+  const geom = useRef(null);
+  const blockClick = useRef(false);
+  const [drag, setDrag] = useState(null);
+  const [announce, setAnnounce] = useState("");
+  const on = enabled && ids.length > 1 && typeof onReorder === "function";
+
+  function release() {
+    const s = sess.current;
+    if (!s) return;
+    sess.current = null;
+    window.clearTimeout(s.timer);
+    window.removeEventListener("pointermove", s.onMove, true);
+    window.removeEventListener("pointerup", s.onUp, true);
+    window.removeEventListener("pointercancel", s.onUp, true);
+    document.removeEventListener("touchmove", s.holdScroll);
+  }
+
+  /* A screen that unmounts mid-drag — a sheet closing, a tab change — must not
+     leave window listeners behind. */
+  useEffect(() => release, []);
+
+  /** Where every tile is, relative to the row itself, at the moment of lift. */
+  function measure() {
+    const box = boxRef.current;
+    if (!box) return null;
+    const origin = box.getBoundingClientRect();
+    const nodes = [...box.querySelectorAll("[data-sort]")];
+    const rects = nodes.map((n) => {
+      const r = n.getBoundingClientRect();
+      return { left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height };
+    });
+    return { origin, nodes, rects };
+  }
+
+  const still = () => prefersReducedMotion();
+  const lifted = (dx, dy) =>
+    still()
+      ? `translate3d(${dx}px, ${dy}px, 0)`
+      : `translate3d(${dx}px, ${dy}px, 0) scale(1.045) rotate(-0.75deg)`;
+
+  function lift() {
+    const s = sess.current;
+    if (!s) return;
+    const m = measure();
+    /* If the row is not the shape we think it is, this stays a tap. Half a
+       drag against a stale layout would put a button somewhere nobody asked
+       for, and the one unacceptable outcome here is a silent wrong move. */
+    if (!m || m.rects.length !== ids.length) { release(); return; }
+    s.active = true;
+    geom.current = m.rects;
+    s.origin = m.origin;
+    s.node.style.transition = "none";
+    s.node.style.transform = lifted(0, 0);
+    try { s.node.setPointerCapture(s.pointerId); } catch { /* capture is a nicety */ }
+    feedback("reorder");
+    setDrag({ from: s.i, to: s.i });
+  }
+
+  function onMove(ev) {
+    const s = sess.current;
+    if (!s) return;
+    const dx = ev.clientX - s.startX;
+    const dy = ev.clientY - s.startY;
+    if (!s.active) {
+      if (Math.abs(dx) > HOLD_SLOP || Math.abs(dy) > HOLD_SLOP) release();
+      return;
+    }
+    s.node.style.transform = lifted(dx, dy);
+    const to = slotAt(geom.current, ev.clientX - s.origin.left, ev.clientY - s.origin.top, s.to);
+    if (to !== s.to) {
+      s.to = to;
+      feedback("reorder");
+      setDrag({ from: s.i, to });
+    }
+  }
+
+  function onUp() {
+    const s = sess.current;
+    if (!s) return;
+    if (!s.active) { release(); return; } // a tap: the click behind it is real
+    const { i, to, node } = s;
+    const rects = geom.current || [];
+    /* The click that follows a drag would log a meal nobody asked to log. */
+    blockClick.current = true;
+    release();
+
+    const settle = () => {
+      const box = boxRef.current;
+      /* The one frame where the saved order changes. Transitions off, so the
+         tiles' inline offsets and the DOM order swap places without a pixel
+         moving. */
+      if (box) box.classList.add("is-settling");
+      node.style.transition = "";
+      node.style.transform = "";
+      geom.current = null;
+      setDrag(null);
+      if (to !== i) {
+        onReorder(moveItem(ids, i, to));
+        setAnnounce(describeMove(nameOf?.(ids[i]) || "Button", to, ids.length));
+      }
+      if (box) requestAnimationFrame(() => requestAnimationFrame(() => box.classList.remove("is-settling")));
+      window.setTimeout(() => { blockClick.current = false; }, 80);
+    };
+
+    if (still() || !rects[i] || !rects[to]) { settle(); return; }
+    node.style.transition = `transform ${LAND_MS}ms var(--fhj-out)`;
+    node.style.transform =
+      `translate3d(${rects[to].left - rects[i].left}px, ${rects[to].top - rects[i].top}px, 0)`;
+    feedback("tap");
+    window.setTimeout(settle, LAND_MS);
+  }
+
+  function onDown(e, i) {
+    if (!on || sess.current) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const s = {
+      i, to: i, active: false, node: e.currentTarget, pointerId: e.pointerId,
+      startX: e.clientX, startY: e.clientY, timer: 0,
+      onMove, onUp,
+      /* Registered on the way down rather than on lift: by the time a drag is
+         under way the browser has already decided whether this touch is a
+         scroll, and a listener added afterwards is too late to say otherwise.
+         It refuses nothing until the tile is actually in the air. */
+      holdScroll: (ev) => { if (sess.current?.active) ev.preventDefault(); },
+    };
+    sess.current = s;
+    window.addEventListener("pointermove", s.onMove, true);
+    window.addEventListener("pointerup", s.onUp, true);
+    window.addEventListener("pointercancel", s.onUp, true);
+    document.addEventListener("touchmove", s.holdScroll, { passive: false });
+    s.timer = window.setTimeout(lift, HOLD_MS);
+  }
+
+  /** The keyboard's version of the same gesture. Alt is deliberate: Space and
+      Enter belong to the button itself and always will — the tile's job is to
+      log something, and a reordering scheme that took the key that logs things
+      would be a worse bargain than no reordering at all. */
+  function onKeyDown(e, i) {
+    if (!on || !(e.altKey || e.metaKey)) return;
+    const m = measure();
+    const cols = columnsOf(m?.rects);
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols }[e.key];
+    if (!step) return;
+    const to = Math.max(0, Math.min(ids.length - 1, i + step));
+    e.preventDefault();
+    if (to === i) return;
+    feedback("reorder");
+    onReorder(moveItem(ids, i, to));
+    setAnnounce(describeMove(nameOf?.(ids[i]) || "Button", to, ids.length));
+  }
+
+  const offsets = drag && geom.current ? shiftOffsets(geom.current, drag.from, drag.to) : null;
+
+  const itemProps = (i) => {
+    if (!on) return {};
+    const isUp = drag?.from === i;
+    const o = !isUp && offsets ? offsets[i] : null;
+    return {
+      "data-sort": i,
+      "aria-describedby": hintId,
+      onPointerDown: (e) => onDown(e, i),
+      onKeyDown: (e) => onKeyDown(e, i),
+      onContextMenu: (e) => { if (sess.current?.active) e.preventDefault(); },
+      onClickCapture: (e) => {
+        if (!blockClick.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      className: isUp ? " is-lifted" : "",
+      style: isUp
+        ? { position: "relative", zIndex: 6, touchAction: "none" }
+        : o && (o.dx || o.dy)
+          ? { transform: `translate3d(${o.dx}px, ${o.dy}px, 0)` }
+          : undefined,
+    };
+  };
+
+  /* The gap where the tile will land, the sentence a screen reader hears when
+     it lands there, and — said once and pointed at by every tile — the fact
+     that any of this is possible at all. All three are out of flow, so a row
+     that can be rearranged lays out exactly like one that cannot. */
+  const chrome = on ? (
+    <>
+      {drag && geom.current && geom.current[drag.to] && (
+        <span aria-hidden="true" className="fhj-sort-gap" style={{
+          left: geom.current[drag.to].left, top: geom.current[drag.to].top,
+          width: geom.current[drag.to].width, height: geom.current[drag.to].height,
+        }} />
+      )}
+      <span id={hintId} className="sr-only">
+        Hold to move this button, or hold Alt and press an arrow key.
+      </span>
+      <span className="sr-only" role="status" aria-live="polite">{announce}</span>
+    </>
+  ) : null;
+
+  return { boxRef, itemProps, chrome, sorting: !!drag, on };
+}
+
+function QuickAdd({ ids, actions, live, onReorder }) {
   const tiles = ids.map(quickAddTile).filter((t) => t && actions[t.id]);
+  const sort = useHoldToReorder({
+    ids: tiles.map((t) => t.id),
+    onReorder,
+    nameOf: (id) => quickAddTile(id)?.label,
+  });
   if (!tiles.length) return null;
 
   return (
-    <div className="fhj-tiles">
-      {tiles.map((base) => {
+    <div ref={sort.boxRef} className={`fhj-tiles fhj-sortable${sort.sorting ? " is-sorting" : ""}`}>
+      {sort.chrome}
+      {tiles.map((base, i) => {
         const t = tileFace(base, live);
+        const held = sort.itemProps(i);
         return (
-          <button key={t.id} type="button"
+          <button key={t.id} type="button" {...held}
             /* The third channel. Sound needs a speaker and haptics need a
                motor; this reaches the person who has neither — and on the
                most-tapped control in the app, that matters most. */
             onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); actions[t.id](); }}
-            className={`fhj-tile fhj-pop ${t.cat}${t.done ? " is-done" : ""}`}>
+            className={`fhj-tile fhj-pop ${t.cat}${t.done ? " is-done" : ""}${held.className || ""}`}>
             <span className="fhj-tile-icon">
               <Icon name={t.done ? "check" : t.icon} size={17} color="currentColor" />
             </span>
@@ -13738,15 +14019,15 @@ function QuickAdd({ ids, actions, live }) {
     idiom and it is this one. Nothing is applied until Save, so a fiddle that
     goes wrong costs a Cancel rather than a repair. */
 function QuickAddEditor({ profile, caps, stats, onSave, onClose }) {
-  const [manual, setManual] = useState(profile?.quickAddOrder === "manual");
+  const [manual, setManual] = useState(profile?.quickAddOrder !== "auto");
   const [order, setOrder] = useState(() => {
     const chosen = sanitizeQuickAdd(profile?.quickAdd) ?? defaultQuickAdd(profile?.modules);
     /* Opened while the order is learned, the list shows what is actually on
-       screen — otherwise the first thing somebody does here is drag a tile
+       screen — otherwise the first thing somebody does here is move a tile
        that was already in that position, and the arrows appear broken. */
-    return profile?.quickAddOrder === "manual"
-      ? chosen
-      : rankIds(chosen, stats || {}, todayStr(), "auto");
+    return profile?.quickAddOrder === "auto"
+      ? rankIds(chosen, stats || {}, todayStr(), "auto")
+      : chosen;
   });
   const available = QUICK_ADD_TILES.filter((t) => tileSupported(t, caps));
   const off = available.filter((t) => !order.includes(t.id));
@@ -13776,8 +14057,8 @@ function QuickAddEditor({ profile, caps, stats, onSave, onClose }) {
   return (
     <Modal title="Edit Quick Add" onClose={onClose}>
       <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: C.sub }}>
-        Pick the buttons you want on the dashboard. Left alone, they arrange themselves by what you
-        use most — or take the arrows and put them exactly where you want them.
+        Pick the buttons you want on the dashboard. They stay exactly where you put them — use the
+        arrows here, or hold any button on the dashboard and drag it where you want it.
       </p>
 
       <SwitchRow on={!manual}
@@ -13786,10 +14067,10 @@ function QuickAddEditor({ profile, caps, stats, onSave, onClose }) {
           setManual(!v);
           if (v) setOrder((prev) => rankIds(prev, stats || {}, todayStr(), "auto"));
         }}
-        label="Order by what I use most"
+        label="Let the order follow what I use most"
         desc={manual
-          ? "Off — your arrangement below is kept exactly as it is."
-          : "On — the ones you tap most often move to the front."} />
+          ? "Off — your buttons stay exactly where you put them."
+          : "On — the ones you tap most often move themselves to the front, and the row can look different tomorrow."} />
 
       {suggested.length > 0 && (
         <div className="mb-3">
@@ -13884,7 +14165,7 @@ function QuickAddEditor({ profile, caps, stats, onSave, onClose }) {
 
       <div className="flex gap-2 mt-4">
         <Button variant="ghost" size="sm"
-          onClick={() => { feedback("tap"); setManual(false); setOrder(defaultQuickAdd(profile?.modules).filter((id) => tileSupported(quickAddTile(id), caps))); }}>
+          onClick={() => { feedback("tap"); setManual(true); setOrder(defaultQuickAdd(profile?.modules).filter((id) => tileSupported(quickAddTile(id), caps))); }}>
           Reset
         </Button>
         <div className="flex-1" />
@@ -14248,31 +14529,49 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
    the row on Today and the sheet behind the +. Everything else the app can
    still do is one tap further down, under "Everything else", so nothing is
    lost by curating — which is the whole reason curating is safe. */
-function AddSheet({ ids, actions, live, caps, onEdit, onClose }) {
+/** One tile in the sheet. Defined out here rather than inside AddSheet on
+    purpose: a component declared inside a render is a new component type every
+    render, and React unmounts and rebuilds it each time — which is invisible
+    until a tile is being dragged, at which point the node under the finger is
+    replaced mid-gesture. */
+function AddTile({ base, live, run, held = {} }) {
+  const t = tileFace(base, live);
+  return (
+    <button type="button" {...held} onClick={run(t)}
+      className={`fhj-add-tile fhj-pop ${t.cat}${held.className || ""}`}>
+      <span className="fhj-tile-icon"><Icon name={t.done ? "check" : t.icon} size={18} color="currentColor" /></span>
+      <span>
+        <span className="fhj-tile-label block">{t.label}</span>
+        <span className="fhj-tile-sub block">{t.sub}</span>
+      </span>
+    </button>
+  );
+}
+
+function AddSheet({ ids, actions, live, caps, onEdit, onReorder, onClose }) {
   const [all, setAll] = useState(false);
   const chosen = ids.map(quickAddTile).filter((t) => t && actions[t.id]);
   const rest = QUICK_ADD_TILES
     .filter((t) => tileSupported(t, caps) && actions[t.id] && !ids.includes(t.id));
   const run = (t) => (e) => { feedback("quickadd", { el: e.currentTarget }); onClose(); actions[t.id](); };
-
-  const Tile = ({ t: base }) => {
-    const t = tileFace(base, live);
-    return (
-      <button type="button" onClick={run(t)} className={`fhj-add-tile fhj-pop ${t.cat}`}>
-        <span className="fhj-tile-icon"><Icon name={t.done ? "check" : t.icon} size={18} color="currentColor" /></span>
-        <span>
-          <span className="fhj-tile-label block">{t.label}</span>
-          <span className="fhj-tile-sub block">{t.sub}</span>
-        </span>
-      </button>
-    );
-  };
+  /* The same arrangement, movable from the same gesture. The sheet and the
+     dashboard have always shown one list; they now edit it the same way too,
+     so nobody has to discover the gesture twice or wonder which screen owns
+     the order. */
+  const sort = useHoldToReorder({
+    ids: chosen.map((t) => t.id),
+    onReorder,
+    nameOf: (id) => quickAddTile(id)?.label,
+  });
 
   return (
     <Modal title="Add to today" eyebrow="What happened?" onClose={onClose}>
       {chosen.length > 0 ? (
-        <div className="fhj-add-grid">
-          {chosen.map((t) => <Tile key={t.id} t={t} />)}
+        <div ref={sort.boxRef} className={`fhj-add-grid fhj-sortable${sort.sorting ? " is-sorting" : ""}`}>
+          {sort.chrome}
+          {chosen.map((t, i) => (
+            <AddTile key={t.id} base={t} live={live} run={run} held={sort.itemProps(i)} />
+          ))}
         </div>
       ) : (
         <p className="text-[12.5px] leading-relaxed px-3 py-4 rounded-xl"
@@ -14285,7 +14584,7 @@ function AddSheet({ ids, actions, live, caps, onEdit, onClose }) {
         <>
           <div className="fhj-eyebrow mt-4 mb-2">Everything else</div>
           <div className="fhj-add-grid">
-            {rest.map((t) => <Tile key={t.id} t={t} />)}
+            {rest.map((t) => <AddTile key={t.id} base={t} live={live} run={run} />)}
           </div>
         </>
       )}
@@ -14923,6 +15222,15 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
   const stats = useMemo(() => sanitizeActionStats(profile.actionStats), [profile.actionStats]);
   const quickAddIds = resolveQuickAdd(profile, { caps, stats, today: todayStr() });
 
+  /* A tile dropped in a new place. What was dragged is what this setup can
+     show; what is saved is the whole list, including any button whose question
+     is switched off at the moment — that one keeps its place rather than being
+     quietly deleted by a rearrangement nobody could see it in. */
+  const reorderQuickAdd = (visible) => {
+    const stored = sanitizeQuickAdd(profile?.quickAdd) ?? defaultQuickAdd(profile?.modules);
+    onUpdateQuickAdd?.(applyVisibleOrder(stored, visible), "manual", { dragged: true });
+  };
+
   /* Every tap on an action is a vote about tomorrow's ordering. Recorded here,
      once, around whatever the action itself does — so a new action added later
      cannot forget to be counted. */
@@ -15119,7 +15427,21 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             </button>
           </div>
           {quickAddIds.length > 0 ? (
-            <QuickAdd ids={quickAddIds} actions={actions} live={liveTiles} />
+            <>
+              <QuickAdd ids={quickAddIds} actions={actions} live={liveTiles}
+                onReorder={reorderQuickAdd} />
+              {/* A gesture nobody is told about is a gesture nobody has. Said
+                  once, quietly, under the row — and gone for good the first
+                  time somebody moves a button, because at that point they know
+                  and the line is just clutter on the screen they use daily. */}
+              {quickAddIds.length > 1 && !profile.quickAddDragged && (
+                <p className="flex items-center justify-center gap-1.5 mt-2 text-[11px]"
+                  style={{ color: C.subtle }}>
+                  <Icon name="grip" size={12} color={C.subtle} />
+                  Hold a button to move it
+                </p>
+              )}
+            </>
           ) : (
             <button type="button" onClick={() => { feedback("tap"); setQuickAddEditor(true); }}
               className="w-full text-[12px] leading-relaxed px-3 py-3 rounded-xl text-left"
@@ -15247,7 +15569,8 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
       )}
       {addOpen && !viewer && (
         <AddSheet ids={quickAddIds} actions={actions} live={liveTiles} caps={caps}
-          onEdit={() => setQuickAddEditor(true)} onClose={onCloseAdd} />
+          onEdit={() => setQuickAddEditor(true)} onReorder={reorderQuickAdd}
+          onClose={onCloseAdd} />
       )}
       {noteSheet && (
         <NoteSheet initial={today?.notes || ""} suggestions={recentNotes(entries)}
@@ -15896,10 +16219,30 @@ function migrateDb(data) {
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
   if (d.profile.quickAdd !== undefined) d.profile.quickAdd = sanitizeQuickAdd(d.profile.quickAdd);
+  /* Whether the hold-and-drag gesture has ever been used. Only ever written
+     down once it is true — an explicit `false` on every profile would be a key
+     that means "not yet" in a file where absence already says that. */
+  if (d.profile.quickAddDragged !== true) delete d.profile.quickAddDragged;
   /* Which actions this person actually uses, and when they last did. Bounded
      and repaired on load: it grows one key per repeatable thing and arrives
      from hand-editable backups like everything else. */
   d.profile.actionStats = sanitizeActionStats(d.profile.actionStats);
+  /* Quick Add used to re-sort itself by what somebody tapped most, and now it
+     holds still unless they ask for that. Which leaves one question worth
+     getting right: what happens to a journal that has been learning for
+     months?
+
+     Not "everything jumps back to the factory order the next time you open the
+     app", which is the same complaint the change is meant to answer. The
+     arrangement they *have* is frozen exactly as it stands — ranked once, on
+     the way through, and written down as their own — so the first launch after
+     this update looks identical to the last launch before it, and stays that
+     way. After that the tiles only ever move because somebody moved them. */
+  if (d.profile.quickAddOrder === undefined && Object.keys(d.profile.actionStats || {}).length) {
+    const chosen = sanitizeQuickAdd(d.profile.quickAdd) ?? defaultQuickAdd(d.profile.modules);
+    d.profile.quickAdd = rankIds(chosen, d.profile.actionStats, todayStr(), "auto");
+    d.profile.quickAddOrder = "manual";
+  }
   /* The appointment pack's settings — which sections print, the questions
      somebody has been collecting since the last visit, and when that visit was.
      Same reasoning as the rest: this reaches us from a hand-editable backup as
@@ -16955,14 +17298,21 @@ export default function App({ viewer = false }) {
     },
   }));
 
-  const setQuickAdd = (ids, order) => setDb((prev) => ({
+  const setQuickAdd = (ids, order, opts) => setDb((prev) => ({
     ...prev,
     profile: {
       ...prev.profile,
       quickAdd: sanitizeQuickAdd(ids) ?? DEFAULT_QUICK_ADD,
-      /* "manual" is set by arranging the tiles by hand, and cleared by the
-         switch in the editor. Anything else means the ordering is learned. */
-      quickAddOrder: order === "manual" ? "manual" : "auto",
+      /* "manual" — the order holds still — is the default and what the editor
+         and a dragged tile both write. "auto" is the switch in the editor, and
+         the only thing that lets the row sort itself by use. */
+      quickAddOrder: order === "auto" ? "auto" : "manual",
+      /* Whether the hold-and-drag gesture has ever been used, which is the
+         only thing the hint under the row is waiting on. Undefined rather than
+         false until it happens, so it never appears in a backup as a key
+         somebody has to work out the meaning of. */
+      quickAddDragged: prev.profile.quickAddDragged === true || opts?.dragged === true
+        ? true : undefined,
       updatedAt: new Date().toISOString(),
     },
   }));

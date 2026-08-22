@@ -199,8 +199,11 @@ toast; Flare starts a bad stretch and then reads *End flare · day 6* until you 
 one question 1–10 without the whole check-in; Heart rate takes lying and standing and prints the
 jump between them. **The + button in the navigation bar shows exactly what you put on your
 dashboard** — one list, two doors — with everything else one tap further down and the editor a tap
-after that. The tiles also *learn*: they sort themselves by what you actually tap, frequency
-decayed by recency, and arranging them by hand switches that off for good. **Again** is the row under it, and it is the shortest path in the
+after that. **The buttons stay where you put them**, on both, because the value of a button on a
+phone is that after a week your thumb knows where it is. Moving one is a gesture rather than a
+settings trip: hold a button until it lifts, drag it, and the rest slide out of the way — or hold
+Alt and press an arrow key, or use the arrows in the editor. If you would rather the row sorted
+itself by what you tap most, that is one switch in the editor. **Again** is the row under it, and it is the shortest path in the
 app — your most-logged foods, the doses you take daily, the spot you photograph, the number you
 record, one tap each, ranked together so it is your own week in your own order. **Today's Logs**
 is one timeline carrying check-ins, meals, bowel movements, doses and photos in the order they

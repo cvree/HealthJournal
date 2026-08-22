@@ -191,6 +191,50 @@ Exports gain three sheets — Measurements, Time outside and Weather — each na
 so a spreadsheet opened in two years still says which numbers somebody measured
 and which this app modelled.
 
+### The buttons stay where you put them
+
+Quick Add used to sort itself. Tap food four times a day and the Food button
+climbed to the front; leave the camera alone for a fortnight and it sank. On
+paper that is the app being helpful. In the hand it is the app moving the
+furniture, because the entire value of a button on a phone is that after a week
+the thumb goes there without the eyes — and a row that quietly rearranges
+itself overnight spends that every single time it guesses right. A miss costs a
+wrong entry to undo, and it costs somebody the feeling that they know their own
+screen.
+
+So the order holds still. Every button is where it was yesterday, on the
+dashboard and behind the **+**, which show the same list and now the same
+arrangement.
+
+Moving one is a gesture rather than a trip to a settings screen: **hold a
+button and drag it.** A third of a second under the finger and it lifts —
+heavier shadow, a degree of tilt, one tick from the haptic motor — and from
+there the row is something you are rearranging rather than something you are
+pressing. The others slide out of the way, a dashed gap follows your thumb, and
+letting go drops it in and saves. A tile crossing from the end of one row to
+the start of the next travels a real diagonal. The drop is not also a press:
+the tap that would otherwise fire underneath it is swallowed.
+
+Three refusals hold the gesture together. A finger that has moved ten pixels
+before the hold completes is scrolling the page and gets its gesture back
+untouched — the row covers half the screen and a dashboard that eats a swipe is
+broken in a way people do not forgive. A hold against a layout that has changed
+underneath stays a tap, because a half-drag against stale geometry would move a
+button nobody asked to move. And the frame that writes down the new order has
+every transition switched off, so the instant the app commits is the one
+instant nothing moves.
+
+It is not a pointer-only feature: **Alt with an arrow key** moves whichever
+button has focus — left and right by one, up and down by a whole row — the
+editor still lists them all with arrows beside them, and every tile carries a
+description saying so. Each landing is announced.
+
+Learning still exists for anybody who wants it, as one switch in the editor
+rather than as the default. A journal that has been learning for months keeps
+the arrangement it has: it is frozen exactly as it stands on the way through
+the update, so the first launch after looks identical to the last launch
+before, and stays that way.
+
 ### Under it
 
 Seven new typed modules, none of which read a clock: `solar` (NOAA solar
@@ -199,14 +243,20 @@ vitamin D synthesis), `sun` (sessions, live accumulation, daily aggregates,
 metrics), `context` (consent, coarse location, fetching, parsing, observations),
 `labs` (catalog, unit conversion, series, reference ranges, what-else-happened),
 `experiments` (pairing, splitting, suggesting), `evidence` (the one ladder), and
-`series` (the seam that lets any of them be compared against any other).
+`series` (the seam that lets any of them be compared against any other) — plus
+`dragOrder`, which holds the whole of the hold-and-drag arithmetic: which slot a
+thumb is over (nearest centre, with enough stickiness that a thumb on a boundary
+does not make the row flicker), how far every other tile has to travel, and how
+a rearranged screen is folded back into a saved list that may hold buttons this
+device cannot show — so a rearrangement can never delete a button nobody could
+see.
 
 New collections in the journal — `sun`, `labs`, `experiments`, `context` — each
 sanitised on every load like everything before them, each carried in backups and
 exports, and each validated well enough that the recovery screen can say what
 was wrong rather than quietly dropping them.
 
-**223 new tests. 1,278 across 53 suites, all green.**
+**256 new tests. 1,311 across 55 suites, all green.**
 
 ## 1.20.0
 

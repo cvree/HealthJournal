@@ -1,20 +1,32 @@
-/* What this person actually does, in the order they actually do it.
+/* What this person actually does — counted, and offered back to them.
 
    Quick Add shipped as a fixed grid in a fixed order, which is fine for the
-   first week and wrong forever after. Somebody logging four meals a day and a
+   first week and wrong forever after: somebody logging four meals a day and a
    cream twice a day does not need Bowel in the top-left corner every morning,
    and the tap they take forty times a week should be the one nearest their
-   thumb.
+   thumb. Two answers to that turned out to be very different in the hand, and
+   both are here.
 
    So two things live here, both pure.
 
    **Ordering.** Every action the app can perform carries a use count and a
-   last-used date, and the tiles sort by a score that is frequency decayed by
-   recency — because "what I did a hundred times last spring" and "what I did
+   last-used date, and the tiles *can* sort by a score that is frequency decayed
+   by recency — because "what I did a hundred times last spring" and "what I did
    twice yesterday" are different kinds of relevant, and only the second one
-   predicts the next tap. Manual arrangement always wins: reordering the tiles
-   by hand is a decision, and an app that quietly re-sorts them afterwards has
-   overruled somebody about their own screen.
+   predicts the next tap.
+
+   That is now something somebody switches on rather than the default, and the
+   reason is worth writing down where the code is. A learned order is a good
+   idea on paper and a bad one in the hand: the whole value of a button on a
+   phone is that after a week the thumb goes there without the eyes, and a row
+   that re-sorts itself overnight spends that every time it guesses right. So
+   the default is `manual` — the arrangement holds still, and it changes when
+   somebody changes it, by holding a tile and dragging it (see
+   src/lib/dragOrder.ts) or with the arrows in the editor.
+
+   The counts are still kept either way: they are what the one-tap repeats
+   below are ranked on, and what the switch has to have in order to mean
+   anything the day it is turned on.
 
    **Repeats.** The second time you log a thing is the tap worth saving, so
    anything the journal already knows — a food, a dose, a body spot you
@@ -104,8 +116,12 @@ export type OrderMode = "auto" | "manual";
  * `manual` returns them untouched: somebody who arranged their own screen has
  * said what they want, and re-sorting it behind their back is the app knowing
  * better. `auto` sorts by score, and — this is the part that matters — it is a
- * *stable* sort, so two actions that have never been used stay in the order
- * the catalogue gave them rather than shuffling on every render.
+ * *stable* sort, so two actions that have never been used stay in the order the
+ * catalogue gave them rather than shuffling on every render.
+ *
+ * The mode is the caller's to state — this ranks when asked to. Which of the
+ * two the *app* defaults to is a product decision and lives with the profile,
+ * in resolveQuickAdd; it is `manual`.
  */
 export function rankIds(
   ids: string[], stats: ActionStats, today: string, mode: OrderMode = "auto"

@@ -1076,6 +1076,67 @@ button.fhj-section:disabled {
   background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
 }
 
+/* ---------- a row you can rearrange with a thumb ----------
+
+   Hold a tile and it comes up off the page; drag it and the rest slide out of
+   the way. The JavaScript in App.tsx owns the arithmetic — which slot a thumb
+   is over, how far each tile has to travel — and everything it needs from CSS
+   is here: a positioning context for the gap, one transition for the tiles
+   that are getting out of the way, and a way to switch every transition off
+   for the single frame in which the new order is written down.
+
+   The lifted tile's own transform is set inline, frame by frame, because it is
+   following a finger. That is also why its shadow needs the specificity to
+   beat `.fhj-pop:active` — the finger is still down on it, and a tile in the
+   air that has dropped its shadow reads as a tile that has been pressed. */
+
+.fhj-sortable {
+  position: relative;
+}
+
+/* A long press on a touch screen means "select this text" or "share this
+   image" unless something says otherwise. Here it means pick this up. */
+.fhj-sortable > [data-sort] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fhj-sortable.is-sorting > [data-sort] {
+  transition: transform 260ms var(--fhj-out);
+}
+
+.fhj-sortable > [data-sort].is-lifted {
+  box-shadow: 7px 9px 0 rgba(0, 0, 0, 0.42);
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  cursor: grabbing;
+}
+
+/* The frame that commits. Every tile's inline offset disappears and the DOM
+   order changes in the same paint; with transitions live, each one would
+   animate back from where it already is. */
+.fhj-sortable.is-settling > * {
+  transition: none !important;
+}
+
+/* Where it will land. Drawn under the tiles rather than between them, so the
+   grid itself never reflows mid-drag. */
+.fhj-sort-gap {
+  position: absolute;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw-strong) dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.22));
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  pointer-events: none;
+  z-index: 0;
+  transition: left 200ms var(--fhj-out), top 200ms var(--fhj-out);
+}
+
+@media (hover: hover) {
+  .fhj-sortable > [data-sort] {
+    cursor: pointer;
+  }
+}
+
 /* ---------- timeline ----------
    Today's logs, in the order they happened. The rail is drawn by the items
    themselves so an empty list has no orphaned line, and the dot is tinted by

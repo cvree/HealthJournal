@@ -147,10 +147,15 @@ export interface TrackingSetup {
       "never chosen" and gets the default four; an empty array is a real
       choice and hides the section. */
   quickAdd?: string[];
-  /** "manual" once somebody has arranged the tiles by hand — their order is
-      then kept exactly. Anything else means the order is learned from use.
-      See src/lib/quickActions.ts. */
+  /** How the row is ordered. "manual" — the buttons stay exactly where they
+      were put — is the default and what both the editor and a dragged tile
+      write; "auto" is the opt-in that lets the order follow what gets used.
+      See src/lib/quickActions.ts and src/lib/dragOrder.ts. */
   quickAddOrder?: "auto" | "manual";
+  /** True once somebody has moved a button by holding and dragging it, which
+      is the only thing the hint under the row is waiting on. Absent until
+      then rather than false. */
+  quickAddDragged?: boolean;
   /** Use count and last-used date per action id, which is what the learned
       ordering and the one-tap repeats are ranked on. */
   actionStats?: Record<string, { n: number; at?: string }>;
