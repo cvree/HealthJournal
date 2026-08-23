@@ -208,6 +208,18 @@ describe("bringing the screen into reach", () => {
     await waitFor(() => expect(shell().className).not.toContain("is-reaching"));
   });
 
+  it("returns to the top of a long screen when its own tab is tapped again", async () => {
+    await mountApp();
+    fireEvent.click(nav().getByRole("button", { name: "History" }));
+    await waitFor(() =>
+      expect(nav().getByRole("button", { name: "History" }).getAttribute("aria-current")).toBe("page"));
+    (window.scrollTo as any).mockClear();
+    fireEvent.click(nav().getByRole("button", { name: "History" }));
+    // Still on History — the tap went to the top of it rather than nowhere.
+    expect(nav().getByRole("button", { name: "History" }).getAttribute("aria-current")).toBe("page");
+    expect(window.scrollTo).toHaveBeenCalled();
+  });
+
   it("leaves a plain tap on the + doing what it always did", async () => {
     await mountApp();
     fireEvent.pointerDown(addButton(), { pointerId: 4, clientX: 195, clientY: 700, button: 0 });

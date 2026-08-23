@@ -1322,8 +1322,12 @@ button.fhj-section:disabled {
   align-items: flex-end;
   justify-content: center;
   background: var(--fhj-overlay, rgba(10, 11, 14, 0.72));
-  backdrop-filter: blur(3px);
-  animation: fhjFade 180ms ease;
+  /* Deeper than it was. The scrim's job is to put the page *behind* the sheet
+     rather than merely to darken it, and three pixels of blur reads as a
+     smudge where eight reads as distance. */
+  backdrop-filter: blur(8px) saturate(115%);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+  animation: fhjFade 220ms ease;
 }
 @media (min-width: 640px) {
   .fhj-scrim {
@@ -1348,7 +1352,11 @@ button.fhj-section:disabled {
   border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
   border-bottom: none;
   box-shadow: var(--fhj-shadow-lg, 0 12px 36px rgba(0, 0, 0, 0.46));
-  animation: fhjSheet 300ms var(--fhj-out);
+  /* The spring curve overshoots its resting place by a hair and settles back,
+     which is what a physical thing sliding to a stop does and what a linear
+     ease-out conspicuously does not. It is the difference between a panel
+     appearing and a panel arriving. */
+  animation: fhjSheet 380ms var(--fhj-spring);
   /* Set by the drag handler while a dismiss gesture is in flight. */
   transform: translateY(var(--fhj-sheet-drag, 0px));
 }
@@ -1438,6 +1446,7 @@ button.fhj-section:disabled {
     transform: translateY(100%);
   }
 }
+
 @keyframes fhjSheetCentre {
   from {
     opacity: 0;
@@ -7482,6 +7491,11 @@ button.fhj-section:disabled {
       color-mix(in srgb, var(--fhj-accent, #8fb0e3) 16%, transparent) 0%,
       transparent 58%
     ),
+    /* One extra veil over the theme's own scrim. The sheets dim the page; the
+       fan has to *replace* it, and in the light theme a 42% wash left the
+       near-white discs sitting on a near-white background with nothing but a
+       hairline between them. */
+    linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18)),
     var(--fhj-overlay, rgba(10, 11, 14, 0.72));
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
@@ -7547,7 +7561,7 @@ button.fhj-section:disabled {
   height: 2.9rem;
   border-radius: var(--fhj-radius-pill);
   color: var(--fhj-ink, #ecebe7);
-  background: color-mix(in srgb, var(--fhj-card, #1e2026) 88%, transparent);
+  background: var(--fhj-card, #1e2026);
   border: var(--fhj-bw-strong) solid var(--fhj-line-strong, #464a55);
   box-shadow: var(--fhj-shadow, 0 4px 16px rgba(0, 0, 0, 0.34));
   transition: transform 200ms var(--fhj-spring), background 200ms var(--fhj-out),
@@ -7614,7 +7628,7 @@ button.fhj-section:disabled {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--fhj-muted, #787b86);
+  color: var(--fhj-subtle, #9a9ca6);
 }
 
 .fhj-fan-name {

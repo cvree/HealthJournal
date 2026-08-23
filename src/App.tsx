@@ -17428,7 +17428,8 @@ export default function App({ viewer = false }) {
         onGo={(id) => { if (screen !== id) feedback("nav"); setScreen(id); }}
         onAdd={() => { feedback("nav"); setScreen("dashboard"); setAddSheet(true); }}
         onFlipHand={flipHand}
-        onReach={() => setReaching(true)} />
+        onReach={() => setReaching(true)}
+        onTop={() => { feedback("nav"); setReaching(false); scrollToTop(); }} />
     </div>
   );
 }

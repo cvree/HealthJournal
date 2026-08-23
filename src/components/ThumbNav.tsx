@@ -202,11 +202,13 @@ export interface ThumbNavProps {
   onFlipHand: () => void;
   /** Pull down on the bar: bring the top of the screen into reach. */
   onReach: () => void;
+  /** Tap the tab you are already on: back to the top of it. */
+  onTop: () => void;
 }
 
 export function ThumbNav({
   screen, canBack, backLabel, destinations, hand, viewer, Icon,
-  onBack, onGo, onAdd, onFlipHand, onReach,
+  onBack, onGo, onAdd, onFlipHand, onReach, onTop,
 }: ThumbNavProps) {
   const [fan, setFan] = useState(false);
   const addRef = useRef<HTMLButtonElement | null>(null);
@@ -350,7 +352,11 @@ export function ThumbNav({
     <button type="button"
       className={"fhj-thumb-tab" + (screen === id ? " is-active" : "")}
       aria-current={screen === id ? "page" : undefined}
-      onClick={() => onGo(id)}>
+      /* Tapping the tab you are already on returns to the top of it. A year
+         of History is a very long page, and the alternative is a hundred
+         flicks or a reach for the status bar — which is the one place on the
+         screen a thumb cannot get to at all. */
+      onClick={() => (screen === id ? onTop() : onGo(id))}>
       <span aria-hidden="true" className="fhj-thumb-glyph">
         <Icon name={icon} size={19} color="currentColor" />
       </span>
@@ -417,7 +423,7 @@ export interface EdgeBackProps {
 }
 
 export function EdgeBack({ enabled, hand, shellRef, onBack }: EdgeBackProps) {
-  const drag = useRef<{ id: number; x0: number; dir: -1 | 1; t: number; travel: number; live: boolean } | null>(null);
+  const drag = useRef<{ id: number; x0: number; y0: number; dir: -1 | 1; t: number; travel: number; live: boolean } | null>(null);
   const [peek, setPeek] = useState<{ dir: -1 | 1; p: number } | null>(null);
 
   const paint = useCallback((dir: number, travel: number, width: number) => {
@@ -482,7 +488,10 @@ export function EdgeBack({ enabled, hand, shellRef, onBack }: EdgeBackProps) {
       if (t instanceof Element && t.closest(
         "[data-noswipe], input[type=range], .fhj-scroller, .fhj-picker-scroll, .overflow-x-auto, .fhj-sheet, .fhj-scrim, .fhj-fan"
       )) return;
-      drag.current = { id: e.pointerId, x0: e.clientX, dir: edgeDirection(e.clientX, width), t: Date.now(), travel: 0, live: false };
+      drag.current = {
+        id: e.pointerId, x0: e.clientX, y0: e.clientY,
+        dir: edgeDirection(e.clientX, width), t: Date.now(), travel: 0, live: false,
+      };
     };
     const onMove = (e: PointerEvent) => {
       const d = drag.current;
@@ -492,7 +501,10 @@ export function EdgeBack({ enabled, hand, shellRef, onBack }: EdgeBackProps) {
       if (!d.live) {
         /* Claim the gesture only once it is unambiguously horizontal and
            inward. Anything else is a scroll, and stealing a scroll from
-           somebody reading their own journal is unforgivable. */
+           somebody reading their own journal is unforgivable — so a drag
+           that has moved further down the screen than across it is let go
+           of entirely rather than left armed to change its mind later. */
+        if (Math.abs(e.clientY - d.y0) > Math.abs(e.clientX - d.x0)) { drag.current = null; return; }
         if (travel < 12) return;
         d.live = true;
         feedback("nav");
