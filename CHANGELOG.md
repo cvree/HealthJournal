@@ -1,5 +1,115 @@
 # Changelog
 
+## 1.22.0
+
+One hand.
+
+The app was built phone-first and it showed everywhere except in the *reach*.
+A 6.7" phone held in one hand gives a thumb an arc that starts at the bottom
+corner nearest the palm and sweeps about two thirds of the way up the far
+edge. Everything outside that arc — the back arrow in the top left, the gear
+in the top right, the top half of any long screen — is a two-handed
+instruction wearing a one-handed interface.
+
+That is a real cost here rather than a stylistic one. This is a journal
+somebody opens while holding a coffee, a child, a shopping bag, or a steering
+wheel at a red light, and most often on the days they feel worst. A surface
+that quietly requires the second hand is a surface that gets skipped, and a
+day that gets skipped is a day missing from the chart they eventually take to
+an appointment.
+
+### Back finally means something
+
+`screen` was one string, so every "back" in the app was a guess: the header
+arrow went to Today from wherever you were. Export → Appointment Pack → back
+landed two screens away from what you were reading. History → Sun → back
+forgot History had ever happened.
+
+There is now a real navigation stack, with Today as its floor. Back returns
+you to the screen you opened a thing *from*, it says so in words — "Back to
+History", not a bare arrow — and it is in four places at once: on the bar
+under your thumb, in the header where it always was, on either side edge as a
+gesture, and on the phone's own back button, which now means what the app's
+Back means instead of leaving the app.
+
+### The fan
+
+Hold the **+**, slide, let go. Every destination in the app arcs out from the
+corner your thumb is already in — Today, the daily log, History, Insights, the
+diary, sun, labs, experiments, your routine, photos, export, settings — and
+the one under your thumb lights up as you cross it. Let go and it opens. Let
+go without moving and the fan stays open to be tapped, because a menu that
+vanishes when you hesitate is a menu you stop trusting.
+
+It is a radial menu because a radial menu asks for a *direction* rather than a
+position, which is the one shape of control that survives being used without
+looking at it.
+
+Nothing about the arc is a fixed number. Each ring is asked how many items its
+own arc length can hold, the fewest rings that can hold everything wins, and
+the items are shared out in proportion to what each ring can take — so a 320px
+phone gets three close rings and a tablet gets two, capped at a thumb's reach
+rather than flung across the page. The top third of the screen, which the fan
+deliberately never uses because none of it is reachable, reads back what the
+thumb is resting on in the app's display face.
+
+### Swipe back, and pull the screen down to you
+
+Drag in from either side edge and the screen peels off under your thumb,
+scaling and dimming as it goes, with a puck at the edge that fills as you
+cross the point where letting go would complete it. Let go short and it
+springs back. You can tell what is going to happen the whole way, which is the
+difference between a gesture and a gamble.
+
+And when something *is* at the top of a long screen — a title, a range
+switcher, the gear — pull down on the + and the whole page slides into the
+thumb arc. The bar does not move, because the bar is the one thing that must
+never slide out from under the hand steering it. Tap anywhere in the gap to
+put it back.
+
+### Which hand
+
+Right, unless you say otherwise, in the appearance controls or in the fan
+itself. It moves the +, the fan's pivot, the Back pill and the edge the
+gesture is tuned for. It is stored per device rather than in the journal —
+which hand you hold *this* phone in is a fact about the phone — so it works in
+the read-only viewer and before there is a profile to write to.
+
+### The bar
+
+Today · History · **+**, and the three never swap places. An earlier version
+of this morphed the left slot into Back on inner screens; it read well in a
+screenshot and was wrong in the hand, because the entire value of a
+three-button bar to a thumb is that the thumb stops needing to look. Back is a
+fourth thing in its own place above them. The + moved from the middle to the
+end, on the held side: that corner is where a thumb rests, and it is the point
+the fan pivots on — the two used to be a hundred pixels apart, so the slide
+that chose an item was a slide relative to a point the thumb was not on.
+
+Tapping the tab you are already on returns to the top of it.
+
+### Everything else, quieter
+
+Screens now arrive from the direction you travelled, so coming back does not
+look like going deeper. Sheets arrive on the spring curve rather than an
+ease-out and the scrim blurs eight pixels instead of three, which puts the
+page *behind* the sheet rather than merely darkening it. The bar is frosted so
+the journal keeps moving underneath it. The + breathes once every six and a
+half seconds at four percent opacity — enough to say it is live, under the
+threshold where a moving thing on a health screen becomes something you have
+to ignore. All of it is a no-op under `prefers-reduced-motion`.
+
+One line above the bar says the fan exists, until it has been used once.
+
+### Under it
+
+`src/lib/oneHanded.ts` holds all of it that can be reasoned about without a
+browser: the stack, the arc geometry, the ring planner, the gesture
+thresholds, which hand, and the system-back wiring.
+`src/components/ThumbNav.tsx` is the bar, the fan and the edge gesture.
+Tests: 1,341 across 55 suites — 36 new pure tests for the geometry and the
+stack, 17 driving the whole thing through the real app.
+
 ## 1.21.0
 
 Four things a journal cannot get from asking questions, and one seam that makes

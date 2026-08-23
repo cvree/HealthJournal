@@ -183,11 +183,26 @@ answered is offered, a photo is only asked for on a bad day or after a week with
 note is last because it is the one that needs typing. Each answers inline with the app's own
 input for that question. "Add more detail" keeps the full check-in one tap away.
 
-**Two destinations and one verb.** The navigation is **Today**, a **+**, and **History**. The +
-is one tap from anywhere and opens everything a day can hold — check-in, food, routine, photo,
-note, bowel movement, measurement — landing on Today, which is the day it adds to. History is
-the month, the last fortnight in words, and the two doors out of it: Insights and the Diary.
-Settings lives in the header, because a preference is not a destination.
+**One hand.** The whole app is reachable by the thumb of the hand holding the phone. The bar is
+**Today**, **History** and a **+**, and those three never swap places — the value of a bar to a
+thumb is that the thumb stops needing to look. The + sits at the end of it, on the side you hold
+the phone, because that corner is where a thumb rests.
+
+Hold the **+** and slide: every destination in the app — the daily log, Insights, the diary, sun,
+labs, experiments, your routine, photos, export, settings — fans out from that corner along the
+arc a thumb actually sweeps, the one under your thumb lights up as you cross it, and letting go
+opens it. It asks for a *direction* rather than a position, which is the one shape of control
+that survives being used without looking at it.
+
+Back means where you came from, not "Today" — it says so in words, and it is on the bar, in the
+header, on either side edge as a swipe that peels the screen off under your thumb, and on the
+phone's own back button. And when something is at the top of a long screen, pull down on the +
+and the page slides into reach; the bar stays where it is. Left-handed puts all of it on the
+other side. The + is still one tap from anywhere and still opens everything a day can hold —
+check-in, food, routine, photo, note, bowel movement, measurement — landing on Today, which is
+the day it adds to. History is the month, the last fortnight in words, and the two doors out of
+it: Insights and the Diary. Settings lives in the header and in the fan, because a preference is
+not a destination.
 
 **Open it, log it, close it.** **Quick Add** sits under the pulse, and it is shaped like your
 condition: a POTS journal opens with water, a heart rate and a flare; a skin journal with a camera,
@@ -859,6 +874,12 @@ download before any reset, never a silent wipe.
 - The toast lives above the nav bar rather than at the top of the screen, for the same reason the
   sheet actions moved: the Undo inside it has to be reachable by the thumb that caused it. It
   never takes focus — it reports something that already happened.
+- Back is in four places at once — the bar, the header, either side edge, and the phone's own
+  back button — because a gesture nobody discovers costs nothing, and one somebody discovers
+  should feel like the app was waiting for it. The destination fan has a keyboard route
+  (`ArrowUp` on the +) and takes focus when it opens, so it is not a thumb-only feature.
+- Tapping the tab you are already on returns to the top of it. A year of History is a very long
+  page, and the alternative is the status bar — the one part of a phone a thumb cannot reach.
 
 **On react-bits and Vanta.** [react-bits](https://github.com/DavidHDev/react-bits) was evaluated
 and deliberately not adopted: it is a copy-in component gallery whose register — spotlight

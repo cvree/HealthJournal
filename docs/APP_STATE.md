@@ -946,6 +946,96 @@
 > to the next expansion.
 
 
+> **2026-08-23 addendum 26 — 1.22: one hand.**
+> The whole release is one constraint: *nothing in this app may require the hand that
+> is holding the coffee.* Two new files own it.
+>
+> - **`src/lib/oneHanded.ts`** — everything about the thumb layer that can be reasoned
+>   about without a browser. `navGo`/`navBack`/`navParent` (the stack; `ROOT` is always
+>   its floor, roots reset rather than pile up, a screen already on the stack is
+>   *returned to* rather than pushed twice, depth capped at 12 by trimming from the
+>   bottom); `DESTINATIONS` + `destinationsFor({viewer, exclude})`; the arc
+>   (`ringCapacity` → `ringPlan` → `ringsNeeded` → `fanRadii` → `arcLayout`, wrapped by
+>   `fanLayout(count, {hand, width, height})`, plus `pickArcTarget`); the gesture
+>   thresholds (`edgeStart`, `edgeDirection`, `backProgress`, `shouldCompleteBack`,
+>   `reachDrop`, `LONG_PRESS_MS`, `ARC_OPEN_DY`, `REACH_TRIGGER`); `readHand`/`setHand`/
+>   `onHandChange` (localStorage `fhj_hand_v1`, mirrored to `<html data-hand>`);
+>   `fanSeen`/`markFanSeen` (`fhj_fan_seen_v1`); and `onSystemBack`.
+> - **`src/components/ThumbNav.tsx`** — `ThumbNav` (the bar, the coach mark and the fan)
+>   and `EdgeBack` (the side-edge peel). It takes `Icon` as a prop rather than importing
+>   it, because App.tsx imports the component and the icon set lives in App.tsx.
+>
+> **App.tsx changes are deliberately small.** `screen` is now `navTop(navStack)` and
+> `setScreen(id)` still takes a string, so none of the ~44 call sites changed. `goBack`,
+> `backTo`/`canBack`, `hand`, `reaching` and `shellRef` all live in the state block at the
+> top of `App()`, above every early return. The bar, the reach-catch and `EdgeBack` are
+> rendered **outside** `.fhj-shell`, and this is load-bearing: the shell is what moves
+> (sideways under an edge drag, downwards under reach), and a `position: fixed` child of a
+> transformed element is fixed to its moving parent rather than to the viewport — the bar
+> would ride away with the page it is steering.
+>
+> **Five gotchas, all of them found the hard way.**
+> 1. *The bar must not morph.* The first version turned the left slot into Back on inner
+>    screens. It read well and was wrong in the hand: the value of the bar to a thumb is
+>    that the thumb stops needing to look. The three are fixed; Back is a fourth thing
+>    above them. Several existing tests click `nav > History` from inner screens and were
+>    the first to catch it.
+> 2. *The + and the fan's pivot must be the same point.* They were a hundred pixels apart
+>    (+ centred, fan pivoting on the corner), so press-and-slide steered relative to a
+>    place the thumb was not. The + now sits at the end of the bar on the held side and
+>    the fan measures that button's `getBoundingClientRect()` at open time. Do not
+>    reintroduce a pivot position in CSS.
+> 3. *A click follows a pointerup.* Holding the + to navigate would also fire the button's
+>    `onClick` and open the add sheet behind the new screen. The guard is a ref
+>    (`handled`), not state — React may already have re-rendered by the time the click
+>    dispatches.
+> 4. *Icons inside a labelled button.* The Back pill renders an arrow plus the word
+>    "History"; without `aria-label` its accessible name is "History" and every
+>    `getByRole("button", {name: "History"})` in the suite matches two elements. Same
+>    family as addendum 11's decorative-glyph gotcha.
+> 5. *`setPointerCapture` throws.* Safari refuses for a pointer it has already released,
+>    and throws rather than returning false. Wrapped: a fan that opens is worth more than
+>    a fan that steers.
+>
+> **The arc is computed, never chosen.** A fixed "five per ring" is right for exactly one
+> phone. `ringCapacity` asks each ring how many items its own arc length holds at
+> `itemSizeFor(width)` px each, `ringsNeeded` takes the fewest rings that fit, and
+> `ringPlan` shares the items out in proportion to capacity (largest remainder), so the
+> spacing matches across rings instead of packing the inner one and stranding two outside.
+> `fanRadii`'s outer bound is `width − 104` — the width of a whole item, label included,
+> not the disc — or the outermost label runs off a small phone. **`itemSizeFor` and the
+> `@media (max-width: 359px)` block in index.css must agree**, or the geometry reserves
+> space the stylesheet does not use.
+>
+> **Which hand is a device fact, not a journal one**, so it sits in localStorage beside the
+> theme rather than in `profile.prefs`: it has to work in the read-only viewer and before
+> a profile exists. It is exposed in `AppearancePanel` (both copies — first run and
+> Settings) and inside the fan.
+>
+> **New CSS lives in one block** in `src/styles/index.css`, immediately before the print
+> section: `.fhj-thumbnav*`, `.fhj-thumb-*`, `.fhj-fan-*`, `.fhj-edgeback*`,
+> `.fhj-reach-catch`, and `.fhj-shell.is-reaching`. The old `.fhj-nav-add` is gone with the
+> old bar. `--fhj-reach` is written onto `:root` by an effect in App.tsx so the stylesheet
+> and the gesture cannot disagree about the distance.
+>
+> **Verified in a real browser at 390×844**, in both themes — which is where the pivot
+> mismatch, the coach mark coming apart into three flex items, the mid-word label breaks
+> and the near-white-on-near-white light-theme fan all showed up, and none of which a
+> jsdom test would have caught.
+>
+> **Tests: 1,341 across 55 suites** (was 1,288/53). New: `tests/oneHanded.test.ts` (36 —
+> the stack, the geometry, the thresholds, the storage) and `tests/oneHandedUi.test.tsx`
+> (17 — driven through the real app: the bar's shape, back-to-where-you-came-from, the
+> phone's back button, the fan's contents and keyboard route, handedness, reach, and that
+> a plain tap on the + still opens the add sheet). Four existing suites were updated where
+> they asserted the old bar order or the old fixed "Back to dashboard" label.
+>
+> **Still open:** unchanged — no licence declared, `App.tsx` still `@ts-nocheck`, on-device
+> screen-reader pass not done. The fan has a keyboard route (`ArrowUp` on the +) and takes
+> focus, but the press-and-slide selection is a pointer gesture with no keyboard analogue
+> beyond tabbing the open fan.
+
+
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 
 ## 1. App Purpose & Target User
