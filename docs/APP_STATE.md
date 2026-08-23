@@ -946,7 +946,7 @@
 > to the next expansion.
 
 
-> **2026-08-23 addendum 26 — 1.22: one hand.**
+> **2026-08-23 addendum 26 — 1.23: one hand.**
 > The whole release is one constraint: *nothing in this app may require the hand that
 > is holding the coffee.* Two new files own it.
 >

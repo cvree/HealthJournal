@@ -11,7 +11,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import React from "react";
-import { render, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 beforeEach(() => cleanup());
 
@@ -224,7 +224,7 @@ describe("the privacy card follows what is actually switched on", () => {
       React.createElement(PrivacyCard, { syncOn: true, syncEmail: "me@example.com" })
     );
     expect(container.textContent).not.toContain("No account");
-    expect(container.textContent).not.toContain("There is no backend to upload them to");
+    expect(container.textContent).not.toContain("There is no backend holding a copy");
     expect(container.textContent).toContain("me@example.com");
     expect(container.textContent).toMatch(/encrypted before it's uploaded/i);
   });
@@ -234,6 +234,29 @@ describe("the privacy card follows what is actually switched on", () => {
     const { container } = render(React.createElement(PrivacyCard, { syncOn: true }));
     expect(container.textContent).toMatch(/can't protect you from someone who controls the site/i);
     expect(container.textContent).toMatch(/no HIPAA or medical-records claim is made/i);
+  });
+
+  /* The card is the one place in the app where the privacy claim has to be
+     exactly as strong as its worst case. Turning AI on gives the worst case a
+     second half — importing your own notes sends the notes — so the card has
+     to name it and must not still be saying everything else stays here. */
+  it("names both things AI can send, and drops the everything-else-stays claim", async () => {
+    const { PrivacyCard } = await I();
+    const { container } = render(React.createElement(PrivacyCard, { aiEnabled: true }));
+    fireEvent.click(within(container as HTMLElement).getByRole("button", { name: /read the rest/i }));
+    expect(container.textContent).toMatch(/analysis you run/i);
+    expect(container.textContent).toMatch(/importing your own notes sends the notes/i);
+    expect(container.textContent).not.toMatch(/everything else still stays/i);
+  });
+
+  it("says the app is offline until something is switched on, and names the four switches", async () => {
+    const { PrivacyCard } = await I();
+    const { container } = render(React.createElement(PrivacyCard, {}));
+    fireEvent.click(within(container as HTMLElement).getByRole("button", { name: /read the rest/i }));
+    expect(container.textContent).toMatch(/no network requests/i);
+    for (const named of [/AI observations/i, /importing your own notes/i, /sync/i, /daily context/i]) {
+      expect(container.textContent).toMatch(named);
+    }
   });
 });
 

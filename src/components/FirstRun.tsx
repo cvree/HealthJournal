@@ -1060,7 +1060,7 @@ export default function FirstRun({
           </h1>
           <p className="fhj-fr-sub" data-hero-cta>
             How you felt. What happened. What changed —
-            <span style={{ color: C.subtle }}> kept, in your own words, on this device.</span>
+            <span style={{ color: C.subtle }}> kept, in your own words, on your own device.</span>
           </p>
 
           <div className="fhj-fr-actions" data-hero-cta>
@@ -1077,15 +1077,17 @@ export default function FirstRun({
             <button type="button" className="fhj-fr-fine-btn"
               aria-expanded={openPromises}
               onClick={() => { feedback("tap"); setOpenPromises((v) => !v); }}>
-              No account · stays on this device · not medical advice
+              No account · nothing leaves unless you say so · not medical advice
               <Icon name={openPromises ? "up" : "down"} size={12} color={C.subtle} />
             </button>
             {openPromises && (
               <div className="fhj-fr-fine-body">
-                {/* Five checkable facts about this build, before anything has
-                    been typed. A privacy paragraph is read by nobody; a list
-                    somebody could go and verify is the only kind of trust
-                    claim worth making to a stranger. */}
+                {/* A short list of checkable facts about this build, before
+                    anything has been typed. A privacy paragraph is read by
+                    nobody; a list somebody could go and verify is the only kind
+                    of trust claim worth making to a stranger — which is also
+                    why the list names the things that *can* leave rather than
+                    claiming nothing ever does. */}
                 <ul className="fhj-fr-promises">
                   {promises.map(([icon, text]) => (
                     <li key={text}>
@@ -1128,9 +1130,9 @@ export default function FirstRun({
             {hasName ? `Hello, ${first}.` : "Who is this journal for?"}
           </h1>
           <p className="fhj-fr-sub" data-act-block>
-            Both of these are optional and both stay on this device — but a journal that knows
-            who it belongs to is a different object to one that doesn't. Here's exactly what
-            each one changes.
+            Both of these are optional, and neither is ever part of anything this app sends —
+            but a journal that knows who it belongs to is a different object to one that
+            doesn't. Here's exactly what each one changes.
           </p>
 
           <div className="fhj-fr-you" data-act-block>
@@ -1183,8 +1185,8 @@ export default function FirstRun({
                 "Your name in the greeting, in your milestones, on your streak — not “the user”."],
               ["note", "A clinician knows whose logs these are",
                 "Name and age head every export, every summary and every appointment pack. Without them the page is anonymous, and an anonymous page is one more thing to explain in a ten-minute visit."],
-              ["device", "It never leaves this device",
-                "Same as your symptoms, your notes and your photos. There is no account to attach them to and nowhere to send them."],
+              ["device", "Nothing sends it anywhere",
+                "There is no account to attach it to. Your name and age are not part of any request this app can make — not the AI, not the weather — and the only places they appear are on this device and on the pages you print yourself."],
             ].map(([icon, title, body]) => (
               <li key={title}>
                 <span className="fhj-fr-why-mark"><Icon name={icon} size={13} color={C.accentText} /></span>
@@ -1611,7 +1613,8 @@ export default function FirstRun({
                 <p className="fhj-fr-hint">
                   Each one remembers its last shot and lines the next one up against it, so a
                   slow change over two months is something you can see rather than something you
-                  have to remember. Photos stay on this device — they are never uploaded.
+                  have to remember. Photos stay on this device — nothing uploads them, and the
+                  only way one ever leaves is you handing it to the optional AI yourself.
                 </p>
               </>
             ) : (

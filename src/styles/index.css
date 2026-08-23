@@ -1076,6 +1076,67 @@ button.fhj-section:disabled {
   background: var(--fhj-tint-soft, var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)));
 }
 
+/* ---------- a row you can rearrange with a thumb ----------
+
+   Hold a tile and it comes up off the page; drag it and the rest slide out of
+   the way. The JavaScript in App.tsx owns the arithmetic — which slot a thumb
+   is over, how far each tile has to travel — and everything it needs from CSS
+   is here: a positioning context for the gap, one transition for the tiles
+   that are getting out of the way, and a way to switch every transition off
+   for the single frame in which the new order is written down.
+
+   The lifted tile's own transform is set inline, frame by frame, because it is
+   following a finger. That is also why its shadow needs the specificity to
+   beat `.fhj-pop:active` — the finger is still down on it, and a tile in the
+   air that has dropped its shadow reads as a tile that has been pressed. */
+
+.fhj-sortable {
+  position: relative;
+}
+
+/* A long press on a touch screen means "select this text" or "share this
+   image" unless something says otherwise. Here it means pick this up. */
+.fhj-sortable > [data-sort] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fhj-sortable.is-sorting > [data-sort] {
+  transition: transform 260ms var(--fhj-out);
+}
+
+.fhj-sortable > [data-sort].is-lifted {
+  box-shadow: 7px 9px 0 rgba(0, 0, 0, 0.42);
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  cursor: grabbing;
+}
+
+/* The frame that commits. Every tile's inline offset disappears and the DOM
+   order changes in the same paint; with transitions live, each one would
+   animate back from where it already is. */
+.fhj-sortable.is-settling > * {
+  transition: none !important;
+}
+
+/* Where it will land. Drawn under the tiles rather than between them, so the
+   grid itself never reflows mid-drag. */
+.fhj-sort-gap {
+  position: absolute;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw-strong) dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.22));
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  pointer-events: none;
+  z-index: 0;
+  transition: left 200ms var(--fhj-out), top 200ms var(--fhj-out);
+}
+
+@media (hover: hover) {
+  .fhj-sortable > [data-sort] {
+    cursor: pointer;
+  }
+}
+
 /* ---------- timeline ----------
    Today's logs, in the order they happened. The rail is drawn by the items
    themselves so an empty list has no orphaned line, and the dot is tinted by
@@ -1549,21 +1610,37 @@ button.fhj-section:disabled {
 }
 
 /* ---------- horizontal scrollers ----------
-   A row of chips wider than the screen. The mask is the affordance: the last
-   chip fades out at the edge instead of being guillotined by the card border,
-   which is what "there is more over here" looks like without a scrollbar. */
+   A row of chips wider than the screen. Driven by components/Rail.tsx, which
+   owns the parts a stylesheet cannot: which edge has more behind it, the wheel,
+   and the keyboard.
+
+   The mask is the affordance — the last chip fades out at the edge instead of
+   being guillotined by the card border, which is what "there is more over here"
+   looks like without a scrollbar. It is applied per edge and only when that
+   edge actually has something past it: a permanent fade on both ends made a row
+   of three chips that fits perfectly look like a row that had been cut. */
+
+.fhj-rail {
+  position: relative;
+  /* The bleed lives here rather than on the scroller, so the arrows sit in it
+     rather than on top of the first and last chip. */
+  margin: 0 -1rem;
+}
 
 .fhj-scroller {
   display: flex;
   gap: 0.5rem;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
+  scroll-padding-inline: 1rem;
+  /* A flick that runs off the end of the chips must not take the page with
+     it — on iOS that reads as the whole app being dragged sideways. */
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   /* the row's own padding, so a snapped chip isn't flush against the mask */
   padding: 0.125rem 1rem 0.5rem;
-  margin: 0 -1rem;
-  mask-image: linear-gradient(to right, transparent 0, #000 1rem, #000 calc(100% - 1.75rem), transparent 100%);
 }
 .fhj-scroller::-webkit-scrollbar {
   display: none;
@@ -1571,6 +1648,33 @@ button.fhj-section:disabled {
 .fhj-scroller > * {
   scroll-snap-align: start;
   flex: none;
+}
+.fhj-scroller.fade-start {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 1.75rem);
+  mask-image: linear-gradient(to right, transparent 0, #000 1.75rem);
+}
+.fhj-scroller.fade-end {
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 1.75rem);
+  mask-image: linear-gradient(to left, transparent 0, #000 1.75rem);
+}
+.fhj-scroller.fade-start.fade-end {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 1.75rem, #000 calc(100% - 1.75rem), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 1.75rem, #000 calc(100% - 1.75rem), transparent 100%);
+}
+/* The rail's chips are card-height, so its arrows centre on the row rather
+   than sitting under its top edge the way the 36px chip picker's do — and they
+   sit a little further in from the edge, because the rail bleeds all the way
+   to the screen and an arrow flush against it looks broken rather than
+   deliberate. */
+.fhj-rail .fhj-picker-arrow {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.fhj-rail .fhj-picker-arrow-start {
+  left: 0.375rem;
+}
+.fhj-rail .fhj-picker-arrow-end {
+  right: 0.375rem;
 }
 
 /* ---------- repeat chip ----------
@@ -5476,6 +5580,342 @@ button.fhj-section:disabled {
   .fhj-pulse-more:hover {
     background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
   }
+}
+
+/* ---------- the next question ----------
+
+   What the pulse hands off to. The chip row underneath it is a *menu* of
+   offers; this is a *queue*, and only ever shows the front of it — which is
+   why a setup with eleven questions can be finished from this card without it
+   ever looking like a form.
+
+   Deliberately quieter than the pulse above it and louder than the chips below
+   it, because that is exactly where it sits in the order of things that
+   matter: the number is the day, this is the rest of the day, and the chips
+   are what is left over. */
+
+.fhj-next {
+  margin-top: 0.875rem;
+  padding: 0.875rem 0.875rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-next-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.fhj-next-count {
+  flex: none;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* Progress, said as a shape as well as a count. Two questions left out of
+   eleven and nine left out of eleven are the same sentence at a glance and
+   very different bars. */
+.fhj-next-bar {
+  height: 3px;
+  margin: 0.5rem 0 0.75rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  overflow: hidden;
+}
+.fhj-next-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--fhj-radius-pill);
+  transition: width 320ms var(--fhj-out);
+}
+
+.fhj-next-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.0625rem;
+  line-height: 1.25;
+  margin-bottom: 0.625rem;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-next-unit {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-next-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.625rem;
+}
+
+.fhj-next-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.625rem;
+  margin: 0 -0.625rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--fhj-sub, #b9bac2);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.fhj-next-btn.is-forward {
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+@media (hover: hover) {
+  .fhj-next-btn:hover {
+    color: var(--fhj-ink, #ecebe7);
+  }
+}
+
+/* The end of the queue. Said once, quietly, and gone tomorrow — a permanent
+   "all done" banner is a badge for having used an app. */
+.fhj-next-done {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  font-size: 0.8125rem;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+/* ---------- importing somebody's own notes ----------
+
+   A review list, and it is the safety mechanism rather than a decoration: the
+   whole promise of this feature is that nothing is written until it has been
+   seen, so every row shows what it would write, what it read that from, and a
+   switch. A row switched off recedes rather than disappearing, because "what
+   did I turn off" is a question people ask a second later. */
+
+.fhj-import-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-line, #31343d);
+  border-left-width: 3px;
+  border-left-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  transition: opacity var(--fhj-quick) ease;
+}
+.fhj-import-row.is-off {
+  opacity: 0.45;
+}
+
+.fhj-import-check {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.125rem;
+  border-radius: var(--fhj-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line-strong, #464a55);
+  cursor: pointer;
+}
+.fhj-import-row:not(.is-off) .fhj-import-check {
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-import-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+.fhj-import-label {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--fhj-ink, #ecebe7);
+  overflow-wrap: anywhere;
+}
+.fhj-import-detail {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fhj-sub, #b9bac2);
+  overflow-wrap: anywhere;
+}
+/* The words it read this from. Quoted and set apart, so a wrong reading is
+   obvious the instant it sits beside what it claims to be a reading of. */
+.fhj-import-src {
+  margin-top: 0.375rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--fhj-line, #31343d);
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--fhj-subtle, #9a9ca6);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fhj-import-note {
+  margin-top: 0.375rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--fhj-lavender-text, #c3b1e8);
+}
+.fhj-import-date {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4375rem;
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-import-date input {
+  min-height: 1.875rem;
+  padding: 0 0.4375rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+  color: var(--fhj-ink, #ecebe7);
+  font-size: 0.6875rem;
+  font-family: inherit;
+}
+.fhj-import-guess {
+  color: var(--fhj-warn, #dcbb78);
+}
+
+.fhj-import-left,
+.fhj-import-error {
+  margin-top: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+  color: var(--fhj-sub, #b9bac2);
+  white-space: pre-wrap;
+}
+.fhj-import-error {
+  border-color: var(--fhj-danger-ink, #e6a29d);
+  color: var(--fhj-danger-ink, #e6a29d);
+}
+
+/* ---------- the "bring your old notes in" offer ----------
+   An invitation, not a task, so it is drawn like the pulse's follow-ups rather
+   than like a Quick Add tile: a tinted rule down one side and nothing else
+   shouting. It retires itself after a fortnight of logged days. */
+.fhj-invite {
+  border-left: 3px solid var(--fhj-accent, #8fb0e3);
+}
+.fhj-invite-mark {
+  flex: none;
+  width: 1.875rem;
+  height: 1.875rem;
+  margin-top: 0.125rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* The screenshots waiting to be read. Numbered when there is more than one,
+   because the order is load-bearing: they are sent as one continuous set, so
+   the person needs to see the order the model will read them in. */
+.fhj-import-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+.fhj-import-shot {
+  position: relative;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: var(--fhj-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-import-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.fhj-import-shot-n {
+  position: absolute;
+  left: 0.25rem;
+  bottom: 0.25rem;
+  min-width: 1.125rem;
+  padding: 0 0.25rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-bg, #141519);
+  color: var(--fhj-ink, #ecebe7);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.125rem;
+  text-align: center;
+}
+.fhj-import-shot button {
+  position: absolute;
+  top: 0.1875rem;
+  right: 0.1875rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-bg, #141519);
+  border: 1px solid var(--fhj-line-strong, #464a55);
+  cursor: pointer;
+}
+
+/* Drag a screenshot anywhere onto the screen. Said only while something is
+   actually over it — a permanent "you can drop here" panel is a panel. */
+.fhj-import-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: color-mix(in srgb, var(--fhj-bg, #141519) 82%, transparent);
+  border: 2px dashed var(--fhj-accent, #8fb0e3);
+  border-radius: var(--fhj-radius-lg, 1.25rem);
+  pointer-events: none;
+}
+
+/* The commit button sits at the *end* of the review rather than floating over
+   it. A sticky bar would be one tap closer and would spend the whole scroll
+   covering one of the rows it is asking to be checked, which is the one thing
+   this screen cannot afford: the promise is that every row was seen. */
+.fhj-import-commit {
+  margin-top: 1.25rem;
+  padding: 0.75rem;
+  border-radius: var(--fhj-radius-lg, var(--fhj-radius));
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, #31343d);
 }
 
 /* ============================================================

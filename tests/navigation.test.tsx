@@ -173,11 +173,16 @@ describe("History", () => {
   });
 });
 
-describe("Quick Add learns", () => {
-  it("moves what somebody actually taps to the front, and remembers it", async () => {
+describe("Quick Add holds still", () => {
+  /* The row used to re-sort itself by what somebody tapped most. It doesn't
+     any more, and that is the point: the value of a button on a phone is that
+     the thumb knows where it is, and an app that rearranges the screen
+     overnight spends that every time it guesses right. */
+  it("leaves every button where it was, however often one is tapped", async () => {
     await mountApp();
     const tiles = () => [...document.querySelectorAll(".fhj-tile")].map((t) => t.textContent!.trim());
-    expect(tiles()[0]).toMatch(/^Check-in/);
+    const before = tiles();
+    expect(before[0]).toMatch(/^Check-in/);
 
     // Three taps on Food — the picker is closed again each time.
     for (let i = 0; i < 3; i++) {
@@ -186,8 +191,32 @@ describe("Quick Add learns", () => {
       if (close) fireEvent.click(close);
     }
 
+    // The taps are still counted — the one-tap repeats rank on them — but not
+    // one button moved.
     await waitFor(() => expect(saved().profile.actionStats?.food?.n).toBe(3));
-    await waitFor(() => expect(tiles()[0]).toMatch(/^Food/));
+    expect(tiles()).toEqual(before);
+  });
+
+  it("still learns for anybody who asks it to", async () => {
+    await mountApp((db) => {
+      db.profile.quickAddOrder = "auto";
+      db.profile.actionStats = { photo: { n: 20, at: today() } };
+    });
+    const tiles = () => [...document.querySelectorAll(".fhj-tile")].map((t) => t.textContent!.trim());
+    expect(tiles()[0]).toMatch(/^Photo/);
+  });
+
+  it("freezes the arrangement a learning journal already had", async () => {
+    // An install from before the change: no stated preference, months of use.
+    await mountApp((db) => {
+      delete db.profile.quickAddOrder;
+      db.profile.actionStats = { photo: { n: 20, at: today() } };
+    });
+    // What was on screen yesterday is what is on screen today — and it is now
+    // written down as theirs rather than recomputed every morning.
+    await waitFor(() => expect(saved().profile.quickAddOrder).toBe("manual"));
+    expect(saved().profile.quickAdd[0]).toBe("photo");
+    expect([...document.querySelectorAll(".fhj-tile")][0].textContent).toMatch(/^Photo/);
   });
 
   it("starts from the buttons this person's own conditions reach for", async () => {
@@ -203,6 +232,7 @@ describe("Quick Add learns", () => {
 
   it("stops learning the moment somebody arranges the tiles themselves", async () => {
     await mountApp((db) => {
+      db.profile.quickAddOrder = "auto";
       db.profile.actionStats = { bowel: { n: 20, at: "2026-08-19" } };
     });
     fireEvent.click(screen.getByRole("button", { name: /Edit which Quick Add buttons/ }));

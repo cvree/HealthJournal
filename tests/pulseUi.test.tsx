@@ -91,32 +91,91 @@ describe("the optional detail after it", () => {
     expect(screen.queryByText(/all optional/i)).toBeNull();
   });
 
-  it("offers three to five follow-ups, chosen for today's score", async () => {
+  it("keeps the chips for the things a question cannot be, and asks the questions itself", async () => {
     await mountToday();
     fireEvent.click(rung(9));
     await screen.findByText(/all optional/i);
-    const chips = document.querySelectorAll(".fhj-pulse-chip");
-    expect(chips.length).toBeGreaterThanOrEqual(3);
+    const chips = [...document.querySelectorAll(".fhj-pulse-chip")];
+    expect(chips.length).toBeGreaterThanOrEqual(1);
     expect(chips.length).toBeLessThanOrEqual(5);
-    // A hard day asks about the symptoms, not about sleep.
-    expect(screen.getByRole("button", { name: /Itch/ })).toBeTruthy();
-  });
-
-  it("answers one inline, and drops it from the offers once answered", async () => {
-    await mountToday();
-    fireEvent.click(rung(7));
-    await screen.findByText(/all optional/i);
-
-    fireEvent.click(screen.getByRole("button", { name: /Itch/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Itch 5" }));
-
-    await waitFor(() => expect(todayEntry()?.answers.itch).toBe(5));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /^Itch1–10/ })).toBeNull());
+    /* The questions moved to the queue above, so the chip row is the routine,
+       the camera and the note — never a survey field offered twice. */
+    for (const chip of chips) {
+      expect(chip.textContent).toMatch(/Routine|Photo|Note/);
+    }
   });
 
   it("keeps the full check-in one tap away, and never in the way", async () => {
     await mountToday();
     fireEvent.click(screen.getByRole("button", { name: /Add more detail/ }));
     expect(await screen.findByRole("heading", { name: "Today" })).toBeTruthy();
+  });
+});
+
+/* The queue. One question, then the next one, without a form ever opening —
+   this is the difference between a journal that records one number a day and
+   one somebody can do their whole daily review in.
+
+   The rule worth pinning: it must never advance out from under a half-typed
+   answer, and it must always be leaveable. */
+describe("the next most important question", () => {
+  const nextTitle = () => document.querySelector(".fhj-next-title")?.textContent?.trim() || "";
+
+  it("appears the moment the day is rated, and not before", async () => {
+    await mountToday();
+    expect(document.querySelector(".fhj-next")).toBeNull();
+
+    fireEvent.click(rung(9));
+    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+    expect(nextTitle().length).toBeGreaterThan(0);
+  });
+
+  it("counts the pulse itself as answered, so the progress never lies about what just happened", async () => {
+    await mountToday();
+    fireEvent.click(rung(5));
+    const count = await screen.findByText(/of \d+ answered/);
+    const [answered, total] = (count.textContent || "").match(/\d+/g)!.map(Number);
+    expect(answered).toBeGreaterThanOrEqual(1);
+    expect(total).toBeGreaterThan(answered);
+  });
+
+  it("hands straight over to the next question when one tap finished the last one", async () => {
+    await mountToday();
+    fireEvent.click(rung(8));
+    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+
+    const first = nextTitle();
+    const tap = [...document.querySelectorAll<HTMLButtonElement>(".fhj-next button")]
+      .find((b) => /\b5$/.test(b.getAttribute("aria-label") || ""));
+    expect(tap).toBeTruthy();
+    fireEvent.click(tap!);
+
+    await waitFor(() => expect(nextTitle()).not.toBe(first));
+    // and the answer it moved on from is in the journal, not just off the screen
+    await waitFor(() => expect(
+      Object.values(todayEntry()?.answers || {}).filter((v) => v === 5).length
+    ).toBeGreaterThanOrEqual(1));
+  });
+
+  it("skips one without answering it, and does not come back to it in this sitting", async () => {
+    await mountToday();
+    fireEvent.click(rung(6));
+    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+
+    const first = nextTitle();
+    fireEvent.click(screen.getByRole("button", { name: /Skip this one/ }));
+    await waitFor(() => expect(nextTitle()).not.toBe(first));
+    expect(nextTitle()).not.toBe(first);
+  });
+
+  it("closes for the sitting when somebody says they are done", async () => {
+    await mountToday();
+    fireEvent.click(rung(6));
+    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /Done for now/ }));
+    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeNull());
+    // The day's number is untouched by leaving the queue.
+    await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(6));
   });
 });

@@ -127,7 +127,7 @@ describe("the hero", () => {
 
   it("says what the app is and is not, before anything is tapped", async () => {
     await mountFresh();
-    const fine = screen.getByRole("button", { name: /stays on this device/i });
+    const fine = screen.getByRole("button", { name: /nothing leaves unless you say so/i });
     expect(fine.textContent).toMatch(/no account/i);
     expect(fine.textContent).toMatch(/not medical advice/i);
     // ...and the whole disclaimer is one tap away, not buried in a settings screen.
@@ -137,7 +137,7 @@ describe("the hero", () => {
 
   it("lists the checkable facts about the build, not a privacy paragraph", async () => {
     await mountFresh();
-    fireEvent.click(screen.getByRole("button", { name: /stays on this device/i }));
+    fireEvent.click(screen.getByRole("button", { name: /nothing leaves unless you say so/i }));
     const text = await waitFor(() => {
       const t = document.body.textContent || "";
       expect(t).toMatch(/no sign-up/i);
@@ -147,6 +147,27 @@ describe("the hero", () => {
     expect(text).toMatch(/no analytics|no trackers/i);
     expect(text).toMatch(/export the whole thing/i);
     expect(text).toMatch(/delete everything/i);
+  });
+
+  /* The promise that replaced an absolute. Four switches in this build can
+     reach the network, so the first screen names them rather than claiming
+     nothing ever leaves — a privacy claim is worth exactly as much as its
+     worst case, and this list has to print the worst case. */
+  it("names what can leave rather than promising that nothing ever does", async () => {
+    await mountFresh();
+    fireEvent.click(screen.getByRole("button", { name: /nothing leaves unless you say so/i }));
+    const text = await waitFor(() => {
+      const t = document.body.textContent || "";
+      expect(t).toMatch(/nothing leaves this device unless you switch it on/i);
+      return t;
+    });
+    for (const switchable of [/sync/i, /\bAI\b/, /weather/i, /notes/i]) {
+      expect(text).toMatch(switchable);
+    }
+    // ...and it promises the confirmation, which is the part that makes it safe.
+    expect(text).toMatch(/names what it sends/i);
+    // No absolute survives on this screen.
+    expect(text).not.toMatch(/never leaves this device/i);
   });
 
   it("keeps the way in for somebody who just wants a look", async () => {

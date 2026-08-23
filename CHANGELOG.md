@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.22.0
+## 1.23.0
 
 One hand.
 
@@ -109,6 +109,220 @@ thresholds, which hand, and the system-back wiring.
 `src/components/ThumbNav.tsx` is the bar, the fan and the edge gesture.
 Tests: 1,341 across 55 suites — 36 new pure tests for the geometry and the
 stack, 17 driving the whole thing through the real app.
+
+## 1.22.0
+
+One row that could not be scrolled, one question that was never asked, an hour
+of typing nobody was ever going to do — and one promise this app had outgrown.
+
+### The promise, said honestly
+
+"Everything stays on your device" is gone from this app, because with any of
+four switches on it was not true.
+
+It was very nearly true, which is the problem: a privacy claim is worth exactly
+as much as its worst case, and a claim that holds 95% of the time is worth less
+than a shorter one that always does. Sync uploads an encrypted journal. AI
+observations send a summary of your numbers. Daily context asks for the
+weather. And now importing your own notes sends the notes. All four are off
+until somebody turns them on, and all four say what they are sending before
+they send it — which is a better promise than the one it replaces, and this
+release is where the app starts making it instead.
+
+So the first screen's list of checkable facts now names the four things that
+*can* leave rather than claiming nothing does. The privacy card in Settings
+already rewrote itself as switches changed; it now has a sentence for AI that
+names both things AI can send, and no longer signs off with "everything else
+still stays on this device". "Photos are never uploaded" is gone too — it had
+been untrue since AI auto-fill shipped, and now reads as what it is: photos
+stay here unless you hand one over yourself.
+
+Nothing about the defaults changed. Out of the box the app still makes no
+network requests at all after it loads.
+
+### The Again row scrolls
+
+The shortest path in the app was reachable only by people holding a phone.
+
+**Again** is the row under Quick Add: the foods you log over and over, the
+doses you take daily, the spot you photograph, the number you record — ranked
+against each other so it is your own week in your own order, one tap each. It
+was a bare `overflow-x: auto` row with the app's global stylesheet hiding every
+scrollbar, and this app runs Lenis on the document scroller. Which means that
+on a desktop a vertical wheel over the chips scrolled the *page*, a horizontal
+one was swallowed by the smooth-scroll driver before the browser ever saw it,
+and a mouse without a tilt wheel had no gesture at all. The chips past the
+fourth were visible, cut off at the edge, and unreachable. On a phone it
+flicked, which is why it lasted this long.
+
+The metric picker on Insights had solved exactly this a release ago, so its
+rail has been lifted out into `components/Rail.tsx` and is now the only
+horizontal scroller this app is allowed to have. A vertical wheel over the row
+scrolls the row — and stops claiming the gesture the moment the row runs out,
+so the end of the chips is not the end of the page. A horizontal one is stopped
+before it reaches Lenis, which is what stops the page moving sideways
+underneath it. Arrow buttons appear on pointer devices at whichever edge still
+has something behind it, and are hidden on touch where they would only cover
+two chips. ←/→/Home/End walk the row, and focus always scrolls its own chip
+into view. The edge fade is per-edge and conditional now: a row of three chips
+that fits is no longer drawn as a row that has been cut.
+
+### The Again row scrolls
+
+The shortest path in the app was reachable only by people holding a phone.
+
+**Again** is the row under Quick Add: the foods you log over and over, the
+doses you take daily, the spot you photograph, the number you record — ranked
+against each other so it is your own week in your own order, one tap each. It
+was a bare `overflow-x: auto` row with the app's global stylesheet hiding every
+scrollbar, and this app runs Lenis on the document scroller. Which means that
+on a desktop a vertical wheel over the chips scrolled the *page*, a horizontal
+one was swallowed by the smooth-scroll driver before the browser ever saw it,
+and a mouse without a tilt wheel had no gesture at all. The chips past the
+fourth were visible, cut off at the edge, and unreachable. On a phone it
+flicked, which is why it lasted this long.
+
+The metric picker on Insights had solved exactly this a release ago, so its
+rail has been lifted out into `components/Rail.tsx` and is now the only
+horizontal scroller this app is allowed to have. A vertical wheel over the row
+scrolls the row — and stops claiming the gesture the moment the row runs out,
+so the end of the chips is not the end of the page. A horizontal one is stopped
+before it reaches Lenis, which is what stops the page moving sideways
+underneath it. Arrow buttons appear on pointer devices at whichever edge still
+has something behind it, and are hidden on touch where they would only cover
+two chips. ←/→/Home/End walk the row, and focus always scrolls its own chip
+into view. The edge fade is per-edge and conditional now: a row of three chips
+that fits is no longer drawn as a row that has been cut.
+
+### One tap, then the next most important question
+
+Answering the Daily Pulse used to be the end of the easy path. Everything else
+lived behind *Add more detail*, which opens the survey — a screen, a scroll,
+forty fields and a Back button — or behind a row of chips. And a chip row is a
+*menu*: it shows what could be answered and hands the choosing back. Choosing
+is work, and at eleven questions it is most of the work.
+
+So the pulse now hands straight over to a **queue**, and asks the front of it.
+
+One question. The app's own input for it. The tap is the save, the question
+leaves the queue, and the next one takes its place — which means the whole
+daily review can be done from the first card of the first screen, at the speed
+of tapping, without a form ever opening. A progress line says how much is left
+(*4 of 12 answered*, with the pulse counted as one of them, because it is one),
+so it is a finishable thing rather than an open-ended demand.
+
+What it asks first is decided by three things in order: what your packs are
+about, what kind of day you have just said it is, and **what you actually
+record**. That last one is new and it is the point — somebody who fills in
+their weight every morning and has never once touched "possible triggers"
+should be asked for the weight, whatever the template thinks. A habit lifts a
+question up to ten places, so a question you answer every day can reach the
+front from anywhere and one you have never answered stays exactly where the
+pack put it. On a brand-new journal every habit is zero and the order is the
+pack's alone.
+
+Two rules keep it an offer rather than a wall. **It never advances out from
+under an answer** — a scale, a yes/no and a single choice are finished by the
+tap, so those move on by themselves; a number or a multi-select waits for
+*Next*, because snatching a field away mid-keystroke is the app racing its
+user. **It is always leaveable** — *Skip this one* moves past, *Done for now*
+closes the queue for the sitting, and neither is remembered. Tomorrow it asks
+again, because a journal that permanently stops asking on the strength of one
+impatient tap has quietly started deciding what its owner tracks.
+
+The chips underneath are now only the three things a question cannot be: the
+routine still owed, the camera, and the note. The same question in two places
+was one place too many.
+
+### Import your own notes
+
+Everybody who tracks anything seriously was already tracking it before they
+found this app. It is in a notes file, a chat with themselves, a photo of a
+page, and it looks like this:
+
+    8.21 weight 12pm 182
+    8.21 food, 2.5 hamburger, havarti cheese
+    2acv premeal + 2 pepsin combo 12:30pm
+    8.21 4pm bowel movement, small firm sank
+    8.21 Trazo 50mg STARTING NEW MED. Day 1
+
+Every one of those lines is a row this app already has a shape for. Typing them
+in one at a time, through the right sheet, on the right date, is an hour of
+work — which is why nobody does it, and why a journal that could have started
+in March starts today with nothing behind it.
+
+**Import notes** takes a paste or a screenshot and reads it into meals, doses,
+numbers, bowel entries and notes, **on the dates and times the notes themselves
+give**. Shorthand resolves against today; a line with no date of its own
+belongs to the line above it; a time is only set when the note actually gives
+one. A dose matches something already in your routine where it can, and creates
+it where it cannot.
+
+It needs the optional AI, and it is the only feature in the app that does —
+reading `2acv premeal + 2 pepsin combo 12:30pm` as two of one thing and two of
+another at half past twelve on the 21st is not something parsing rules get to.
+
+Three steps, and the shape of them is the entire safety argument.
+
+**Hand it over**, by whatever is nearest to hand. Paste the text. Ctrl+V a
+screenshot straight into the box — on a desktop that is where the notes already
+are, one keystroke after the snip, and making somebody save a file first would
+put the whole feature's friction back. Drop files anywhere on the screen, image
+or `.txt`, and a text file is appended to the box rather than making you open
+it and copy it out. Up to four screenshots at a time, sent as **one continuous
+document in order**, because a chat with yourself is four screenshots and a
+date at the top of the second governs the lines under it in the third.
+
+**See what goes.** This is the one path in this app that sends prose, and it is
+not going to be coy about it. Every other outbound path is built to send as
+little as possible — the pattern analysis reduces the journal to numbers
+precisely so free text never leaves. This one cannot: the words *are* the
+input. So nothing goes until a sheet listing the entire payload has been read
+and accepted, every single time. It counts the characters, says whether an
+image is going, and names the structural things riding along — your question
+names, your routine names, today's date. No photos from your journal, no
+answers already recorded, no name, nothing about the device.
+
+**Approve what lands.** Every proposed row, grouped by the day it would go on,
+next to the exact words it was read from — because a wrong reading is obvious
+the instant it sits beside what it claims to be a reading of. A line at the top
+says what was found (*1 answer, 1 meal, 1 bowel entry, 1 dose and 1 note, on 2
+days*). Each day switches off in one tap and back on in another. Each row's date
+is correctable on the row. Only the rows the model was genuinely unsure of are
+flagged, because a badge on every row is a badge on nothing — what it assumed
+is said in words underneath instead. Then one button writes what is left, with
+an Undo in the toast and a link straight to the earliest day it just filled in,
+which is the moment the whole thing pays out.
+
+The model never writes. `applyImport` is a pure function of the rows somebody
+approved and has never heard of a model, and `normaliseImportPlan` is the
+boundary in front of it: an answer to a question this journal does not ask, a
+value of the wrong type, a routine id that does not exist, a date in the future
+or three years adrift, a caveat that strayed into diagnosis — each is dropped
+rather than repaired, because a row whose provenance nobody can explain has no
+business in a medical record.
+
+Three more things it is careful about. It **never overwrites** an answer
+somebody gave themselves. It **never doubles up** — importing the same notes
+twice is what everybody does, because the first run is a test, and a meal, dose
+or movement matching one already on that date and time is left alone. And a
+routine item invented from a note is created **as-needed, never daily**: a line
+saying somebody took something once is not a line saying the checklist should
+start chasing them for it every morning.
+
+The prompt's own hardest rule is that it is a transcriber and a filing clerk,
+not an editor: copy the person's words, never rewrite, summarise, correct,
+tidy or improve them. Their spelling of a medication is their spelling. This is
+a record, not a draft.
+
+And it is offered where somebody will actually find it. A journal in its first
+fortnight gets the offer **on Today**, under the day — that is the week it is
+worth doing, and nobody in their first week goes hunting through menus for a
+feature they don't know exists. It retires itself after fourteen logged days
+whether or not anybody dismissed it, "Not for me" sends it away for good, and
+when AI is off the card says so in its own copy and its button goes to
+Settings. An offer that quietly turns into a setup screen is a bait, and this
+app does not have any of those.
 
 ## 1.21.0
 
@@ -301,6 +515,50 @@ Exports gain three sheets — Measurements, Time outside and Weather — each na
 so a spreadsheet opened in two years still says which numbers somebody measured
 and which this app modelled.
 
+### The buttons stay where you put them
+
+Quick Add used to sort itself. Tap food four times a day and the Food button
+climbed to the front; leave the camera alone for a fortnight and it sank. On
+paper that is the app being helpful. In the hand it is the app moving the
+furniture, because the entire value of a button on a phone is that after a week
+the thumb goes there without the eyes — and a row that quietly rearranges
+itself overnight spends that every single time it guesses right. A miss costs a
+wrong entry to undo, and it costs somebody the feeling that they know their own
+screen.
+
+So the order holds still. Every button is where it was yesterday, on the
+dashboard and behind the **+**, which show the same list and now the same
+arrangement.
+
+Moving one is a gesture rather than a trip to a settings screen: **hold a
+button and drag it.** A third of a second under the finger and it lifts —
+heavier shadow, a degree of tilt, one tick from the haptic motor — and from
+there the row is something you are rearranging rather than something you are
+pressing. The others slide out of the way, a dashed gap follows your thumb, and
+letting go drops it in and saves. A tile crossing from the end of one row to
+the start of the next travels a real diagonal. The drop is not also a press:
+the tap that would otherwise fire underneath it is swallowed.
+
+Three refusals hold the gesture together. A finger that has moved ten pixels
+before the hold completes is scrolling the page and gets its gesture back
+untouched — the row covers half the screen and a dashboard that eats a swipe is
+broken in a way people do not forgive. A hold against a layout that has changed
+underneath stays a tap, because a half-drag against stale geometry would move a
+button nobody asked to move. And the frame that writes down the new order has
+every transition switched off, so the instant the app commits is the one
+instant nothing moves.
+
+It is not a pointer-only feature: **Alt with an arrow key** moves whichever
+button has focus — left and right by one, up and down by a whole row — the
+editor still lists them all with arrows beside them, and every tile carries a
+description saying so. Each landing is announced.
+
+Learning still exists for anybody who wants it, as one switch in the editor
+rather than as the default. A journal that has been learning for months keeps
+the arrangement it has: it is frozen exactly as it stands on the way through
+the update, so the first launch after looks identical to the last launch
+before, and stays that way.
+
 ### Under it
 
 Seven new typed modules, none of which read a clock: `solar` (NOAA solar
@@ -309,14 +567,20 @@ vitamin D synthesis), `sun` (sessions, live accumulation, daily aggregates,
 metrics), `context` (consent, coarse location, fetching, parsing, observations),
 `labs` (catalog, unit conversion, series, reference ranges, what-else-happened),
 `experiments` (pairing, splitting, suggesting), `evidence` (the one ladder), and
-`series` (the seam that lets any of them be compared against any other).
+`series` (the seam that lets any of them be compared against any other) — plus
+`dragOrder`, which holds the whole of the hold-and-drag arithmetic: which slot a
+thumb is over (nearest centre, with enough stickiness that a thumb on a boundary
+does not make the row flicker), how far every other tile has to travel, and how
+a rearranged screen is folded back into a saved list that may hold buttons this
+device cannot show — so a rearrangement can never delete a button nobody could
+see.
 
 New collections in the journal — `sun`, `labs`, `experiments`, `context` — each
 sanitised on every load like everything before them, each carried in backups and
 exports, and each validated well enough that the recovery screen can say what
 was wrong rather than quietly dropping them.
 
-**223 new tests. 1,278 across 53 suites, all green.**
+**256 new tests. 1,311 across 55 suites, all green.**
 
 ## 1.20.0
 

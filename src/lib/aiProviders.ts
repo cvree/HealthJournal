@@ -33,6 +33,11 @@ export type ChatRequest = {
   /** Optional image input. Only sent when the caller supplies one, which is
       only ever after the user has explicitly asked for photo analysis. */
   image?: ChatImage | null;
+  /** Several images, for the one caller that reads a set of them at once —
+      a chat log screenshotted in four goes is one document, and asking the
+      model to read it four times loses the thread between them. Sent in the
+      order given, before `image` if both are supplied. */
+  images?: ChatImage[] | null;
   /** JSON schema the reply must match. Defaults to the pattern-analysis one so
       existing callers are unchanged. */
   schema?: Record<string, unknown>;
@@ -276,14 +281,19 @@ export async function chat(conn: Connection, req: ChatRequest): Promise<string> 
   const schema = req.schema || RESPONSE_SCHEMA;
   const maxTokens = req.maxTokens || 2400;
 
+  /* One list, in the order it will be sent. `images` first so a caller passing
+     a set reads left to right, and `image` after it so the single-image callers
+     are unchanged. */
+  const images: ChatImage[] = [...(req.images || []), ...(req.image ? [req.image] : [])];
+
   if (conn.provider === "gemini") {
-    /* Gemini takes the image as an inline part alongside the text. Image first
-       is deliberate: the model reads parts in order, and the text is usually
-       "here is what I ate", which only means something once it has seen it. */
-    const userParts: any[] = [];
-    if (req.image) {
-      userParts.push({ inlineData: { mimeType: req.image.mime, data: req.image.data } });
-    }
+    /* Gemini takes each image as an inline part alongside the text. Images
+       first is deliberate: the model reads parts in order, and the text is
+       usually "here is what I ate", which only means something once it has
+       seen the picture. */
+    const userParts: any[] = images.map((img) => ({
+      inlineData: { mimeType: img.mime, data: img.data },
+    }));
     userParts.push({ text: req.user });
 
     const res = await fetch(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
@@ -312,11 +322,13 @@ export async function chat(conn: Connection, req: ChatRequest): Promise<string> 
       : "";
   }
 
-  // OpenAI-compatible. An image goes in the multipart content array as a data
-  // URL; providers that support vision all take this shape.
-  const content: any = req.image
+  // OpenAI-compatible. Images go in the multipart content array as data URLs;
+  // providers that support vision all take this shape, and take several.
+  const content: any = images.length
     ? [
-        { type: "image_url", image_url: { url: `data:${req.image.mime};base64,${req.image.data}` } },
+        ...images.map((img) => ({
+          type: "image_url", image_url: { url: `data:${img.mime};base64,${img.data}` },
+        })),
         { type: "text", text: req.user },
       ]
     : req.user;
