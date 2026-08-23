@@ -176,12 +176,25 @@ number is actually there, and it says which end of the scale the number is at. T
 number again clears it. For most people on most days this is the entire interaction, and a year
 of one honest number beats a fortnight of forty.
 
-**Detail comes after, never in front.** Once the day is rated, three to five optional follow-ups
-appear, chosen for the score: a hard day is asked about the other symptoms, what you took and
-what it looks like; a calm day is asked about sleep and what was different. Nothing already
-answered is offered, a photo is only asked for on a bad day or after a week without one, and the
-note is last because it is the one that needs typing. Each answers inline with the app's own
-input for that question. "Add more detail" keeps the full check-in one tap away.
+**And then the next most important question.** Answering the pulse used to be the end of the
+easy path: everything else was behind "Add more detail", which opens the survey. So the pulse now
+hands straight over to a **queue** — the highest-priority question you have not answered today,
+asked in place, with the app's own input for it and the tap as the save. Answer it and the next
+one takes its place; a whole daily review can be done from the first card of the first screen at
+the speed of tapping, and a progress line says how much is left (*4 of 12 answered*) so it is
+never an open-ended demand. What the queue asks first is decided by what your packs are about,
+what kind of day you have said it is, and **what you actually record** — somebody who fills in
+their weight every morning and has never touched "possible triggers" is asked for the weight,
+whatever the template thinks. A question finished by one tap moves on by itself; a number or a
+multi-select waits for **Next**, because snatching a field away mid-keystroke is the app racing
+you. **Skip this one** and **Done for now** are both there, and neither is remembered — tomorrow
+it asks again, because a journal that permanently stops asking on the strength of one impatient
+tap has started deciding what you track.
+
+**Detail comes after, never in front.** Under the queue: the things a question cannot be — the
+routine still owed, the camera, and the note, which is last because it is the one that needs
+typing. Nothing already answered is offered, and a photo is only asked for on a bad day or after
+a week without one. "Add more detail" keeps the full check-in one tap away.
 
 **Two destinations and one verb.** The navigation is **Today**, a **+**, and **History**. The +
 is one tap from anywhere and opens everything a day can hold — check-in, food, routine, photo,
@@ -205,7 +218,11 @@ settings trip: hold a button until it lifts, drag it, and the rest slide out of 
 Alt and press an arrow key, or use the arrows in the editor. If you would rather the row sorted
 itself by what you tap most, that is one switch in the editor. **Again** is the row under it, and it is the shortest path in the
 app — your most-logged foods, the doses you take daily, the spot you photograph, the number you
-record, one tap each, ranked together so it is your own week in your own order. **Today's Logs**
+record, one tap each, ranked together so it is your own week in your own order. It scrolls
+sideways on every input it can be given: a flick, a trackpad, a vertical wheel over the row, the
+arrow keys, or the two buttons that appear at whichever edge still has something behind it — and
+it fades at that edge rather than being cut off, so "there is more over here" is visible instead
+of discovered. **Today's Logs**
 is one timeline carrying check-ins, meals, bowel movements, doses and photos in the order they
 happened.
 
@@ -689,14 +706,56 @@ the week before. So models are never assumed:
 
 #### What leaves the device
 
-Only after you confirm a preview that spells it out:
+**For the pattern analysis**, only after you confirm a preview that spells it out:
 
 - the labels of the metrics you track, and
 - one row per logged day of **numeric answers** in the window, with days numbered from the start
   of the window rather than dated.
 
-What never leaves: written notes, photos, your name, anything identifying, any entry outside the
-window, and any question you've excluded from charts. `tests/ai.test.ts` asserts each of those.
+What never leaves *on that path*: written notes, photos, your name, anything identifying, any
+entry outside the window, and any question you've excluded from charts. `tests/ai.test.ts`
+asserts each of those.
+
+There is exactly one path that sends prose, and it is the one whose entire input is prose —
+importing your own notes, below. It is a separate button, it asks every time, and it lists the
+whole payload before it sends anything. Nothing else in the app can put your writing on a wire.
+
+#### Import your own notes
+
+The one feature that exists only because the AI does, and the only one that sends free text.
+
+Everybody who tracks anything seriously was already tracking it before they found this app — in
+a notes file, a chat with themselves, a photo of a page. It looks like `8.21 weight 12pm 182`,
+`2acv premeal + 2 pepsin combo 12:30pm`, `8.21 4pm bowel movement, small firm sank`. Every one of
+those lines is a row this app already has a shape for, and typing them in one at a time through
+the right sheet on the right date is an hour of work nobody does.
+
+So: **Import notes** (in the + sheet, and in Settings) takes a paste or a screenshot, and reads
+it into meals, doses, numbers, bowel entries and notes — **on the dates and times the notes
+themselves give**, not today's. Shorthand dates are resolved against today; a line with no date
+of its own belongs to the line above it.
+
+Three steps, and the shape of them is the safety argument:
+
+1. **Hand it over** — paste the text, or pick a screenshot.
+2. **See what goes** — nothing leaves until a sheet listing the entire payload has been read and
+   accepted, every time. It counts the characters, says whether an image is going, and names the
+   structural things that ride along (your question names, your routine names, today's date). No
+   photos from your journal, no answers you have already recorded, no name, nothing about the
+   device.
+3. **Approve what lands** — every proposed row, grouped by the day it would go on, **beside the
+   words it was read from**. Switch off anything wrong, correct any date, then one button writes
+   what is left, with an Undo in the toast.
+
+The model never writes. `applyImport` is a pure function of the rows you approved and has never
+heard of a model; `normaliseImportPlan` is the boundary in front of it and drops anything it
+cannot vouch for — an answer to a question your journal does not ask, a value of the wrong type,
+a routine id that does not exist, a date in the future or three years adrift, a caveat that
+strayed into diagnosis. It never overwrites an answer you gave yourself, and running the same
+notes through twice does not file anything twice. A routine item invented from a note is created
+as **as-needed**, never as a daily obligation — a line saying you took something once is not a
+line saying you take it every morning. `tests/import.test.ts` and `tests/importUi.test.tsx`
+assert each of those, including that nothing reaches the network before the sheet is accepted.
 
 The key is stored under its own storage key, outside the journal object, so it cannot end up in
 an export or a backup — the same arrangement as the PIN record. You can add, replace, test, and
@@ -747,7 +806,8 @@ health-journal/
 │   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
-│   │                           #   first run (the doorway and five acts)
+│   │                           #   first run (the doorway and five acts),
+│   │                           #   rail (the one horizontal scroller)
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving
@@ -762,7 +822,10 @@ health-journal/
 │   │   ├── episodes.ts         # the flare model + every number one can be asked for
 │   │   ├── appointmentPack.ts  # the printable summary: figures, floors, what it refuses
 │   │   ├── intro.ts            # the first-run choreography (hero, FLIP, timeline draw)
-│   │   ├── pulse.ts            # the one-tap day, and which details to offer next
+│   │   ├── pulse.ts            # the one-tap day, the question queue behind it,
+│   │   │                       #   and which details to offer next
+│   │   ├── import.ts           # reading somebody's own notes into rows (AI-only):
+│   │   │                       #   prompt, boundary, and a pure writer
 │   │   ├── quickActions.ts     # learned ordering + one-tap repeats, scored
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
 │   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors

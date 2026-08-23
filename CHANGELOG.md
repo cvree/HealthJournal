@@ -1,5 +1,146 @@
 # Changelog
 
+## 1.22.0
+
+One row that could not be scrolled, one question that was never asked, and an
+hour of typing nobody was ever going to do.
+
+### The Again row scrolls
+
+The shortest path in the app was reachable only by people holding a phone.
+
+**Again** is the row under Quick Add: the foods you log over and over, the
+doses you take daily, the spot you photograph, the number you record — ranked
+against each other so it is your own week in your own order, one tap each. It
+was a bare `overflow-x: auto` row with the app's global stylesheet hiding every
+scrollbar, and this app runs Lenis on the document scroller. Which means that
+on a desktop a vertical wheel over the chips scrolled the *page*, a horizontal
+one was swallowed by the smooth-scroll driver before the browser ever saw it,
+and a mouse without a tilt wheel had no gesture at all. The chips past the
+fourth were visible, cut off at the edge, and unreachable. On a phone it
+flicked, which is why it lasted this long.
+
+The metric picker on Insights had solved exactly this a release ago, so its
+rail has been lifted out into `components/Rail.tsx` and is now the only
+horizontal scroller this app is allowed to have. A vertical wheel over the row
+scrolls the row — and stops claiming the gesture the moment the row runs out,
+so the end of the chips is not the end of the page. A horizontal one is stopped
+before it reaches Lenis, which is what stops the page moving sideways
+underneath it. Arrow buttons appear on pointer devices at whichever edge still
+has something behind it, and are hidden on touch where they would only cover
+two chips. ←/→/Home/End walk the row, and focus always scrolls its own chip
+into view. The edge fade is per-edge and conditional now: a row of three chips
+that fits is no longer drawn as a row that has been cut.
+
+### One tap, then the next most important question
+
+Answering the Daily Pulse used to be the end of the easy path. Everything else
+lived behind *Add more detail*, which opens the survey — a screen, a scroll,
+forty fields and a Back button — or behind a row of chips. And a chip row is a
+*menu*: it shows what could be answered and hands the choosing back. Choosing
+is work, and at eleven questions it is most of the work.
+
+So the pulse now hands straight over to a **queue**, and asks the front of it.
+
+One question. The app's own input for it. The tap is the save, the question
+leaves the queue, and the next one takes its place — which means the whole
+daily review can be done from the first card of the first screen, at the speed
+of tapping, without a form ever opening. A progress line says how much is left
+(*4 of 12 answered*, with the pulse counted as one of them, because it is one),
+so it is a finishable thing rather than an open-ended demand.
+
+What it asks first is decided by three things in order: what your packs are
+about, what kind of day you have just said it is, and **what you actually
+record**. That last one is new and it is the point — somebody who fills in
+their weight every morning and has never once touched "possible triggers"
+should be asked for the weight, whatever the template thinks. A habit lifts a
+question up to ten places, so a question you answer every day can reach the
+front from anywhere and one you have never answered stays exactly where the
+pack put it. On a brand-new journal every habit is zero and the order is the
+pack's alone.
+
+Two rules keep it an offer rather than a wall. **It never advances out from
+under an answer** — a scale, a yes/no and a single choice are finished by the
+tap, so those move on by themselves; a number or a multi-select waits for
+*Next*, because snatching a field away mid-keystroke is the app racing its
+user. **It is always leaveable** — *Skip this one* moves past, *Done for now*
+closes the queue for the sitting, and neither is remembered. Tomorrow it asks
+again, because a journal that permanently stops asking on the strength of one
+impatient tap has quietly started deciding what its owner tracks.
+
+The chips underneath are now only the three things a question cannot be: the
+routine still owed, the camera, and the note. The same question in two places
+was one place too many.
+
+### Import your own notes
+
+Everybody who tracks anything seriously was already tracking it before they
+found this app. It is in a notes file, a chat with themselves, a photo of a
+page, and it looks like this:
+
+    8.21 weight 12pm 182
+    8.21 food, 2.5 hamburger, havarti cheese
+    2acv premeal + 2 pepsin combo 12:30pm
+    8.21 4pm bowel movement, small firm sank
+    8.21 Trazo 50mg STARTING NEW MED. Day 1
+
+Every one of those lines is a row this app already has a shape for. Typing them
+in one at a time, through the right sheet, on the right date, is an hour of
+work — which is why nobody does it, and why a journal that could have started
+in March starts today with nothing behind it.
+
+**Import notes** takes a paste or a screenshot and reads it into meals, doses,
+numbers, bowel entries and notes, **on the dates and times the notes themselves
+give**. Shorthand resolves against today; a line with no date of its own
+belongs to the line above it; a time is only set when the note actually gives
+one. A dose matches something already in your routine where it can, and creates
+it where it cannot.
+
+It needs the optional AI, and it is the only feature in the app that does —
+reading `2acv premeal + 2 pepsin combo 12:30pm` as two of one thing and two of
+another at half past twelve on the 21st is not something parsing rules get to.
+
+Three steps, and the shape of them is the entire safety argument.
+
+**Hand it over.** Paste, or pick a screenshot.
+
+**See what goes.** This is the one path in this app that sends prose, and it is
+not going to be coy about it. Every other outbound path is built to send as
+little as possible — the pattern analysis reduces the journal to numbers
+precisely so free text never leaves. This one cannot: the words *are* the
+input. So nothing goes until a sheet listing the entire payload has been read
+and accepted, every single time. It counts the characters, says whether an
+image is going, and names the structural things riding along — your question
+names, your routine names, today's date. No photos from your journal, no
+answers already recorded, no name, nothing about the device.
+
+**Approve what lands.** Every proposed row, grouped by the day it would go on,
+next to the exact words it was read from — because a wrong reading is obvious
+the instant it sits beside what it claims to be a reading of. Switch off
+anything wrong, correct any date on the row itself, then one button writes what
+is left, with an Undo in the toast.
+
+The model never writes. `applyImport` is a pure function of the rows somebody
+approved and has never heard of a model, and `normaliseImportPlan` is the
+boundary in front of it: an answer to a question this journal does not ask, a
+value of the wrong type, a routine id that does not exist, a date in the future
+or three years adrift, a caveat that strayed into diagnosis — each is dropped
+rather than repaired, because a row whose provenance nobody can explain has no
+business in a medical record.
+
+Three more things it is careful about. It **never overwrites** an answer
+somebody gave themselves. It **never doubles up** — importing the same notes
+twice is what everybody does, because the first run is a test, and a meal, dose
+or movement matching one already on that date and time is left alone. And a
+routine item invented from a note is created **as-needed, never daily**: a line
+saying somebody took something once is not a line saying the checklist should
+start chasing them for it every morning.
+
+The prompt's own hardest rule is that it is a transcriber and a filing clerk,
+not an editor: copy the person's words, never rewrite, summarise, correct,
+tidy or improve them. Their spelling of a medication is their spelling. This is
+a record, not a draft.
+
 ## 1.21.0
 
 Four things a journal cannot get from asking questions, and one seam that makes

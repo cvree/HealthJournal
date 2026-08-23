@@ -6,7 +6,8 @@
    day, has stopped paying attention to the person using it. */
 import { describe, it, expect } from "vitest";
 import {
-  CALM_AT, HARD_AT, badness, dayKind, followUps, pulseState, scoreWord,
+  CALM_AT, HARD_AT, answerHabits, askQueue, badness, dayKind, followUps, isOneTap,
+  nextQuestion, pulseState, scoreWord, surveyProgress,
   type FollowUpContext, type PulseField,
 } from "../src/lib/pulse";
 
@@ -131,5 +132,98 @@ describe("the optional follow-ups", () => {
       fields: [fields[0]], answers: { severity: 5 }, photoFields: [], hasNote: true,
     }));
     expect(out).toEqual([]);
+  });
+});
+
+/* The queue behind "one tap, then the next question".
+
+   The follow-up chips are a menu of three; this is the whole list, and the
+   thing it has to get right is the *order* — because the person only ever sees
+   the front of it, so a bad first question is the only question they see. */
+describe("the question queue", () => {
+  it("holds every question still worth asking, not just the three the chips fit", () => {
+    const q = askQueue(ctx());
+    expect(q.length).toBeGreaterThan(3);
+    // Never the pulse itself, never a photo or a text box, never an answer already given.
+    expect(q.some((f) => f.k === "severity")).toBe(false);
+    expect(q.some((f) => f.type === "photo")).toBe(false);
+    expect(askQueue(ctx({ answers: { severity: 5, itch: 4 } })).some((f) => f.k === "itch")).toBe(false);
+  });
+
+  it("leads with the pack's own priority, and lets the day reorder the rest", () => {
+    expect(nextQuestion(ctx({ score: 9 }))!.k).toBe("itch");
+    /* On a calm day the "more is better" questions come up the order, because
+       they are the ones that might explain it. */
+    const calm = askQueue(ctx({ score: 1 })).map((f) => f.k);
+    const hard = askQueue(ctx({ score: 9 })).map((f) => f.k);
+    expect(calm.indexOf("sleep_quality")).toBeLessThan(hard.indexOf("sleep_quality"));
+  });
+
+  it("lets what somebody actually records outrank what the pack thinks", () => {
+    /* Weight is bottom of the pack's list and this person records it every
+       day; itch is top of the list and they have never touched it. */
+    const q = askQueue(ctx({ usual: { weight: 1, itch: 0 } }));
+    expect(q[0].k).toBe("weight");
+    // ...but a habit is a tilt, not a veto: the pack's metrics are still there.
+    expect(q.some((f) => f.k === "itch")).toBe(true);
+  });
+
+  it("drops what was skipped in this sitting, and only that", () => {
+    const first = nextQuestion(ctx())!;
+    const after = nextQuestion(ctx(), [first.k])!;
+    expect(after.k).not.toBe(first.k);
+    expect(askQueue(ctx(), [first.k]).length).toBe(askQueue(ctx()).length - 1);
+  });
+
+  it("runs out rather than repeating itself", () => {
+    const all = askQueue(ctx()).map((f) => f.k);
+    expect(nextQuestion(ctx(), all)).toBeNull();
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("knows which questions one tap finishes, because the rest must not be snatched away", () => {
+    expect(isOneTap({ k: "a", label: "a", type: "scale" })).toBe(true);
+    expect(isOneTap({ k: "a", label: "a", type: "toggle" })).toBe(true);
+    expect(isOneTap({ k: "a", label: "a", type: "chips", single: true })).toBe(true);
+    expect(isOneTap({ k: "a", label: "a", type: "chips" })).toBe(false);
+    expect(isOneTap({ k: "a", label: "a", type: "number" })).toBe(false);
+  });
+});
+
+describe("how much of today is done", () => {
+  it("counts the pulse as one of the questions, because it is one", () => {
+    const p = surveyProgress(ctx({ answers: { severity: 5 } }));
+    expect(p.total).toBe(7); // five scales + the chips + the number; the photo is not a question
+    expect(p.answered).toBe(1);
+    expect(p.left).toBe(6);
+  });
+
+  it("moves as questions are answered, and treats a skip as still outstanding", () => {
+    expect(surveyProgress(ctx({ answers: { severity: 5, itch: 3, weight: 180 } })).answered).toBe(3);
+    expect(surveyProgress(ctx({ answers: { severity: 5, itch: null } })).answered).toBe(1);
+  });
+
+  it("says nothing is answered on a day nobody has rated", () => {
+    const p = surveyProgress(ctx({ score: null, answers: {} }));
+    expect(p.answered).toBe(0);
+    expect(p.left).toBe(p.total);
+  });
+});
+
+describe("what somebody actually records", () => {
+  it("is the share of recent days each question was answered on", () => {
+    const habits = answerHabits(fields, [
+      { answers: { severity: 5, sleep_quality: 7 } },
+      { answers: { severity: 6, sleep_quality: 8 } },
+      { answers: { severity: 4 } },
+      { answers: { severity: 5, itch: null } },
+    ]);
+    expect(habits.severity).toBe(1);
+    expect(habits.sleep_quality).toBe(0.5);
+    expect(habits.itch).toBe(0); // a stored null was a decision to skip, not an answer
+  });
+
+  it("is empty rather than wrong when there is no history to read", () => {
+    expect(answerHabits(fields, [])).toEqual({});
   });
 });

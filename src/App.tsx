@@ -47,6 +47,10 @@ import { sweepTombstones } from "./lib/sync/merge";
 import { IDLE_STATUS } from "./lib/sync/types";
 import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
+import Rail from "./components/Rail";
+import {
+  applyImport, describeAdded, groupByDate, readNotes, summariseImportRequest,
+} from "./lib/import";
 import YearHeatmap from "./components/YearHeatmap";
 import ScoreDistribution from "./components/ScoreDistribution";
 import EpisodeTimeline from "./components/EpisodeTimeline";
@@ -82,7 +86,9 @@ import {
 } from "./lib/metrics";
 import AppointmentPackView from "./components/AppointmentPackView";
 import FirstRun from "./components/FirstRun";
-import { followUps, pulseState, scoreWord } from "./lib/pulse";
+import {
+  answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord, surveyProgress,
+} from "./lib/pulse";
 import {
   noteUse, rankIds, repeatSuggestions, sanitizeActionStats,
 } from "./lib/quickActions";
@@ -147,7 +153,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.21.0";
+export const APP_VERSION = "1.22.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -1708,7 +1714,7 @@ function ScaleInput({ field, value, onChange, ghost = null, hideLabel = false })
   );
 }
 
-function ToggleInput({ field, value, onChange, tint }) {
+function ToggleInput({ field, value, onChange, tint, hideLabel = false }) {
   const opt = (label, val) => {
     const active = value === val;
     return (
@@ -1724,14 +1730,15 @@ function ToggleInput({ field, value, onChange, tint }) {
     );
   };
   return (
-    <div className="py-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${C.line}` }}>
-      <span className="text-sm font-medium">{field.label}</span>
+    <div className={"py-3 flex items-center " + (hideLabel ? "justify-end" : "justify-between")}
+      style={{ borderBottom: `1px solid ${C.line}` }}>
+      {!hideLabel && <span className="text-sm font-medium">{field.label}</span>}
       <div className="flex gap-1.5">{opt("No", false)}{opt("Yes", true)}</div>
     </div>
   );
 }
 
-function ChipsInput({ field, value, onChange, tint }) {
+function ChipsInput({ field, value, onChange, tint, hideLabel = false }) {
   const sel = Array.isArray(value) ? value : [];
   const toggle = (opt) => {
     if (field.single) { onChange(sel.includes(opt) ? [] : [opt]); return; }
@@ -1739,7 +1746,7 @@ function ChipsInput({ field, value, onChange, tint }) {
   };
   return (
     <div className="py-3" style={{ borderBottom: `1px solid ${C.line}` }}>
-      <div className="text-sm font-medium mb-2">{field.label}</div>
+      {!hideLabel && <div className="text-sm font-medium mb-2">{field.label}</div>}
       <div className="flex flex-wrap gap-1.5">
         {field.options.map((opt) => {
           const active = sel.includes(opt);
@@ -1922,7 +1929,7 @@ function NumberPadSheet({ field, value, ghost, onCommit, onClose }) {
 
 /** The number as it sits in a form row: label, nudge buttons, and a value that
     is itself the way to type one. */
-function NumberInput({ field, value, onChange, ghost = null }) {
+function NumberInput({ field, value, onChange, ghost = null, hideLabel = false }) {
   const [pad, setPad] = useState(false);
   const step = field.step || 1;
   const decimals = decimalsFor(field);
@@ -1934,8 +1941,9 @@ function NumberInput({ field, value, onChange, ghost = null }) {
   };
   const shown = value != null ? Number(value).toFixed(decimals) : ghost != null ? Number(ghost).toFixed(decimals) : "–";
   return (
-    <div className="py-3 flex items-center justify-between gap-2" style={{ borderBottom: `1px solid ${C.line}` }}>
-      <span className="text-sm font-medium">{field.label}</span>
+    <div className={"py-3 flex items-center gap-2 " + (hideLabel ? "justify-end" : "justify-between")}
+      style={{ borderBottom: `1px solid ${C.line}` }}>
+      {!hideLabel && <span className="text-sm font-medium">{field.label}</span>}
       <div className="flex items-center gap-1.5">
         <button type="button" onClick={() => bump(-1)} aria-label={`decrease ${field.label}`}
           className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
@@ -1980,11 +1988,14 @@ function DateTimeInput({ field, value, onChange }) {
   );
 }
 
-function FieldInput({ field, value, onChange, tint, ghost = null }) {
-  if (field.type === "scale") return <ScaleInput field={field} value={value} onChange={onChange} ghost={ghost} />;
-  if (field.type === "toggle") return <ToggleInput field={field} value={value} onChange={onChange} tint={tint} />;
-  if (field.type === "chips") return <ChipsInput field={field} value={value} onChange={onChange} tint={tint} />;
-  if (field.type === "number") return <NumberInput field={field} value={value} onChange={onChange} ghost={ghost} />;
+/* `hideLabel` is for the one caller that has already asked the question in its
+   own type — the Daily Pulse's next-question card. Everywhere else the input
+   names itself, because everywhere else it is one row in a list of forty. */
+function FieldInput({ field, value, onChange, tint, ghost = null, hideLabel = false }) {
+  if (field.type === "scale") return <ScaleInput field={field} value={value} onChange={onChange} ghost={ghost} hideLabel={hideLabel} />;
+  if (field.type === "toggle") return <ToggleInput field={field} value={value} onChange={onChange} tint={tint} hideLabel={hideLabel} />;
+  if (field.type === "chips") return <ChipsInput field={field} value={value} onChange={onChange} tint={tint} hideLabel={hideLabel} />;
+  if (field.type === "number") return <NumberInput field={field} value={value} onChange={onChange} ghost={ghost} hideLabel={hideLabel} />;
   if (field.type === "text") return <TextField field={field} value={value} onChange={onChange} />;
   if (field.type === "time" || field.type === "date") return <DateTimeInput field={field} value={value} onChange={onChange} />;
   return null; // photo handled by PhotoInlineField / PhotoSession
@@ -6941,6 +6952,346 @@ const GFIT_STEPS = [
   ["Upload them here", "Tap the button below and select \u201cDaily activity metrics.csv\u201d (plus any sleep session JSONs if you want sleep). Selecting extra files is fine \u2014 duplicates never double-count, and unrelated files are just listed as skipped."],
 ];
 
+/* ============================================================
+   Import — somebody's own notes, read into their journal
+   ============================================================
+
+   The arithmetic, the prompt and the writing all live in src/lib/import.ts,
+   including the reasons. This is the three-step surface over it, and the shape
+   of the three steps is the whole safety argument:
+
+     1. **Hand it over.** Paste the notes, or pick a screenshot of them.
+     2. **See what goes.** Nothing leaves the device until this sheet has been
+        read and accepted — it lists, in plain words, every part of the payload.
+        This is the only feature in the app that sends free text, and it is not
+        going to be coy about it.
+     3. **Approve what lands.** Every proposed row, grouped by the day it would
+        go on, next to the words it came from. Switch off anything wrong, fix
+        any date, then one button writes what is left — with an Undo, like
+        every other write in this app.
+
+   The model is never between step 3 and the journal. `applyImport` takes the
+   approved list and nothing else. */
+
+function importRowIcon(kind) {
+  return kind === "food" ? "food" : kind === "bowel" ? "bowel"
+    : kind === "routine" ? "pill" : kind === "note" ? "note" : "target";
+}
+const IMPORT_ROW_CAT = {
+  food: "fhj-cat-food", bowel: "fhj-cat-bowel", routine: "fhj-cat-routine",
+  note: "fhj-cat-symptom", answer: "fhj-cat-symptom",
+};
+
+/** One proposed row: what it would write, where it came from, and a switch. */
+function ImportRow({ item, on, onToggle, onDate }) {
+  return (
+    <div className={"fhj-import-row " + IMPORT_ROW_CAT[item.kind] + (on ? "" : " is-off")}>
+      <button type="button" role="switch" aria-checked={on} onClick={onToggle}
+        aria-label={`${on ? "Don't add" : "Add"} ${item.label}`}
+        className="fhj-import-check">
+        {on && <Icon name="check" size={13} color={C.onAccent} />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="fhj-import-head">
+          <Icon name={importRowIcon(item.kind)} size={13} color="currentColor" />
+          <span className="fhj-import-label">{item.label}</span>
+          {/* Only the rows worth a second look are flagged. Badging every row
+              the model had to interpret badges almost every row, and a badge
+              on everything is a badge on nothing — what the model assumed is
+              said in words underneath instead. */}
+          {item.confidence === "low" && <span className="fhj-ai-badge">Unsure</span>}
+        </div>
+        {item.detail && <div className="fhj-import-detail">{item.detail}</div>}
+        {/* The receipt. A wrong reading is obvious the moment it sits next to
+            the words it claims to be a reading of. */}
+        {item.source && <div className="fhj-import-src">“{item.source}”</div>}
+        {item.note && <div className="fhj-import-note">{item.note}</div>}
+        <label className="fhj-import-date">
+          <span>Date</span>
+          <input type="date" value={item.date} max={todayStr()}
+            onChange={(e) => e.target.value && onDate(e.target.value)} />
+          {item.dateGuessed && <span className="fhj-import-guess">assumed — the notes didn't say</span>}
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
+  const conn = useAiConnection(aiEnabled);
+  const tpl = getProfileTemplate(db.profile);
+  const [text, setText] = useState("");
+  const [shot, setShot] = useState(null);       // { full, thumb } data URLs
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [plan, setPlan] = useState(null);
+  const [off, setOff] = useState([]);           // ids the person switched off
+  const [dates, setDates] = useState({});       // id -> corrected date
+  const [confirm, setConfirm] = useState(false);
+  const [done, setDone] = useState(null);
+  const fileRef = useRef(null);
+
+  /* Structure only — see ImportVocabulary. The journal's *answers* are not in
+     here, and are not needed to read a line of text. */
+  const vocab = useMemo(() => ({
+    today: todayStr(),
+    fields: tpl.fields
+      .filter((f) => f.type !== "photo")
+      .map((f) => ({ k: f.k, label: f.label, type: f.type, unit: f.unit, options: f.options, single: f.single })),
+    routineItems: (db.routineItems || [])
+      .filter((r) => !r.archived)
+      .map((r) => ({ id: r.id, name: r.name, kind: r.kind, dose: r.dose })),
+    foods: (db.foods || []).map((f) => f.name).filter(Boolean),
+  }), [tpl, db.routineItems, db.foods]);
+
+  const input = useMemo(
+    () => ({ text, image: shot ? dataUrlToImage(shot.full) : null }),
+    [text, shot]
+  );
+  const outgoing = useMemo(() => summariseImportRequest(input, vocab), [input, vocab]);
+  const ready = !!(text.trim() || shot);
+
+  const run = async () => {
+    setConfirm(false);
+    setBusy(true);
+    setError("");
+    try {
+      const result = await readNotes(conn, input, vocab);
+      setPlan(result);
+      setOff([]);
+      setDates({});
+      if (!result.items.length) {
+        setError(result.unreadable
+          ? "Nothing in there mapped onto a row this journal can hold."
+          : "Nothing came back from that. Try pasting a bit more, or a clearer screenshot.");
+      }
+      feedback("save");
+    } catch (e) {
+      setError(e?.message || "That didn't work. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* What would actually be written: the rows still switched on, carrying any
+     date the person corrected. Nothing else in the plan matters from here. */
+  const approved = useMemo(
+    () => (plan?.items || [])
+      .filter((it) => !off.includes(it.id))
+      .map((it) => (dates[it.id] ? { ...it, date: dates[it.id], dateGuessed: false } : it)),
+    [plan, off, dates]
+  );
+  const groups = useMemo(() => groupByDate(approved.length ? approved : (plan?.items || [])), [approved, plan]);
+
+  const commit = () => {
+    const before = {
+      entries: db.entries || [], food: db.food || [], foods: db.foods || [],
+      bowel: db.bowel || [], routine: db.routine || [], routineItems: db.routineItems || [],
+    };
+    const { next, added, duplicates } = applyImport(before, approved);
+    setDb((prev) => ({ ...prev, ...next }));
+    setDone({ added, duplicates });
+    setPlan(null);
+    feedback("save");
+    toast({
+      text: `${describeAdded(added)} imported`,
+      cat: "fhj-cat-food",
+      undo: () => setDb((prev) => ({ ...prev, ...before })),
+    });
+  };
+
+  const startOver = () => {
+    setPlan(null); setDone(null); setError(""); setText(""); setShot(null); setOff([]); setDates({});
+  };
+
+  /* ---------- the feature does not exist without a key ---------- */
+  if (!aiEnabled || !conn) {
+    return (
+      <div className="px-4 pb-10 pt-3">
+        <h2 className="font-display text-xl mb-3">Import your notes</h2>
+        <Card>
+          <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+            This one needs the optional AI connection, because reading somebody's shorthand
+            is the whole job — <b style={{ color: C.ink }}>“8.21 2acv premeal + 2 pepsin 12:30pm”</b> is
+            two doses at half past twelve on the 21st, and no amount of parsing rules gets there.
+          </p>
+          <p className="text-sm leading-relaxed mt-2" style={{ color: C.sub }}>
+            It is off until you turn it on, it uses your own key, and unlike everything else
+            here it sends the notes themselves — which is why it asks, in plain words, every
+            single time before it does.
+          </p>
+          <Button className="mt-3" block onClick={goSettings} icon="key">
+            {aiEnabled ? "Finish setting up AI" : "Turn on AI in Settings"}
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-10 pt-3">
+      <h2 className="font-display text-xl">Import your notes</h2>
+      <p className="text-[12.5px] leading-relaxed mt-1 mb-3" style={{ color: C.subtle }}>
+        Paste what you have been writing somewhere else — a notes file, a chat with yourself,
+        a photo of a page. It gets read into meals, doses, numbers and notes, on the days the
+        notes themselves say. You approve every row before anything is written.
+      </p>
+
+      {done ? (
+        <Card>
+          <div className="flex items-center gap-2">
+            <span className="fhj-pulse-mark" style={{ background: C.accent }}>
+              <Icon name="check" size={13} color={C.onAccent} />
+            </span>
+            <b className="text-[15px]">{describeAdded(done.added)} added</b>
+          </div>
+          {done.duplicates > 0 && (
+            <p className="text-[12.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+              {done.duplicates} row{done.duplicates === 1 ? " was" : "s were"} already in your journal
+              on that day and time, so {done.duplicates === 1 ? "it was" : "they were"} left alone.
+            </p>
+          )}
+          <div className="flex gap-2 mt-3">
+            <Button variant="secondary" onClick={startOver} icon="plus">Import more</Button>
+            <Button variant="ghost" onClick={goBack}>Done</Button>
+          </div>
+        </Card>
+      ) : plan ? (
+        <>
+          <Card>
+            <div className="fhj-eyebrow mb-1">Nothing is written yet</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: C.sub }}>
+              {plan.items.length} row{plan.items.length === 1 ? "" : "s"} read from your notes,
+              on {groups.length} day{groups.length === 1 ? "" : "s"}. Switch off anything wrong and
+              fix any date that landed badly — each row shows the words it came from.
+            </p>
+            {plan.unreadable && (
+              <div className="fhj-import-left">
+                <b>Couldn't place this:</b> {plan.unreadable}
+              </div>
+            )}
+          </Card>
+
+          {groups.map((g) => (
+            <div key={g.date}>
+              <div className="fhj-section mt-5 fhj-cat-symptom">
+                <h3 className="fhj-section-title">{fmtNice(g.date)}</h3>
+                <span className="text-[11px]" style={{ color: C.subtle }}>
+                  {g.items.length} row{g.items.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {g.items.map((it) => (
+                  <ImportRow key={it.id} item={it} on={!off.includes(it.id)}
+                    onToggle={() => {
+                      feedback("select");
+                      setOff((prev) => (prev.includes(it.id) ? prev.filter((x) => x !== it.id) : [...prev, it.id]));
+                    }}
+                    onDate={(d) => setDates((prev) => ({ ...prev, [it.id]: d }))} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div className="fhj-import-commit">
+            <Button block onClick={commit} disabled={!approved.length} icon="check">
+              Add {approved.length} row{approved.length === 1 ? "" : "s"} to my journal
+            </Button>
+            <Button variant="ghost" block className="mt-2" onClick={startOver}>
+              Throw this away and start again
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <Card>
+            <label className="fhj-eyebrow" htmlFor="fhj-import-text">Your notes</label>
+            <textarea id="fhj-import-text" rows={10} value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={"8.21 weight 12pm 182\n8.21 food, 2.5 hamburger, havarti cheese\n2acv premeal + 2 pepsin combo 12:30pm\n8.21 4pm bowel movement, small firm sank\n8.21 Trazo 50mg STARTING NEW MED. Day 1"}
+              className="w-full mt-2 rounded-xl px-3 py-2.5 text-sm outline-none resize-y leading-relaxed"
+              style={{ background: C.faint, border: `1px solid ${C.line}`, color: C.ink, minHeight: "9rem" }} />
+            <div className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
+              Shorthand is fine. Dates like “8.21”, “yesterday” or “Thu” are worked out against today.
+            </div>
+          </Card>
+
+          <Card className="mt-3">
+            <div className="fhj-eyebrow mb-2">Or a screenshot of them</div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                try {
+                  /* Bigger and less compressed than a progress photo on
+                     purpose: this one has to stay *readable*, and 1024px at
+                     q0.6 turns a screenshot of small text into mush. */
+                  setShot(await processImage(file, { fullEdge: 1600, fullQ: 0.85 }));
+                } catch {
+                  setError("Couldn't read that image — try another one.");
+                }
+              }} />
+            {shot ? (
+              <div className="flex items-center gap-3">
+                <img src={shot.thumb} alt="" className="rounded-lg"
+                  style={{ width: 56, height: 56, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                <div className="flex-1 min-w-0 text-[12.5px]" style={{ color: C.sub }}>
+                  Screenshot ready to read
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setShot(null)}>Remove</Button>
+              </div>
+            ) : (
+              <Button variant="secondary" block icon="camera" onClick={() => fileRef.current?.click()}>
+                Choose a screenshot
+              </Button>
+            )}
+          </Card>
+
+          {error && <div className="fhj-import-error">{error}</div>}
+
+          <Button className="mt-3" block disabled={!ready || busy} icon="spark"
+            onClick={() => { feedback("tap"); setConfirm(true); }}>
+            {busy ? "Reading…" : "Read my notes"}
+          </Button>
+          <p className="text-[11px] leading-relaxed mt-2 text-center" style={{ color: C.subtle }}>
+            You'll see exactly what would be sent, and exactly what would be written, before either happens.
+          </p>
+        </>
+      )}
+
+      {confirm && (
+        <Modal title="This sends your notes" eyebrow="Before anything leaves this device"
+          onClose={() => setConfirm(false)}
+          footer={
+            <>
+              <Button variant="secondary" block onClick={() => setConfirm(false)}>Not now</Button>
+              <Button block onClick={run} icon="spark">Send and read</Button>
+            </>
+          }>
+          <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
+            Everything else in this app keeps your writing on this device. This one cannot —
+            the words are the thing being read. Here is the whole payload:
+          </p>
+          <ul className="flex flex-col gap-2 mt-3">
+            {outgoing.lines.map((line, i) => (
+              <li key={i} className="flex gap-2 text-[13px] leading-relaxed">
+                <span className="shrink-0 mt-1.5 rounded-full"
+                  style={{ width: 5, height: 5, background: C.accent }} />
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[12px] leading-relaxed mt-3" style={{ color: C.subtle }}>
+            It goes to the provider you set up, with your own key. No photos from your journal,
+            no answers you have already recorded, no name, and nothing about this device.
+          </p>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function FitbitImportScreen({ db, setDb, goBack }) {
   const [busy, setBusy] = useState(false);
   const [parsed, setParsed] = useState(null); // {byMetric, report, summary}
@@ -8333,7 +8684,7 @@ function SyncCard({ engine, status, available, onRefreshConfig }) {
   );
 }
 
-function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete, syncEngine, syncStatus, syncConfigured, onRefreshSyncConfig }) {
+function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, goExport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete, syncEngine, syncStatus, syncConfigured, onRefreshSyncConfig }) {
   const prefs = db.profile.prefs || DEFAULT_PREFS;
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
@@ -8478,6 +8829,23 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goExport, lockEn
         </p>
         <Button variant="secondary" block onClick={goImport}>Import wearable data</Button>
       </Card>
+
+      {/* The other kind of import: the notes somebody was already keeping
+          before they found this app. Only shown once the optional AI is on,
+          because reading shorthand is the whole job — see lib/import.ts. */}
+      {db.ai?.enabled === true && (
+        <Card className="mt-3">
+          <div className="fhj-eyebrow mb-2.5">Your own notes</div>
+          <p className="text-sm leading-relaxed mb-3.5" style={{ color: C.sub }}>
+            Paste in what you have been writing somewhere else — a notes file, a chat with
+            yourself, a photo of a page — and it gets read into meals, doses, numbers and notes
+            on the days the notes themselves give. You approve every row before anything is
+            written. This is the one feature that sends your writing off the device, and it
+            says exactly what it is sending each time before it does.
+          </p>
+          <Button variant="secondary" block onClick={goNoteImport}>Import your notes</Button>
+        </Card>
+      )}
 
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-2.5">App lock</div>
@@ -13555,6 +13923,14 @@ const QUICK_ADD_TILES = [
     id: "lab", cat: "fhj-cat-symptom", icon: "target", label: "Lab result",
     sub: "A measured number", desc: "Blood work, blood pressure, weight — anything measured",
   },
+  /* The only tile that logs a *week* rather than a moment. It appears solely
+     for somebody who has turned the optional AI on, because reading shorthand
+     is the whole job — see src/lib/import.ts. */
+  {
+    id: "import", cat: "fhj-cat-food", icon: "spark", label: "Import notes",
+    sub: "Paste or screenshot", desc: "Read notes you kept elsewhere into the right days",
+    needs: "ai",
+  },
 ];
 
 /* What each condition actually reaches for.
@@ -14381,7 +14757,7 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
           </button>
         )}
       </div>
-      <div className="fhj-scroller" role="list" aria-label="Do something again">
+      <Rail label="Do something again">
         {items.map((item) => (
           <button key={item.id} type="button" role="listitem"
             onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); onRun(item); }}
@@ -14393,7 +14769,7 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
             <span className="fhj-repeat-meta">{item.sub}</span>
           </button>
         ))}
-      </div>
+      </Rail>
     </>
   );
 }
@@ -14434,7 +14810,7 @@ function RepeatRow({ library, onLog, onOpenPicker }) {
           All foods
         </button>
       </div>
-      <div className="fhj-scroller fhj-cat-food" role="list" aria-label="Log a food again">
+      <Rail label="Log a food again" className="fhj-cat-food">
         {items.map((item) => {
           const cal = item.nutrition?.calories;
           return (
@@ -14450,7 +14826,7 @@ function RepeatRow({ library, onLog, onOpenPicker }) {
             </button>
           );
         })}
-      </div>
+      </Rail>
     </>
   );
 }
@@ -14927,20 +15303,72 @@ function PulseScale({ field, value, onSet, disabled }) {
   );
 }
 
-/** One optional follow-up, expanded in place. A field chip opens the app's own
-    input for that field — the same control the survey uses, so an answer given
-    here and an answer given there are the same act. */
-function FollowUpCard({ item, field, tpl, value, onSet, onClose }) {
+/** The next question, asked where the person already is.
+
+    The Daily Pulse answers "how was today" in one tap, and for most people on
+    most days that is the whole log. But some days somebody *wants* to do the
+    round — and until now the only route to it was "Add more detail", which
+    opens the survey: a screen, a scroll, forty fields, and a Back button. The
+    chip row underneath is not that route either. A chip row is a menu; it
+    shows what could be answered and hands the choosing back. Choosing is work,
+    and at eleven questions it is most of the work.
+
+    So: a queue, and the front of it, in place.
+
+    One question. The app's own input for it, so an answer given here is the
+    same act as an answer given in the survey. The tap writes it, the question
+    leaves the queue, and the next one takes its place — which means the whole
+    daily review can be done from the first card of the first screen, at the
+    speed of tapping, without a form ever opening.
+
+    Two rules keep it an offer rather than a wall:
+
+    **It never advances out from under an answer.** A scale, a yes/no and a
+    single-choice are finished by the tap, so those move on by themselves. A
+    number or a multi-select is not — the person is still typing, or still
+    choosing — so those stay put until they say Next. Snatching a field away
+    mid-keystroke would be the app racing its user.
+
+    **It is always leaveable.** Skip moves past this one; "Done for now" closes
+    the queue for the sitting. Neither is remembered: tomorrow it asks again,
+    because a journal that permanently stops asking on the strength of one
+    impatient tap has quietly started deciding what its owner tracks. */
+function NextQuestion({ tpl, field, value, ghost, progress, onSet, onAdvance, onStop }) {
+  const oneTap = isOneTap(field);
+  const answeredNow = value != null && !(Array.isArray(value) && value.length === 0);
+  const pct = progress.total ? Math.round((progress.answered / progress.total) * 100) : 0;
   return (
-    <Card className="mt-2">
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="fhj-eyebrow">{item.label}</span>
-        <button type="button" onClick={onClose} aria-label={`Close ${item.label}`} className="fhj-icon-btn">
-          <Icon name="x" size={14} color={C.sub} />
+    <div className="fhj-next">
+      <div className="fhj-next-head">
+        <span className="fhj-eyebrow">Next question</span>
+        <span className="fhj-next-count">
+          {progress.answered} of {progress.total} answered
+        </span>
+      </div>
+      <div className="fhj-next-bar" aria-hidden="true">
+        <span className="fhj-next-bar-fill" style={{ width: `${pct}%`, background: tpl.color }} />
+      </div>
+      {/* The live region is the count and the question together: a screen
+          reader landing on a silently-replaced input would otherwise be
+          answering a question nobody read out. */}
+      <div aria-live="polite">
+        <h3 className="fhj-next-title">
+          {field.label}
+          {field.unit && <span className="fhj-next-unit"> · {field.unit}</span>}
+        </h3>
+      </div>
+      <FieldInput field={field} value={value} onChange={onSet} tint={tpl.color} ghost={ghost} hideLabel />
+      <div className="fhj-next-foot">
+        <button type="button" className={"fhj-next-btn" + (answeredNow && !oneTap ? " is-forward" : "")}
+          onClick={() => { feedback("nav"); onAdvance(); }}>
+          {answeredNow && !oneTap ? "Next" : "Skip this one"}
+          {answeredNow && !oneTap && <Icon name="right" size={12} color="currentColor" />}
+        </button>
+        <button type="button" className="fhj-next-btn" onClick={() => { feedback("tap"); onStop(); }}>
+          Done for now
         </button>
       </div>
-      <FieldInput field={field} value={value} onChange={onSet} tint={tpl.color} />
-    </Card>
+    </div>
   );
 }
 
@@ -14973,19 +15401,67 @@ function DailyPulse({
     return p.total - p.done - p.skipped;
   }, [routineItems, routine, date]);
 
-  const items = useMemo(() => followUps({
+  /* What this person actually records, over the last month of their journal.
+     It is what turns the pack's opinion about which questions matter into
+     theirs — see answerHabits in lib/pulse. */
+  const habits = useMemo(() => {
+    const from = addDays(date, -29);
+    return answerHabits(tpl.fields, entries.filter((e) => e.date >= from && e.date <= date));
+  }, [tpl.fields, entries, date]);
+
+  const pulseCtx = useMemo(() => ({
     primaryKey: keyField.k,
     score: value,
     dir: keyField.dir,
     fields: tpl.fields,
     priority: tpl.chartMetrics,
     answers,
+    usual: habits,
     hasNote: !!(entry?.notes || "").trim(),
     photoFields: photoFields.map((f) => f.k),
     photoToday: photoInfo.photoToday,
     daysSincePhoto: photoInfo.daysSincePhoto,
     routineDue,
-  }), [keyField, value, tpl, answers, entry, photoFields, photoInfo, routineDue]);
+  }), [keyField, value, tpl, answers, habits, entry, photoFields, photoInfo, routineDue]);
+
+  /* The chips no longer offer questions: the card above them asks those one at
+     a time, and the same question in two places is one place too many. What is
+     left is the three things a question cannot be — the routine, the camera,
+     and the note. */
+  const items = useMemo(() => followUps({ ...pulseCtx, includeFields: false }), [pulseCtx]);
+
+  /* ---------- the queue ----------
+
+     `skipped` and `stopped` are session state on purpose. Neither is written to
+     the journal: a question waved past this morning is a fair question again
+     tonight, and "Done for now" means for now. */
+  const [skipped, setSkipped] = useState([]);
+  const [stopped, setStopped] = useState(false);
+  /* Which question the person is *on*. Null means "whatever is at the front of
+     the queue", which is what lets a one-tap answer hand straight over to the
+     next question. A field that takes typing pins itself here instead, so it
+     cannot vanish between two keystrokes. */
+  const [cursor, setCursor] = useState(null);
+
+  const queue = useMemo(() => askQueue(pulseCtx, skipped), [pulseCtx, skipped]);
+  const progress = useMemo(() => surveyProgress(pulseCtx), [pulseCtx]);
+  const asking = (cursor && tpl.fields.find((f) => f.k === cursor)) || queue[0] || null;
+  const ghosts = useMemo(
+    () => recentAnswers(tpl.fields.filter((f) => f.type === "number"), entries, date),
+    [tpl.fields, entries, date]
+  );
+
+  const answerNext = (f, v) => {
+    /* Anything that is not finished by one tap holds the queue where it is
+       until the person says Next — see the note on NextQuestion. */
+    if (!isOneTap(f)) setCursor(f.k);
+    else feedback("select");
+    onPatch(profile.id, date, { answers: { [f.k]: v } }, "quick");
+  };
+  const advance = (f) => {
+    setSkipped((prev) => (prev.includes(f.k) ? prev : [...prev, f.k]));
+    setCursor(null);
+  };
 
   const setPulse = (n, el) => {
     if (viewer) return;
@@ -15002,8 +15478,9 @@ function DailyPulse({
     setOpen((cur) => (cur === item.id ? null : item.id));
   };
 
+  /* Only the note expands in place now — the questions moved to the queue
+     above, and the routine and the camera open their own screens. */
   const openItemDef = items.find((i) => i.id === open);
-  const openField = openItemDef?.kind === "field" ? getField(tpl, openItemDef.key) : null;
 
   return (
     <Card className="fhj-pulse-card mt-4">
@@ -15031,6 +15508,28 @@ function DailyPulse({
         )}
       </div>
 
+      {/* One question at a time, straight after the number — the queue, not the
+          menu. See NextQuestion. */}
+      {recorded && !viewer && !stopped && asking && (
+        <NextQuestion
+          tpl={tpl} field={asking} value={answers[asking.k]} ghost={ghosts[asking.k] ?? null}
+          progress={progress}
+          onSet={(v) => answerNext(asking, v)}
+          onAdvance={() => advance(asking)}
+          onStop={() => setStopped(true)} />
+      )}
+      {/* The end of it, said once. Only for somebody who actually got there —
+          a setup with nothing left to ask on the very first tap has not
+          finished anything. */}
+      {recorded && !viewer && !stopped && !asking && progress.total > 1 && progress.left === 0 && (
+        <div className="fhj-next-done">
+          <span className="fhj-pulse-mark" style={{ background: colorFor(value, keyField.dir) }}>
+            <Icon name="check" size={13} color={readableInk(colorFor(value, keyField.dir))} />
+          </span>
+          <span>All {progress.total} of today's questions are answered.</span>
+        </div>
+      )}
+
       {recorded && !viewer && items.length > 0 && (
         <div className="mt-3">
           <div className="fhj-eyebrow mb-1.5">Anything else? — all optional</div>
@@ -15048,11 +15547,6 @@ function DailyPulse({
             ))}
           </div>
 
-          {openField && (
-            <FollowUpCard item={openItemDef} field={openField} tpl={tpl} value={answers[openField.k]}
-              onSet={(v) => onPatch(profile.id, date, { answers: { [openField.k]: v } }, "quick")}
-              onClose={() => setOpen(null)} />
-          )}
           {openItemDef?.kind === "note" && (
             <Card className="mt-2">
               <div className="flex items-center justify-between gap-2 mb-1">
@@ -15167,7 +15661,7 @@ function PinnedExperiment({ result, onOpen, onHighlight }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus, goSun, goLabs, goExperiments, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus, goSun, goLabs, goExperiments, goImport, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
   /* Where to put the sun. A place set by hand wins over the last fetched one,
      and both are absent when daily context is off — in which case every sun
@@ -15207,7 +15701,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
      both heart rates gets the tile that subtracts them. */
   const qa = useMemo(() => quickAddContext(tpl), [tpl]);
   const { scaleFields, waterField, hr: hrFields, triggerField } = qa;
-  const caps = { ...qa.caps, flare: qa.caps.flare && !!onStartFlare };
+  const caps = { ...qa.caps, flare: qa.caps.flare && !!onStartFlare, ai: aiEnabled };
   /* One flare per metric can be open at a time; this is the one for the number
      this journal is about, which is the one the tile starts and ends. */
   const runningFlare = useMemo(
@@ -15334,6 +15828,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     diary: goFood ? track("diary", goFood) : null,
     sun: goSun ? track("sun", goSun) : null,
     lab: goLabs ? track("lab", goLabs) : null,
+    import: caps.ai && goImport ? track("import", goImport) : null,
   };
 
   /* The two tiles that describe today rather than name a feature. */
@@ -17405,6 +17900,7 @@ export default function App({ viewer = false }) {
     sun: db.sun || [], context: db.context || [], labs: db.labs || [],
     goSun: () => setScreen("sun"), goLabs: () => setScreen("labs"),
     goExperiments: () => setScreen("experiments"),
+    goImport: () => setScreen("import"),
     pinnedExperiments: screen === "dashboard" ? experimentResults : [],
     onHighlight: illuminate,
   };
@@ -17439,7 +17935,7 @@ export default function App({ viewer = false }) {
       syncEngine={engineRef.current} syncStatus={syncStatus} syncConfigured={syncConfigured}
       onRefreshSyncConfig={() => setSyncConfigured(syncAvailable())}
       onAiSetupComplete={() => { setAiAutoRun((n) => n + 1); setScreen("dashboard"); }}
-      goImport={() => setScreen("fitbit")} lockEnabled={!!lock}
+      goImport={() => setScreen("fitbit")} goNoteImport={() => setScreen("import")} lockEnabled={!!lock}
       onSetupPin={() => setLockFlow("setup")} onChangePin={() => setLockFlow("change-verify")}
       onDisablePin={() => setLockFlow("disable-verify")} />;
   } else if (screen === "setup") {
@@ -17558,6 +18054,11 @@ export default function App({ viewer = false }) {
     );
   } else if (screen === "fitbit") {
     content = <FitbitImportScreen db={db} setDb={setDb} goBack={() => setScreen("settings")} />;
+  } else if (screen === "import") {
+    content = (
+      <NoteImportScreen db={db} setDb={setDb} aiEnabled={!!db.ai?.enabled && !viewer}
+        goBack={goHome} goSettings={() => setScreen("settings")} />
+    );
   } else if (screen === "gallery") {
     content = <PhotoGalleryScreen profile={profile} entries={entries} tpl={tpl} onSetBaseline={setPhotoBaseline} goBack={goHome} />;
   } else if (screen === "report") {
@@ -17581,7 +18082,7 @@ export default function App({ viewer = false }) {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
     routine: "Your Routine", episode: "Flare", pack: "Appointment Pack", history: "History",
-    fitbit: "Import Health Data",
+    fitbit: "Import Health Data", import: "Import Your Notes",
     sun: "Sun & Outdoor Light", experiments: "Experiments", labs: "Labs & Measurements",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
   }[screen] || APP_NAME;
