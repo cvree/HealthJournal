@@ -7,13 +7,25 @@ experiment, whatever you're actually tracking — answer it in about a minute a 
 the trends come out over weeks. When you have an appointment, you print a summary and take it
 with you.
 
-There is no account, no server, and no tracking. Out of the box, after the app has loaded once
-it makes **no network requests at all** — it installs to a phone's Home Screen and works
-completely offline.
+**And you don't start from nothing.** Almost everybody who tracks anything seriously was already
+tracking it somewhere — a notes file, a chat with themselves, a photo of a page. Paste it in, or
+hand over a screenshot, and [**Import your notes**](#import-your-own-notes) reads it into meals,
+doses, numbers, bowel entries and notes *on the dates and times your own notes give*. Months of
+shorthand become a journal in about a minute, and you approve every single row before one word
+of it is written.
 
-Three things can change that, all opt-in, all off until you turn them on, and all leaving
-everything else working exactly as it does now:
+There is no account, no backend holding your journal, and no tracking. Out of the box, after
+the app has loaded once it makes **no network requests at all** — it installs to a phone's Home
+Screen and works completely offline.
 
+Four things can change that. All are opt-in, all are off until you turn them on, all leave
+everything else working exactly as it does now, and **all four name what they are sending before
+they send it**:
+
+- **Import your own notes.** The one path here whose payload is your own writing, because the
+  writing is what is being read. It asks every time, lists the entire payload first, and nothing
+  reaches your journal until you have seen every proposed row beside the words it came from.
+  [What it sends, and what it refuses to do.](#import-your-own-notes)
 - **AI observations.** Add your own Google Gemini API key in Settings and it sends a minimal
   summary of your logged numbers *when you ask it to*, showing you exactly what first.
 - **Sync across devices.** Turn it on and your journal follows you from phone to laptop —
@@ -24,6 +36,11 @@ everything else working exactly as it does now:
   UV, air quality, pollen. The request carries a latitude and longitude rounded to about a
   kilometre and *nothing else*: no identifier, no name, nothing from your journal. What is stored
   is a reading of the sky, not a record of where you were.
+
+You will not find "everything stays on your device, always" written anywhere in this app, because
+with any of those four switched on it would not be true. What it says instead is which switch is
+on and what that switch sends — on the privacy card in Settings, which rewrites itself as you
+change them.
 
 > **Not medical advice.** This is a personal tracking tool. It does not diagnose, treat, cure, or
 > prevent any condition. It surfaces *possible patterns* in your own logs and never claims a cause.
@@ -722,7 +739,8 @@ whole payload before it sends anything. Nothing else in the app can put your wri
 
 #### Import your own notes
 
-The one feature that exists only because the AI does, and the only one that sends free text.
+The one feature that exists only because the AI does, and the only one in the app that sends
+free text.
 
 Everybody who tracks anything seriously was already tracking it before they found this app — in
 a notes file, a chat with themselves, a photo of a page. It looks like `8.21 weight 12pm 182`,
@@ -730,10 +748,32 @@ a notes file, a chat with themselves, a photo of a page. It looks like `8.21 wei
 those lines is a row this app already has a shape for, and typing them in one at a time through
 the right sheet on the right date is an hour of work nobody does.
 
-So: **Import notes** (in the + sheet, and in Settings) takes a paste or a screenshot, and reads
-it into meals, doses, numbers, bowel entries and notes — **on the dates and times the notes
-themselves give**, not today's. Shorthand dates are resolved against today; a line with no date
-of its own belongs to the line above it.
+So: **Import notes** takes a paste or a screenshot, and reads it into meals, doses, numbers,
+bowel entries and notes — **on the dates and times the notes themselves give**, not today's.
+Shorthand dates are resolved against today; a line with no date of its own belongs to the line
+above it; a time is only set when the note actually gives one. A dose matches something already
+in your routine where it can, and creates it where it cannot.
+
+**Getting your notes in** is deliberately whatever is nearest to hand:
+
+- **Paste them** into the box. Shorthand is fine — that is the point.
+- **Ctrl+V a screenshot straight into the box.** On a desktop that is where your notes already
+  are, one keystroke after the snip, and making you save a file first would put the friction
+  back.
+- **Drop files anywhere on the screen** — images, or a `.txt` / `.md` file, which is appended to
+  the box rather than making you open it and copy it out.
+- **Pick up to four screenshots at once.** A chat with yourself is four screenshots, not one, and
+  they are sent as *one continuous document in order*, so a date at the top of the second still
+  governs the lines under it in the third. Past four, run it again — the duplicate check makes
+  that free.
+
+**Finding it** is three doors, in the order somebody actually needs them. A journal in its first
+fortnight is offered it **on Today**, under the day, because that is the week it matters and
+nobody in their first week goes looking through menus. It retires itself after fourteen logged
+days whether or not you dismissed it, "Not for me" sends it away permanently, and when AI is off
+the card says so in its own words and its button goes to Settings — an offer that quietly turns
+into a setup screen is a bait, and this app doesn't have any. It also lives in the **+** sheet
+and in **Settings** for as long as you want it.
 
 Three steps, and the shape of them is the safety argument:
 
@@ -744,8 +784,12 @@ Three steps, and the shape of them is the safety argument:
    photos from your journal, no answers you have already recorded, no name, nothing about the
    device.
 3. **Approve what lands** — every proposed row, grouped by the day it would go on, **beside the
-   words it was read from**. Switch off anything wrong, correct any date, then one button writes
-   what is left, with an Undo in the toast.
+   words it was read from**, because a wrong reading is obvious the instant it sits next to what
+   it claims to be a reading of. A header line says what was found (*1 answer, 1 meal, 1 bowel
+   entry, 1 dose and 1 note, on 2 days*), each day can be switched off in one tap, each row's
+   date can be corrected on the row, and anything the model was genuinely unsure of is flagged —
+   only that, because a badge on every row is a badge on nothing. Then one button writes what is
+   left, with an Undo in the toast and a link straight to the earliest day it just filled in.
 
 The model never writes. `applyImport` is a pure function of the rows you approved and has never
 heard of a model; `normaliseImportPlan` is the boundary in front of it and drops anything it
@@ -825,7 +869,8 @@ health-journal/
 │   │   ├── pulse.ts            # the one-tap day, the question queue behind it,
 │   │   │                       #   and which details to offer next
 │   │   ├── import.ts           # reading somebody's own notes into rows (AI-only):
-│   │   │                       #   prompt, boundary, and a pure writer
+│   │   │                       #   prompt, boundary, and a pure writer. The one
+│   │   │                       #   outbound path whose payload is your writing
 │   │   ├── quickActions.ts     # learned ordering + one-tap repeats, scored
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
 │   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors

@@ -5826,6 +5826,98 @@ button:active > .fhj-nav-add {
   color: var(--fhj-danger-ink, #e6a29d);
 }
 
+/* ---------- the "bring your old notes in" offer ----------
+   An invitation, not a task, so it is drawn like the pulse's follow-ups rather
+   than like a Quick Add tile: a tinted rule down one side and nothing else
+   shouting. It retires itself after a fortnight of logged days. */
+.fhj-invite {
+  border-left: 3px solid var(--fhj-accent, #8fb0e3);
+}
+.fhj-invite-mark {
+  flex: none;
+  width: 1.875rem;
+  height: 1.875rem;
+  margin-top: 0.125rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* The screenshots waiting to be read. Numbered when there is more than one,
+   because the order is load-bearing: they are sent as one continuous set, so
+   the person needs to see the order the model will read them in. */
+.fhj-import-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+.fhj-import-shot {
+  position: relative;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: var(--fhj-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-import-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.fhj-import-shot-n {
+  position: absolute;
+  left: 0.25rem;
+  bottom: 0.25rem;
+  min-width: 1.125rem;
+  padding: 0 0.25rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-bg, #141519);
+  color: var(--fhj-ink, #ecebe7);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.125rem;
+  text-align: center;
+}
+.fhj-import-shot button {
+  position: absolute;
+  top: 0.1875rem;
+  right: 0.1875rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-bg, #141519);
+  border: 1px solid var(--fhj-line-strong, #464a55);
+  cursor: pointer;
+}
+
+/* Drag a screenshot anywhere onto the screen. Said only while something is
+   actually over it — a permanent "you can drop here" panel is a panel. */
+.fhj-import-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: color-mix(in srgb, var(--fhj-bg, #141519) 82%, transparent);
+  border: 2px dashed var(--fhj-accent, #8fb0e3);
+  border-radius: var(--fhj-radius-lg, 1.25rem);
+  pointer-events: none;
+}
+
 /* The commit button sits at the *end* of the review rather than floating over
    it. A sticky bar would be one tap closer and would spend the whole scroll
    covering one of the rows it is asking to be checked, which is the one thing

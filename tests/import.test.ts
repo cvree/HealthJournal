@@ -16,8 +16,8 @@
 */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
-  applyImport, describeAdded, groupByDate, normaliseImportPlan, readNotes,
-  resolveDate, summariseImportRequest,
+  MAX_IMPORT_IMAGES, applyImport, countKinds, describeAdded, groupByDate, imagesOf,
+  normaliseImportPlan, readNotes, resolveDate, summariseImportRequest,
   type ImportTargets, type ImportVocabulary, type ImportedItem,
 } from "../src/lib/import";
 
@@ -232,6 +232,17 @@ describe("writing the approved rows down", () => {
     expect(describeAdded({ answer: 1, food: 0, bowel: 0, routine: 0, note: 0 })).toBe("1 answer");
     expect(describeAdded({ answer: 0, food: 0, bowel: 0, routine: 0, note: 0 })).toBe("Nothing added");
   });
+
+  it("counts a plan with the same counter the receipt uses, so the two cannot disagree", () => {
+    const rows = plan([
+      { kind: "food", date: "2026-08-21", description: "Porridge", source: "s", confidence: "high" },
+      { kind: "food", date: "2026-08-21", description: "Steak", source: "s", confidence: "high" },
+      { kind: "note", date: "2026-08-21", text: "Slept badly", source: "s", confidence: "high" },
+    ]);
+    expect(countKinds(rows)).toEqual({ answer: 0, food: 2, bowel: 0, routine: 0, note: 1 });
+    expect(describeAdded(countKinds(rows))).toBe("2 meals and 1 note");
+    expect(countKinds([])).toEqual({ answer: 0, food: 0, bowel: 0, routine: 0, note: 0 });
+  });
 });
 
 describe("the review's own shape", () => {
@@ -306,6 +317,39 @@ describe("what actually leaves the device", () => {
     const bodies = mockGemini({ items: [] });
     await readNotes(CONN, { text: "", image: { mime: "image/jpeg", data: "QUJD" } }, vocab);
     expect(bodies[0].contents[0].parts[0].inlineData.data).toBe("QUJD");
+  });
+
+  /* A chat with yourself is four screenshots, not one. They go in one request
+     and in the order given, and the prompt has to say they are one document —
+     otherwise a date at the top of the second governs nothing in the third. */
+  it("sends several screenshots as one document, in the order they were added", async () => {
+    const bodies = mockGemini({ items: [] });
+    await readNotes(CONN, {
+      images: [
+        { mime: "image/png", data: "AAA" },
+        { mime: "image/png", data: "BBB" },
+        { mime: "image/png", data: "CCC" },
+      ],
+    }, vocab);
+    const parts = bodies[0].contents[0].parts;
+    expect(parts.slice(0, 3).map((p: any) => p.inlineData.data)).toEqual(["AAA", "BBB", "CCC"]);
+    expect(parts[3].text).toMatch(/one continuous set of notes, in order/i);
+  });
+
+  it("caps how many screenshots one reading carries", () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ mime: "image/png", data: `X${i}` }));
+    expect(imagesOf({ images: many })).toHaveLength(MAX_IMPORT_IMAGES);
+    // and the confirmation counts what will actually go, not what was offered
+    expect(summariseImportRequest({ images: many }, vocab).lines.join(" "))
+      .toContain(`${MAX_IMPORT_IMAGES} screenshots`);
+  });
+
+  it("counts a single screenshot in the singular, and none at all as none", () => {
+    expect(summariseImportRequest({ text: "x", image: { mime: "image/png", data: "A" } }, vocab).lines.join(" "))
+      .toMatch(/The screenshot you chose/);
+    const bare = summariseImportRequest({ text: "x" }, vocab);
+    expect(bare.sendsImage).toBe(false);
+    expect(bare.lines.join(" ")).not.toMatch(/screenshot/i);
   });
 
   it("turns a reply that is not JSON into something the screen can say", async () => {

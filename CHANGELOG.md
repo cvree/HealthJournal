@@ -2,8 +2,60 @@
 
 ## 1.22.0
 
-One row that could not be scrolled, one question that was never asked, and an
-hour of typing nobody was ever going to do.
+One row that could not be scrolled, one question that was never asked, an hour
+of typing nobody was ever going to do — and one promise this app had outgrown.
+
+### The promise, said honestly
+
+"Everything stays on your device" is gone from this app, because with any of
+four switches on it was not true.
+
+It was very nearly true, which is the problem: a privacy claim is worth exactly
+as much as its worst case, and a claim that holds 95% of the time is worth less
+than a shorter one that always does. Sync uploads an encrypted journal. AI
+observations send a summary of your numbers. Daily context asks for the
+weather. And now importing your own notes sends the notes. All four are off
+until somebody turns them on, and all four say what they are sending before
+they send it — which is a better promise than the one it replaces, and this
+release is where the app starts making it instead.
+
+So the first screen's list of checkable facts now names the four things that
+*can* leave rather than claiming nothing does. The privacy card in Settings
+already rewrote itself as switches changed; it now has a sentence for AI that
+names both things AI can send, and no longer signs off with "everything else
+still stays on this device". "Photos are never uploaded" is gone too — it had
+been untrue since AI auto-fill shipped, and now reads as what it is: photos
+stay here unless you hand one over yourself.
+
+Nothing about the defaults changed. Out of the box the app still makes no
+network requests at all after it loads.
+
+### The Again row scrolls
+
+The shortest path in the app was reachable only by people holding a phone.
+
+**Again** is the row under Quick Add: the foods you log over and over, the
+doses you take daily, the spot you photograph, the number you record — ranked
+against each other so it is your own week in your own order, one tap each. It
+was a bare `overflow-x: auto` row with the app's global stylesheet hiding every
+scrollbar, and this app runs Lenis on the document scroller. Which means that
+on a desktop a vertical wheel over the chips scrolled the *page*, a horizontal
+one was swallowed by the smooth-scroll driver before the browser ever saw it,
+and a mouse without a tilt wheel had no gesture at all. The chips past the
+fourth were visible, cut off at the edge, and unreachable. On a phone it
+flicked, which is why it lasted this long.
+
+The metric picker on Insights had solved exactly this a release ago, so its
+rail has been lifted out into `components/Rail.tsx` and is now the only
+horizontal scroller this app is allowed to have. A vertical wheel over the row
+scrolls the row — and stops claiming the gesture the moment the row runs out,
+so the end of the chips is not the end of the page. A horizontal one is stopped
+before it reaches Lenis, which is what stops the page moving sideways
+underneath it. Arrow buttons appear on pointer devices at whichever edge still
+has something behind it, and are hidden on touch where they would only cover
+two chips. ←/→/Home/End walk the row, and focus always scrolls its own chip
+into view. The edge fade is per-edge and conditional now: a row of three chips
+that fits is no longer drawn as a row that has been cut.
 
 ### The Again row scrolls
 
@@ -102,7 +154,14 @@ another at half past twelve on the 21st is not something parsing rules get to.
 
 Three steps, and the shape of them is the entire safety argument.
 
-**Hand it over.** Paste, or pick a screenshot.
+**Hand it over**, by whatever is nearest to hand. Paste the text. Ctrl+V a
+screenshot straight into the box — on a desktop that is where the notes already
+are, one keystroke after the snip, and making somebody save a file first would
+put the whole feature's friction back. Drop files anywhere on the screen, image
+or `.txt`, and a text file is appended to the box rather than making you open
+it and copy it out. Up to four screenshots at a time, sent as **one continuous
+document in order**, because a chat with yourself is four screenshots and a
+date at the top of the second governs the lines under it in the third.
 
 **See what goes.** This is the one path in this app that sends prose, and it is
 not going to be coy about it. Every other outbound path is built to send as
@@ -116,9 +175,14 @@ answers already recorded, no name, nothing about the device.
 
 **Approve what lands.** Every proposed row, grouped by the day it would go on,
 next to the exact words it was read from — because a wrong reading is obvious
-the instant it sits beside what it claims to be a reading of. Switch off
-anything wrong, correct any date on the row itself, then one button writes what
-is left, with an Undo in the toast.
+the instant it sits beside what it claims to be a reading of. A line at the top
+says what was found (*1 answer, 1 meal, 1 bowel entry, 1 dose and 1 note, on 2
+days*). Each day switches off in one tap and back on in another. Each row's date
+is correctable on the row. Only the rows the model was genuinely unsure of are
+flagged, because a badge on every row is a badge on nothing — what it assumed
+is said in words underneath instead. Then one button writes what is left, with
+an Undo in the toast and a link straight to the earliest day it just filled in,
+which is the moment the whole thing pays out.
 
 The model never writes. `applyImport` is a pure function of the rows somebody
 approved and has never heard of a model, and `normaliseImportPlan` is the
@@ -140,6 +204,15 @@ The prompt's own hardest rule is that it is a transcriber and a filing clerk,
 not an editor: copy the person's words, never rewrite, summarise, correct,
 tidy or improve them. Their spelling of a medication is their spelling. This is
 a record, not a draft.
+
+And it is offered where somebody will actually find it. A journal in its first
+fortnight gets the offer **on Today**, under the day — that is the week it is
+worth doing, and nobody in their first week goes hunting through menus for a
+feature they don't know exists. It retires itself after fourteen logged days
+whether or not anybody dismissed it, "Not for me" sends it away for good, and
+when AI is off the card says so in its own copy and its button goes to
+Settings. An offer that quietly turns into a setup screen is a bait, and this
+app does not have any of those.
 
 ## 1.21.0
 

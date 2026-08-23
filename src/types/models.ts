@@ -156,6 +156,11 @@ export interface TrackingSetup {
       is the only thing the hint under the row is waiting on. Absent until
       then rather than false. */
   quickAddDragged?: boolean;
+  /** "done" once somebody has sent the "bring your old notes in" offer away.
+      Absent until then, and a word rather than a boolean so a backup reads as
+      something a person could understand. The offer also retires itself after
+      a fortnight of logged days — see IMPORT_INVITE_UNTIL_DAYS. */
+  importOffered?: "done";
   /** Use count and last-used date per action id, which is what the learned
       ordering and the one-tap repeats are ranked on. */
   actionStats?: Record<string, { n: number; at?: string }>;

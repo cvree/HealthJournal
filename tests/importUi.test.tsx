@@ -39,10 +39,14 @@ const today = () => {
 
 let kv: Map<string, string>;
 
-async function mountApp({ ai = true }: { ai?: boolean } = {}) {
+async function mountApp({ ai = true, days, dismissed = false }: {
+  ai?: boolean; days?: number; dismissed?: boolean;
+} = {}) {
   const { __internals: I, default: App } = await import("../src/App");
   const db = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
   db.ai = { ...db.ai, enabled: ai };
+  if (days != null) db.entries = db.entries.slice(-days);
+  if (dismissed) db.profile = { ...db.profile, importOffered: "done" };
   kv = new Map(Object.entries(
     ai ? { fhj_v1: JSON.stringify(db), fhj_ai_conn_v1: CONN } : { fhj_v1: JSON.stringify(db) }
   ));
@@ -222,5 +226,80 @@ describe("the review", () => {
       expect([log.date === "2026-08-21", log.date === today()]).toContain(true);
       expect(log.time).toBe("17:15");
     });
+  });
+});
+
+/* The offer on Today.
+
+   Import's problem is not what it does, it is that somebody in their first
+   week will never go looking for it. So a young journal is offered it where it
+   already is — and an established one is not, because at that point it is
+   clutter on the screen somebody opens every morning. */
+describe("the offer on Today", () => {
+  const invite = () => document.querySelector(".fhj-invite");
+
+  it("is there while the journal is young enough for it to be worth doing", async () => {
+    await mountApp({ days: 3 });
+    expect(invite()).toBeTruthy();
+    expect(invite()!.textContent).toMatch(/been tracking somewhere else/i);
+    expect(invite()!.textContent).toMatch(/on the days your own notes give/i);
+  });
+
+  it("retires itself once the journal has a fortnight of its own history", async () => {
+    await mountApp({ days: 20 });
+    expect(invite()).toBeNull();
+  });
+
+  it("goes away for good when it is sent away, and does not come back on the next launch", async () => {
+    await mountApp({ days: 3 });
+    fireEvent.click(within(invite() as HTMLElement).getByRole("button", { name: /not for me/i }));
+    await waitFor(() => expect(document.querySelector(".fhj-invite")).toBeNull());
+    await waitFor(() => expect(saved().profile.importOffered).toBe("done"));
+  });
+
+  it("does not come back for a journal that already sent it away", async () => {
+    await mountApp({ days: 3, dismissed: true });
+    expect(invite()).toBeNull();
+  });
+
+  it("opens the import when AI is ready, and says so plainly when it is not", async () => {
+    await mountApp({ days: 3 });
+    fireEvent.click(within(invite() as HTMLElement).getByRole("button", { name: /import my notes/i }));
+    expect(await screen.findByRole("heading", { name: /Import your notes/ })).toBeTruthy();
+
+    cleanup();
+    await mountApp({ ai: false, days: 3 });
+    /* An offer that quietly turns into a setup screen is a bait. It says what
+       it needs, and its button goes where that is set up. */
+    expect(invite()!.textContent).toMatch(/needs the optional AI switched on first/i);
+    expect(within(invite() as HTMLElement).queryByRole("button", { name: /import my notes/i })).toBeNull();
+    expect(within(invite() as HTMLElement).getByRole("button", { name: /set it up/i })).toBeTruthy();
+  });
+});
+
+describe("switching a whole day off", () => {
+  it("takes every row on that day with it, and leaves the other day alone", async () => {
+    stubProvider({
+      items: [
+        { kind: "food", date: "2026-08-21", time: "08:00", description: "Porridge", source: "a", confidence: "high" },
+        { kind: "food", date: "2026-08-21", time: "19:00", description: "Steak", source: "b", confidence: "high" },
+        { kind: "food", date: "2026-08-20", time: "12:00", description: "Soup", source: "c", confidence: "high" },
+      ],
+    });
+    await mountApp();
+    await openImport();
+    fireEvent.change(screen.getByLabelText(/Your notes/), { target: { value: "three meals" } });
+    fireEvent.click(screen.getByRole("button", { name: /Read my notes/ }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /Send and read/ }));
+    await screen.findByText(/Nothing is written yet/);
+
+    expect(screen.getByRole("button", { name: /Add 3 rows to my journal/ })).toBeTruthy();
+
+    // The day with two rows on it, switched off in one tap.
+    fireEvent.click(screen.getByRole("button", { name: /^None · 2$/ }));
+    await screen.findByRole("button", { name: /Add 1 row to my journal/ });
+    // ...and back on again, because a switch that only goes one way is a delete.
+    fireEvent.click(screen.getByRole("button", { name: /^All · 2$/ }));
+    await screen.findByRole("button", { name: /Add 3 rows to my journal/ });
   });
 });

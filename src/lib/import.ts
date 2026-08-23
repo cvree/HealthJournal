@@ -82,12 +82,29 @@ export interface ImportVocabulary {
   foods: string[];
 }
 
+/** How many screenshots one reading will carry. Four is not arbitrary: it is
+    about as much text as a model reads carefully in one pass, and it is what a
+    long chat log takes to capture. Past that the honest answer is to run the
+    import twice — the duplicate check makes that free. */
+export const MAX_IMPORT_IMAGES = 4;
+
 export interface ImportInput {
   /** Pasted or typed notes. */
   text?: string;
   /** A screenshot or photo of them. */
   image?: ChatImage | null;
+  /** Several, for the common case: a chat with yourself, screenshotted in
+      four goes, is one document. They go in the order given, and the prompt
+      is told they are one continuous set, so a date at the top of the second
+      shot still governs the lines under it. */
+  images?: ChatImage[] | null;
 }
+
+/** Every image in one input, in reading order, capped. */
+export const imagesOf = (input: ImportInput): ChatImage[] =>
+  [...(input.images || []), ...(input.image ? [input.image] : [])]
+    .filter(Boolean)
+    .slice(0, MAX_IMPORT_IMAGES);
 
 /* ---------- what comes back ---------- */
 
@@ -158,18 +175,20 @@ export function summariseImportRequest(input: ImportInput, vocab: ImportVocabula
   lines: string[];
 } {
   const body = (input.text || "").trim();
+  const shots = imagesOf(input);
   const lines: string[] = [];
   if (body) {
     lines.push(`The ${body.length.toLocaleString("en-US")} characters of notes you pasted, exactly as written`);
   }
-  if (input.image) lines.push("The screenshot you chose, as an image");
+  if (shots.length === 1) lines.push("The screenshot you chose, as an image");
+  else if (shots.length > 1) lines.push(`The ${shots.length} screenshots you chose, as images`);
   lines.push(`The names of your ${vocab.fields.length} questions, so a number can be filed against the right one`);
   if (vocab.routineItems.length) {
     lines.push(`The names of the ${vocab.routineItems.length} things in your routine, so a dose matches one you already have`);
   }
   if (vocab.foods.length) lines.push(`The names of your ${vocab.foods.length} saved foods`);
   lines.push("Today's date, so a note that says “yesterday” means something");
-  return { sendsImage: !!input.image, characters: body.length, lines };
+  return { sendsImage: shots.length > 0, characters: body.length, lines };
 }
 
 /* ---------- the prompt ---------- */
@@ -523,16 +542,28 @@ export async function readNotes(
 ): Promise<ImportPlan> {
   if (!conn?.key?.trim()) throw new AiError("no-key", "No API key is set.");
   const body = (input.text || "").trim();
-  if (!body && !input.image) {
+  const shots = imagesOf(input);
+  if (!body && !shots.length) {
     throw new AiError("not-enough-data", "Paste some notes or choose a screenshot, and I can read them.");
   }
+
+  /* The images are named as *one continuous set* rather than as several
+     separate pictures. It matters: a chat log screenshotted in four goes has
+     a date at the top of shot two that governs the lines under it in shot
+     three, and a model told it is looking at four unrelated images will not
+     carry that across. */
+  const shotLine = shots.length === 0
+    ? "Their notes:"
+    : shots.length === 1
+      ? (body ? "Their notes are below, and there is an image of notes as well." : "Their notes are in the image.")
+      : (body
+        ? `Their notes are below, and there are also ${shots.length} images. The images are consecutive screenshots of one continuous set of notes, in order — read them as one document.`
+        : `Their notes are in the ${shots.length} images. They are consecutive screenshots of one continuous set of notes, in order — read them as one document, so a date near the top of one still applies to the lines below it in the next.`);
 
   const user = [
     describeVocabulary(vocab),
     "",
-    input.image && body
-      ? "Their notes are below, and there is an image of notes as well."
-      : input.image ? "Their notes are in the image." : "Their notes:",
+    shotLine,
     body ? "\n" + body.slice(0, 40000) : "",
   ].join("\n");
 
@@ -542,7 +573,7 @@ export async function readNotes(
       return await chat(c, {
         system: IMPORT_SYSTEM,
         user,
-        image: input.image || null,
+        images: shots,
         schema: IMPORT_SCHEMA,
         jsonHint: IMPORT_JSON_HINT,
         maxTokens: 8000,
@@ -558,7 +589,7 @@ export async function readNotes(
         c.model = undefined;
         return attempt(false);
       }
-      if (input.image && isNoVision(e.status, errBody)) {
+      if (shots.length && isNoVision(e.status, errBody)) {
         throw new AiError(
           "response",
           "The model this app picked for you reads text but not images. Paste the notes as text instead, or choose a different provider in Settings."
@@ -739,6 +770,15 @@ export function applyImport(cur: ImportTargets, items: readonly ImportedItem[]):
   }
 
   return { next: { entries, food, foods, bowel, routine, routineItems }, added, duplicates };
+}
+
+/** How many rows of each kind are in a list. Used for the receipt after a
+    commit and for the "what it found" line before one, so both sentences come
+    out of the same counter and cannot disagree. */
+export function countKinds(items: readonly ImportedItem[]): Record<ImportKind, number> {
+  const out: Record<ImportKind, number> = { answer: 0, food: 0, bowel: 0, routine: 0, note: 0 };
+  for (const it of items) out[it.kind]++;
+  return out;
 }
 
 /** "3 meals, 2 doses and a note" — the receipt, in the app's own words. */

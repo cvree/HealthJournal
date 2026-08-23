@@ -49,7 +49,8 @@ import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/them
 import MetricPicker from "./components/MetricPicker";
 import Rail from "./components/Rail";
 import {
-  applyImport, describeAdded, groupByDate, readNotes, summariseImportRequest,
+  MAX_IMPORT_IMAGES, applyImport, countKinds, describeAdded, groupByDate, readNotes,
+  summariseImportRequest,
 } from "./lib/import";
 import YearHeatmap from "./components/YearHeatmap";
 import ScoreDistribution from "./components/ScoreDistribution";
@@ -145,7 +146,9 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
 
 /* ============================================================
    Health Journal
-   Private, mobile-first, on-device health tracking.
+   Private, mobile-first, local-first health tracking. The journal lives on the
+   device; the four things that can reach the network (sync, AI, daily weather,
+   note import) are each off until switched on and each say what they send.
    Not medical advice. Tracks possible patterns only.
    ============================================================ */
 
@@ -2475,7 +2478,8 @@ function PhotoSession({ tpl, entries, date, photos, answers, timer, onSetAnswer,
           <button onClick={onDone} className="fhj-btn fhj-btn-primary flex-[1.4]">Done</button>
         </div>
         <p className="text-[11px] mt-3 leading-relaxed" style={{ color: C.sub }}>
-          Photos stay on this device. Ratings are personal tracking, not a medical assessment.
+          Photos stay on this device unless you hand one to the optional AI yourself.
+          Ratings are personal tracking, not a medical assessment.
         </p>
       </div>
     );
@@ -4102,7 +4106,8 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
 
                 <p className="text-[11.5px] leading-relaxed mt-4" style={{ color: C.subtle }}>
                   Your provider's handling of API requests is governed by their terms, not by this
-                  app. Everything else in {APP_NAME} stays on this device either way.
+                  app. Only what you send them reaches them: an analysis you run, notes you paste
+                  into Import, and — if you switch on AI auto-fill — a photo as you attach it.
                 </p>
               </>
             )}
@@ -7017,11 +7022,24 @@ function ImportRow({ item, on, onToggle, onDate }) {
   );
 }
 
-function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
+/** A screenshot waiting to be read, with the way to change its mind about it. */
+function ImportShot({ shot, index, total, onRemove }) {
+  return (
+    <div className="fhj-import-shot">
+      <img src={shot.thumb} alt="" />
+      {total > 1 && <span className="fhj-import-shot-n">{index + 1}</span>}
+      <button type="button" onClick={onRemove} aria-label={`Remove screenshot ${index + 1}`}>
+        <Icon name="x" size={12} color={C.ink} />
+      </button>
+    </div>
+  );
+}
+
+function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog }) {
   const conn = useAiConnection(aiEnabled);
   const tpl = getProfileTemplate(db.profile);
   const [text, setText] = useState("");
-  const [shot, setShot] = useState(null);       // { full, thumb } data URLs
+  const [shots, setShots] = useState([]);       // [{ full, thumb }]
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [plan, setPlan] = useState(null);
@@ -7029,6 +7047,7 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
   const [dates, setDates] = useState({});       // id -> corrected date
   const [confirm, setConfirm] = useState(false);
   const [done, setDone] = useState(null);
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef(null);
 
   /* Structure only — see ImportVocabulary. The journal's *answers* are not in
@@ -7045,11 +7064,55 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
   }), [tpl, db.routineItems, db.foods]);
 
   const input = useMemo(
-    () => ({ text, image: shot ? dataUrlToImage(shot.full) : null }),
-    [text, shot]
+    () => ({ text, images: shots.map((s) => dataUrlToImage(s.full)).filter(Boolean) }),
+    [text, shots]
   );
   const outgoing = useMemo(() => summariseImportRequest(input, vocab), [input, vocab]);
-  const ready = !!(text.trim() || shot);
+  const ready = !!(text.trim() || shots.length);
+
+  /* Screenshots are bigger and less compressed than a progress photo on
+     purpose: this one has to stay *readable*, and 1024px at q0.6 turns a
+     screenshot of small text into mush. */
+  const addFiles = async (files) => {
+    const list = [...(files || [])];
+    if (!list.length) return;
+    const room = MAX_IMPORT_IMAGES - shots.length;
+    if (room <= 0) {
+      setError(`That's the limit — ${MAX_IMPORT_IMAGES} screenshots at a time. Read these first; running it again afterwards costs nothing.`);
+      return;
+    }
+    const next = [];
+    let readText = "";
+    for (const file of list.slice(0, room + list.length)) {
+      /* A dropped .txt or .md is notes too, and asking somebody to open it and
+         copy it out would be the app being precious about its own text box. */
+      if (/^text\//.test(file.type) || /\.(txt|md|csv|log)$/i.test(file.name || "")) {
+        readText += (readText ? "\n" : "") + (await file.text().catch(() => ""));
+        continue;
+      }
+      if (!/^image\//.test(file.type)) continue;
+      if (next.length >= room) continue;
+      try { next.push(await processImage(file, { fullEdge: 1600, fullQ: 0.85 })); }
+      catch { setError("Couldn't read one of those images — try another."); }
+    }
+    if (readText.trim()) setText((prev) => (prev.trim() ? `${prev.trim()}\n${readText.trim()}` : readText.trim()));
+    if (next.length) {
+      setError("");
+      feedback("select");
+      setShots((prev) => [...prev, ...next].slice(0, MAX_IMPORT_IMAGES));
+    }
+  };
+
+  /* Ctrl+V a screenshot straight in. This is how people actually have their
+     notes on a desktop — in the clipboard, one keystroke after the snip — and
+     making them save a file first would be the whole feature's friction back
+     again. */
+  const onPaste = (e) => {
+    const files = [...(e.clipboardData?.files || [])];
+    if (!files.length) return; // ordinary text paste — let the box have it
+    e.preventDefault();
+    addFiles(files);
+  };
 
   const run = async () => {
     setConfirm(false);
@@ -7064,8 +7127,9 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
         setError(result.unreadable
           ? "Nothing in there mapped onto a row this journal can hold."
           : "Nothing came back from that. Try pasting a bit more, or a clearer screenshot.");
+      } else {
+        feedback("save");
       }
-      feedback("save");
     } catch (e) {
       setError(e?.message || "That didn't work. Try again.");
     } finally {
@@ -7081,7 +7145,20 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
       .map((it) => (dates[it.id] ? { ...it, date: dates[it.id], dateGuessed: false } : it)),
     [plan, off, dates]
   );
-  const groups = useMemo(() => groupByDate(approved.length ? approved : (plan?.items || [])), [approved, plan]);
+  /* The list is drawn from every row the model proposed, switched on or not —
+     a row that vanished when you switched it off would be a row you could not
+     switch back on. */
+  const shown = useMemo(
+    () => (plan?.items || []).map((it) => (dates[it.id] ? { ...it, date: dates[it.id], dateGuessed: false } : it)),
+    [plan, dates]
+  );
+  const groups = useMemo(() => groupByDate(shown), [shown]);
+  const found = useMemo(() => (plan ? describeAdded(countKinds(plan.items)) : ""), [plan]);
+
+  const setDay = (rows, on) => setOff((prev) => {
+    const ids = rows.map((r) => r.id);
+    return on ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])];
+  });
 
   const commit = () => {
     const before = {
@@ -7089,8 +7166,12 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
       bowel: db.bowel || [], routine: db.routine || [], routineItems: db.routineItems || [],
     };
     const { next, added, duplicates } = applyImport(before, approved);
+    /* The earliest day touched is the one worth offering to open: it is the
+       far end of what just arrived, and seeing it full is the moment this
+       feature pays out. */
+    const earliest = approved.reduce((min, it) => (!min || it.date < min ? it.date : min), null);
     setDb((prev) => ({ ...prev, ...next }));
-    setDone({ added, duplicates });
+    setDone({ added, duplicates, earliest });
     setPlan(null);
     feedback("save");
     toast({
@@ -7101,7 +7182,7 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
   };
 
   const startOver = () => {
-    setPlan(null); setDone(null); setError(""); setText(""); setShot(null); setOff([]); setDates({});
+    setPlan(null); setDone(null); setError(""); setText(""); setShots([]); setOff([]); setDates({});
   };
 
   /* ---------- the feature does not exist without a key ---------- */
@@ -7129,7 +7210,14 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
   }
 
   return (
-    <div className="px-4 pb-10 pt-3">
+    <div className="px-4 pb-10 pt-3"
+      onDragOver={(e) => { e.preventDefault(); if (!plan && !done) setDragging(true); }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragging(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        if (!plan && !done) addFiles([...(e.dataTransfer?.files || [])]);
+      }}>
       <h2 className="font-display text-xl">Import your notes</h2>
       <p className="text-[12.5px] leading-relaxed mt-1 mb-3" style={{ color: C.subtle }}>
         Paste what you have been writing somewhere else — a notes file, a chat with yourself,
@@ -7151,8 +7239,14 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
               on that day and time, so {done.duplicates === 1 ? "it was" : "they were"} left alone.
             </p>
           )}
-          <div className="flex gap-2 mt-3">
-            <Button variant="secondary" onClick={startOver} icon="plus">Import more</Button>
+          {done.earliest && openLog && (
+            <Button variant="secondary" block className="mt-3" iconRight="right"
+              onClick={() => openLog(done.earliest)}>
+              Open {fmtNice(done.earliest)}
+            </Button>
+          )}
+          <div className="flex gap-2 mt-2">
+            <Button variant="ghost" onClick={startOver} icon="plus">Import more</Button>
             <Button variant="ghost" onClick={goBack}>Done</Button>
           </div>
         </Card>
@@ -7161,9 +7255,9 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
           <Card>
             <div className="fhj-eyebrow mb-1">Nothing is written yet</div>
             <p className="text-[13px] leading-relaxed" style={{ color: C.sub }}>
-              {plan.items.length} row{plan.items.length === 1 ? "" : "s"} read from your notes,
-              on {groups.length} day{groups.length === 1 ? "" : "s"}. Switch off anything wrong and
-              fix any date that landed badly — each row shows the words it came from.
+              <b style={{ color: C.ink }}>{found}</b>, on {groups.length} day
+              {groups.length === 1 ? "" : "s"}. Switch off anything wrong and fix any date that
+              landed badly — each row shows the words it came from.
             </p>
             {plan.unreadable && (
               <div className="fhj-import-left">
@@ -7172,30 +7266,37 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
             )}
           </Card>
 
-          {groups.map((g) => (
-            <div key={g.date}>
-              <div className="fhj-section mt-5 fhj-cat-symptom">
-                <h3 className="fhj-section-title">{fmtNice(g.date)}</h3>
-                <span className="text-[11px]" style={{ color: C.subtle }}>
-                  {g.items.length} row{g.items.length === 1 ? "" : "s"}
-                </span>
+          {groups.map((g) => {
+            const allOn = g.items.every((it) => !off.includes(it.id));
+            return (
+              <div key={g.date}>
+                <div className="fhj-section mt-5 fhj-cat-symptom">
+                  <h3 className="fhj-section-title">{fmtNice(g.date)}</h3>
+                  <button type="button" className="text-[11px] font-semibold"
+                    style={{ color: C.accentText }}
+                    onClick={() => { feedback("tap"); setDay(g.items, !allOn); }}>
+                    {allOn ? "None" : "All"} · {g.items.length}
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {g.items.map((it) => (
+                    <ImportRow key={it.id} item={it} on={!off.includes(it.id)}
+                      onToggle={() => {
+                        feedback("select");
+                        setOff((prev) => (prev.includes(it.id) ? prev.filter((x) => x !== it.id) : [...prev, it.id]));
+                      }}
+                      onDate={(d) => setDates((prev) => ({ ...prev, [it.id]: d }))} />
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-col gap-2">
-                {g.items.map((it) => (
-                  <ImportRow key={it.id} item={it} on={!off.includes(it.id)}
-                    onToggle={() => {
-                      feedback("select");
-                      setOff((prev) => (prev.includes(it.id) ? prev.filter((x) => x !== it.id) : [...prev, it.id]));
-                    }}
-                    onDate={(d) => setDates((prev) => ({ ...prev, [it.id]: d }))} />
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div className="fhj-import-commit">
             <Button block onClick={commit} disabled={!approved.length} icon="check">
-              Add {approved.length} row{approved.length === 1 ? "" : "s"} to my journal
+              {approved.length
+                ? `Add ${approved.length} row${approved.length === 1 ? "" : "s"} to my journal`
+                : "Nothing selected"}
             </Button>
             <Button variant="ghost" block className="mt-2" onClick={startOver}>
               Throw this away and start again
@@ -7208,44 +7309,49 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
             <label className="fhj-eyebrow" htmlFor="fhj-import-text">Your notes</label>
             <textarea id="fhj-import-text" rows={10} value={text}
               onChange={(e) => setText(e.target.value)}
+              onPaste={onPaste}
               placeholder={"8.21 weight 12pm 182\n8.21 food, 2.5 hamburger, havarti cheese\n2acv premeal + 2 pepsin combo 12:30pm\n8.21 4pm bowel movement, small firm sank\n8.21 Trazo 50mg STARTING NEW MED. Day 1"}
               className="w-full mt-2 rounded-xl px-3 py-2.5 text-sm outline-none resize-y leading-relaxed"
               style={{ background: C.faint, border: `1px solid ${C.line}`, color: C.ink, minHeight: "9rem" }} />
             <div className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
               Shorthand is fine. Dates like “8.21”, “yesterday” or “Thu” are worked out against today.
+              You can paste a screenshot straight in here too.
             </div>
           </Card>
 
           <Card className="mt-3">
-            <div className="fhj-eyebrow mb-2">Or a screenshot of them</div>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                try {
-                  /* Bigger and less compressed than a progress photo on
-                     purpose: this one has to stay *readable*, and 1024px at
-                     q0.6 turns a screenshot of small text into mush. */
-                  setShot(await processImage(file, { fullEdge: 1600, fullQ: 0.85 }));
-                } catch {
-                  setError("Couldn't read that image — try another one.");
-                }
-              }} />
-            {shot ? (
-              <div className="flex items-center gap-3">
-                <img src={shot.thumb} alt="" className="rounded-lg"
-                  style={{ width: 56, height: 56, objectFit: "cover", border: `1px solid ${C.line}` }} />
-                <div className="flex-1 min-w-0 text-[12.5px]" style={{ color: C.sub }}>
-                  Screenshot ready to read
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => setShot(null)}>Remove</Button>
+            <div className="flex items-baseline justify-between gap-2 mb-2">
+              <span className="fhj-eyebrow">Or screenshots of them</span>
+              {shots.length > 0 && (
+                <span className="text-[11px]" style={{ color: C.subtle }}>
+                  {shots.length} of {MAX_IMPORT_IMAGES}
+                </span>
+              )}
+            </div>
+            {/* The list is copied out *before* the input is reset. `e.target.files`
+                is live: clearing `value` to make re-picking the same file work
+                empties the FileList too, and handing the emptied one on is a
+                picker that silently does nothing. */}
+            <input ref={fileRef} type="file" accept="image/*,text/plain,.txt,.md" multiple className="hidden"
+              onChange={(e) => { const picked = [...(e.target.files || [])]; e.target.value = ""; addFiles(picked); }} />
+            {shots.length > 0 && (
+              <div className="fhj-import-shots">
+                {shots.map((s, i) => (
+                  <ImportShot key={i} shot={s} index={i} total={shots.length}
+                    onRemove={() => setShots((prev) => prev.filter((_, j) => j !== i))} />
+                ))}
               </div>
-            ) : (
+            )}
+            {shots.length < MAX_IMPORT_IMAGES && (
               <Button variant="secondary" block icon="camera" onClick={() => fileRef.current?.click()}>
-                Choose a screenshot
+                {shots.length ? "Add another screenshot" : "Choose screenshots"}
               </Button>
             )}
+            <div className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
+              {shots.length > 1
+                ? "Read in this order, as one continuous set — so a date at the top of one still applies to the lines under it in the next."
+                : `Up to ${MAX_IMPORT_IMAGES} at a time. Drop them anywhere on this screen, or a .txt file.`}
+            </div>
           </Card>
 
           {error && <div className="fhj-import-error">{error}</div>}
@@ -7258,6 +7364,13 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings }) {
             You'll see exactly what would be sent, and exactly what would be written, before either happens.
           </p>
         </>
+      )}
+
+      {dragging && (
+        <div className="fhj-import-drop" aria-hidden="true">
+          <Icon name="download" size={22} color={C.accentText} />
+          <span>Drop screenshots or a text file</span>
+        </div>
       )}
 
       {confirm && (
@@ -8874,7 +8987,7 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, go
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-2.5">Data</div>
         <p className="text-sm leading-relaxed mb-3.5" style={{ color: C.sub }}>
-          Everything is stored privately on this device. Export gives you CSV, Excel, and JSON backups.
+          Your journal is stored on this device. Export gives you CSV, Excel, and JSON backups.
         </p>
         <div className="flex flex-col gap-2">
           {goExport && (
@@ -9137,6 +9250,14 @@ function SunProfileCard({ profile, onSave }) {
    and sync. Both rewrite their own line rather than leaving a promise standing
    that the app has stopped keeping. A privacy card that is right by default and
    quietly wrong once you use a feature is worse than no card. */
+/* The card that has to track reality rather than the ideal.
+
+   Every switch in this app that can reach the network changes a sentence here,
+   and the sentence changes on the card rather than leaving a promise standing
+   that is no longer true. That is the whole design of it: a privacy claim is
+   worth exactly as much as its worst case, so the worst case is what it
+   prints. Nothing here says "everything else stays on this device" any more —
+   with AI on, two things can leave, and both are named. */
 function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEmail = null, contextOn: ctxOn = false }) {
   const [open, setOpen] = useState(false);
   const facts = [
@@ -9145,7 +9266,7 @@ function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEm
       : ["No account", "There's no sign-up, no email, no password. Nothing identifies you to anyone."],
     syncOn
       ? ["Encrypted before it's uploaded", "Your entries are sealed on this device with a key derived from your sync passphrase, which is never sent anywhere. The server holds dates and unreadable blocks. Because the app is delivered over the web, this can't protect you from someone who controls the site itself — and no HIPAA or medical-records claim is made."]
-      : ["No server", "Your entries, photos, and reports are written to this browser's storage and never uploaded. There is no backend to upload them to."],
+      : ["No server", "Your entries, photos, and reports are written to this browser's storage. There is no backend holding a copy, and nothing is uploaded on its own."],
     ["No tracking", "No analytics, no cookies, no advertising or third-party scripts of any kind."],
     /* Daily context is the third thing that can change the network line, and
        the only one that touches location — so it gets its own row rather than
@@ -9157,14 +9278,14 @@ function PrivacyCard({ aiEnabled = false, aiAuto = false, syncOn = false, syncEm
     // observations adds exactly one outbound call — the card says so, on the
     // card, rather than leaving a promise standing that is no longer true.
     aiAuto
-      ? ["Photos are sent as you attach them", "AI observations are on, and so is letting AI fill in the log. A photo you attach to a meal or a bowel entry is sent to your AI provider for a reading as soon as you add it, without a confirmation each time — that is what the switch in Settings turned on, and turning it back off restores the confirm step. Everything else still stays on this device."]
+      ? ["Photos are sent as you attach them", "AI observations are on, and so is letting AI fill in the log. A photo you attach to a meal or a bowel entry is sent to your AI provider for a reading as soon as you add it, without a confirmation each time — that is what the switch in Settings turned on, and turning it back off restores the confirm step. Two other things can reach your provider, and only when you ask: an analysis you run, and notes you paste into Import. Nothing else does."]
       : aiEnabled
-        ? ["One network call, on request", "AI observations are on. Nothing is sent automatically: each analysis you ask for sends a summary of your logged numbers to your AI provider, and shows you exactly what before it goes. Everything else still stays here, and the rest of the app works offline."]
+        ? ["Two things can be sent, and only when you ask", "AI observations are on. Nothing goes automatically. An analysis you run sends a summary of your logged numbers. Importing your own notes sends the notes — that one is the exception to everything else here, because the words are what is being read. Both show you the entire payload before it leaves, every time, and the rest of the app works offline."]
         : syncOn
           ? ["Still offline-first", "Saving never waits for the network. Everything is written here first and sent afterwards, so a full day logged in airplane mode is normal — it catches up when you're back."]
           : ctxOn
             ? ["One quiet request a day", "Daily context is the only thing here that reaches the network, and it only ever asks for the weather. Everything else stays on this device, and a full day logged in airplane mode is still normal — the weather simply fills in later."]
-            : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. (Turning on the optional AI observations, sync, or daily context in Settings is what changes this.)"],
+            : ["No network", "After the app loads once, it makes no network requests. Fonts ship with the app. You can log a full day in airplane mode. Four switches in Settings can change that — AI observations, importing your own notes, sync, and daily context — and each one says what it sends before it sends anything."],
     ["Your files, your move", "Exports and backups are ordinary files saved to your device. Where they go next is entirely up to you."],
   ];
   return (
@@ -14774,6 +14895,11 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
   );
 }
 
+/* How long the "bring your old notes in" offer stays on Today. Two weeks of
+   logged days is the point where a journal has its own history and an offer to
+   import somebody else's app becomes clutter. */
+const IMPORT_INVITE_UNTIL_DAYS = 14;
+
 const REPEAT_CAT = {
   food: "fhj-cat-food", routine: "fhj-cat-routine", photo: "fhj-cat-photo",
   measurement: "fhj-cat-symptom", note: "fhj-cat-symptom",
@@ -14828,6 +14954,56 @@ function RepeatRow({ library, onLog, onOpenPicker }) {
         })}
       </Rail>
     </>
+  );
+}
+
+/** The invitation a new journal needs, and an old one does not.
+
+    Almost nobody arrives at a health journal having tracked nothing. They have
+    months of it — in a notes file, a chat with themselves, a photo of a page —
+    and the reason it never gets in is that typing it back in one sheet at a
+    time is an hour of work. Import does it in about a minute, and the whole
+    problem with Import is that it lives behind a button in a menu, which is
+    exactly where somebody in their first week will not look.
+
+    So it is offered, once, where they are: under the day, for as long as the
+    journal is young enough for it to be worth doing. Three things keep it an
+    invitation rather than a nag.
+
+    **It retires itself.** Past two weeks of logged days the journal has its own
+    history and this stops appearing, whether or not anybody dismissed it.
+
+    **It can be sent away for good**, and that is stored, so it never comes back
+    on the next launch to ask again.
+
+    **It never pretends.** Import needs the optional AI, so when that is off the
+    card says so in its own copy and its button goes to Settings — an offer that
+    quietly turns into a setup screen is a bait, and this app does not have any
+    of those. */
+function ImportInvite({ aiReady, onImport, onSetup, onDismiss }) {
+  return (
+    <Card className="mt-6 fhj-invite">
+      <div className="flex items-start gap-3">
+        <span className="fhj-invite-mark"><Icon name="spark" size={15} color={C.accentText} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="fhj-eyebrow mb-1">Been tracking somewhere else?</div>
+          <h2 className="font-display text-[1.1rem] leading-tight mb-1.5">Bring those notes in</h2>
+          <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
+            A notes file, a chat with yourself, a photo of a page. Paste it or drop a
+            screenshot in, and it lands as meals, doses, numbers and notes{" "}
+            <b style={{ color: C.ink }}>on the days your own notes give</b> — months of shorthand
+            in about a minute. You approve every row before a word of it is written.
+            {!aiReady && " It needs the optional AI switched on first, because reading shorthand is the whole job."}
+          </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Button size="sm" icon={aiReady ? "download" : "key"} onClick={aiReady ? onImport : onSetup}>
+              {aiReady ? "Import my notes" : "Set it up"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onDismiss}>Not for me</Button>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -15661,7 +15837,7 @@ function PinnedExperiment({ result, onOpen, onHighlight }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus, goSun, goLabs, goExperiments, goImport, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
   /* Where to put the sun. A place set by hand wins over the last fetched one,
      and both are absent when daily context is off — in which case every sun
@@ -15694,6 +15870,13 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
   const numberFields = useMemo(() => tpl.fields.filter((f) => f.type === "number"), [tpl]);
   const aiEnabled = !!ai?.enabled && !viewer;
   const aiAuto = aiEnabled && ai?.auto === true;
+
+  /* Whether to offer the note import. A journal with a fortnight of its own
+     days behind it has a history already and does not need the offer; one
+     without is exactly who it is for. See ImportInvite. */
+  const offerImport = !viewer && !!goImport
+    && profile.importOffered !== "done"
+    && entries.length < IMPORT_INVITE_UNTIL_DAYS;
 
   /* What this particular setup can answer, and the fields each tile writes
      to. The condition-shaped tiles are only as real as the questions behind
@@ -15993,6 +16176,14 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           slot: log.slot, log, done: !log.skipped, skipped: !!log.skipped,
         })} />
 
+      {offerImport && (
+        <ImportInvite
+          aiReady={aiEnabled}
+          onImport={() => { feedback("nav"); goImport(); }}
+          onSetup={() => { feedback("nav"); goSettings(); }}
+          onDismiss={() => { feedback("tap"); onDismissImport?.(); }} />
+      )}
+
       <GlanceCard tpl={tpl} keyField={keyField} entry={today} food={food}
         streak={streak} onOpen={goInsights} />
 
@@ -16146,7 +16337,14 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
    first — before the README, before the store copy. */
 const PROMISES = [
   ["key", "No account. No sign-up, no email address, no password to lose."],
-  ["device", "Your journal is written to this device and read back from it. There is no server holding it."],
+  ["device", "Your journal is written to this device and read back from it. There is no server holding it, and no copy you did not ask for."],
+  /* The honest version of what used to be an absolute. Four things in this app
+     can reach the network — sync, AI observations, daily weather, and reading
+     your own notes in — and all four are off until somebody turns them on and
+     say what they are sending before they send it. A promise that says
+     "nothing ever leaves" is a promise this build cannot keep, and a privacy
+     claim that is 95% true is worth less than one that is checkable. */
+  ["link", "Nothing leaves this device unless you switch it on — sync, AI, the weather, or reading your old notes in. Each one names what it sends, every time, before it goes."],
   ["eye", "No analytics, no trackers, no ads. Nobody is counting your taps."],
   ["download", "Export the whole thing to a spreadsheet whenever you want. It's your data, in a file you keep."],
   ["trash", "Delete everything, permanently, from Settings. No 'contact us to close your account'."],
@@ -17793,6 +17991,14 @@ export default function App({ viewer = false }) {
     },
   }));
 
+  /* "Not for me", remembered. Stored as a word rather than a boolean so a
+     backup reads as something a person could understand, and absent until it
+     happens so it never appears in one as a key nobody can explain. */
+  const dismissImportInvite = () => setDb((prev) => ({
+    ...prev,
+    profile: { ...prev.profile, importOffered: "done", updatedAt: new Date().toISOString() },
+  }));
+
   const setQuickAdd = (ids, order, opts) => setDb((prev) => ({
     ...prev,
     profile: {
@@ -17901,6 +18107,7 @@ export default function App({ viewer = false }) {
     goSun: () => setScreen("sun"), goLabs: () => setScreen("labs"),
     goExperiments: () => setScreen("experiments"),
     goImport: () => setScreen("import"),
+    onDismissImport: dismissImportInvite,
     pinnedExperiments: screen === "dashboard" ? experimentResults : [],
     onHighlight: illuminate,
   };
@@ -18057,7 +18264,7 @@ export default function App({ viewer = false }) {
   } else if (screen === "import") {
     content = (
       <NoteImportScreen db={db} setDb={setDb} aiEnabled={!!db.ai?.enabled && !viewer}
-        goBack={goHome} goSettings={() => setScreen("settings")} />
+        goBack={goHome} goSettings={() => setScreen("settings")} openLog={goToLog} />
     );
   } else if (screen === "gallery") {
     content = <PhotoGalleryScreen profile={profile} entries={entries} tpl={tpl} onSetBaseline={setPhotoBaseline} goBack={goHome} />;
