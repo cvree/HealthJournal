@@ -180,6 +180,48 @@ behind it come out in the export.
 It is a written record and nothing more. It does not know what interacts with what, does not
 check doses, and will not tell you whether something is working.
 
+**Rituals — the routine as a process, and a weekly tune-up that keeps it honest.** A shower is
+not one tick. It is the wash, and then the ninety seconds afterwards where the moisturiser either
+goes on damp skin or doesn't work — and that second part is the one that matters and the one that
+gets dropped. So a **ritual** is an ordered list of steps with one name on it: *Shower & after*,
+*Morning meds*, *Night meds & supplements*, *Wind-down*. Six are already written out, steps and
+hints and all, and the two medication ones **fill themselves in from the routine you already
+keep** — pick "Morning meds" and everything filed under Morning is already a step, carrying its
+dose.
+
+On Today each one is a single row. **Tapping the row finishes the whole ritual**, in one write,
+with an Undo in the toast; tapping it again takes it back. Beside the name: the step count, the
+part of the day, a streak once there is one, and seven dots for the week behind it. A day the
+ritual was never asked for is drawn as a gap, not as a failure.
+
+The row's second control opens the **player** — the same ritual as a list of very large steps,
+one of them lit as the next, each carrying its reason in a few words and, where the instruction
+has a number in it, a timer you can start and ignore. A step can point at something in your
+routine, and ticking it writes the dose into your medication history exactly as the routine
+checklist would.
+
+**Once a week, the app asks how one ritual is going — one at a time, and never two on the same
+day.** Each ritual is given its own weekday, spread as far from the others as the week allows, so
+four rituals set up on the same Sunday do not all come back on the same Sunday. Two tune-ups can
+never land within two days of each other whatever their days say, none appears before there is a
+week and three days of history behind it, and "not now" costs two days rather than switching the
+thing off.
+
+It opens with the week you had rather than a question — the seven dots landing one at a time, the
+count, the best run so far, and a line that does not pretend a hard week was a good one. Then two
+one-tap questions, the second of which is skipped entirely on a week nothing got in the way of.
+Then it pays out: a short list of **changes to your plan written from your own week** — *make
+"Moisturise within 3 minutes" optional, 2 of 7 days* · *move it to bedtime, you usually finish
+around 9:55 pm* · *stop asking on Wednesday, not once in four weeks* — any of which is applied by
+tapping it. "It's good — leave it" is a real answer, and it is listed first on a week that went
+well.
+
+A run is a record on the same terms a dose is: it keeps its own copy of the name and of how many
+steps were required the day it happened, so trimming a step tomorrow can never un-complete a
+fortnight. An absent run means nothing was said; "not today" is its own, separate fact. Rituals
+come out in the export as two sheets — the plan, and one row per ritual per day whose `step_list`
+column names the steps actually done, which is the column worth sorting by.
+
 **Bowel movements.** A quick log with Bristol type, amount, colour, consistency, urgency,
 straining, discomfort, notes, and an optional photo. If you ask it to, AI can suggest the
 observable attributes from a photo — Bristol type, colour, consistency, form, and nothing else.
@@ -866,7 +908,9 @@ health-journal/
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
 │   │                           #   first run (the doorway and five acts),
-│   │                           #   rail (the one horizontal scroller)
+│   │                           #   rail (the one horizontal scroller),
+│   │                           #   rituals (the day's card, the step player,
+│   │                           #     the weekly tune-up, the manage screen)
 │   ├── lib/
 │   │   ├── theme.ts            # design tokens, dark/light/night, hue derivation,
 │   │   │                       #   contrast solving
@@ -875,6 +919,7 @@ health-journal/
 │   │   ├── storage.ts          # IndexedDB window.storage polyfill
 │   │   ├── tracking.ts         # food + bowel logs, food library, goals, daily metrics
 │   │   ├── routine.ts          # meds/supplements/creams/products: items, doses, checklist
+│   │   ├── rituals.ts          # multi-step routines, runs, streaks, staggered weekly tune-ups
 │   │   ├── metrics.ts          # the one registry of chartable derived metrics
 │   │   ├── heatmap.ts          # the 12-month year grid, summaries and colour ramp
 │   │   ├── distribution.ts     # days per score, the three middles, hard/calm counts

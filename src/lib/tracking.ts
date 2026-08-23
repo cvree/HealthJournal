@@ -24,6 +24,7 @@ import type {
   BowelAiResult, BowelLog, FoodAiResult, FoodItem, FoodLog, MealCategory,
   NamedReminder, NutritionGoals, NutritionValues, RoutineItem, RoutineLog,
 } from "../types/models";
+import type { Ritual, RitualRun } from "./rituals";
 
 export type { BowelLog, FoodItem, FoodLog, MealCategory, NutritionGoals, NutritionValues };
 
@@ -623,6 +624,13 @@ export interface MetricCtx {
       nothing, so naming them here costs no runtime dependency. */
   routine?: RoutineLog[];
   routineItems?: RoutineItem[];
+  /** Rituals and their runs, on the same terms and for the same reason:
+      ./rituals imports this module for the clock helpers, so its metrics are
+      defined there and folded in by ./metrics. The import below is type-only,
+      which is erased at build time — naming the shapes here costs no runtime
+      dependency and no cycle. */
+  rituals?: Ritual[];
+  ritualRuns?: RitualRun[];
   date: string;
 }
 

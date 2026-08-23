@@ -22,7 +22,8 @@ import { sanitizeCustomField } from "./lib/questions";
 import { validateDatabase } from "./lib/validate";
 import {
   serialize, csvEscape, toCSV, buildWideTable, metaCols as metaColsTyped,
-  buildFoodTable, buildBowelTable, buildRoutineTable, buildRoutineItemsTable, logsInRange,
+  buildFoodTable, buildBowelTable, buildRoutineTable, buildRoutineItemsTable,
+  buildRitualsTable, buildRitualRunsTable, logsInRange,
   buildLabsTable, buildSunTable, buildContextTable,
 } from "./lib/exports";
 import { playSound, setSoundEnabled, suspendSound, resumeSound } from "./lib/sound";
@@ -113,6 +114,22 @@ import {
   routineSummary, itemSummary, logLine, searchItems,
   sanitizeRoutineItems, sanitizeRoutineLogs,
 } from "./lib/routine";
+/* ---------- rituals ----------
+
+   The routine as a *process* rather than a list: a shower and the three
+   minutes after it, the morning handful, the wind-down. The arithmetic — most
+   of all the scheduler that keeps the weekly tune-ups from arriving in a heap
+   — lives in ./lib/rituals; the three surfaces live in ./components/Rituals.
+   This file owns the writes and decides which single tune-up, if any, today
+   is allowed to show. */
+import {
+  applyTweak, clearRun, completeRun, dueReview, newReview, newRun,
+  pickReviewDay, ritualFromStarter, runOn, spreadReviewDays, tweakReceipt,
+  RITUAL_STARTERS, sanitizeRituals, sanitizeRitualRuns, sanitizeRitualReviews,
+} from "./lib/rituals";
+import {
+  RitualsCard, RitualPlayer, RitualTuneUp, RitualsScreen,
+} from "./components/Rituals";
 import {
   hasStoredKey, loadConnection, saveConnection, clearKey, maskKey, testConnection,
   buildAnalysisInput, summariseInput, runPatternAnalysis, strengthLabel, looksLikeKey,
@@ -161,7 +178,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.23.0";
+export const APP_VERSION = "1.24.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -1037,7 +1054,47 @@ function genSampleData() {
     if (rng() < 0.2) at("21:00", routineItems[3], undefined);
   }
 
-  return { profile, entries, routineItems, routine, ack: false };
+  /* Two rituals, which is the number the stagger is worth seeing at: their
+     tune-up days are three apart, so the demo never shows two popups on one
+     day and the Rituals screen says so out loud. The runs are deliberately
+     uneven — the shower's after-care step is the one that slips, which is
+     exactly the finding the weekly tune-up is built to hand back. */
+  const shower = ritualFromStarter(RITUAL_STARTERS[0], { items: routineItems, existing: [], today: t0 });
+  const morning = ritualFromStarter(RITUAL_STARTERS[1], { items: routineItems, existing: [shower], today: t0 });
+  const rituals = [
+    { ...shower, id: "rt_demo_shower", createdAt: iso(addDays(t0, -30)), updatedAt: iso(addDays(t0, -30)) },
+    { ...morning, id: "rt_demo_morning", createdAt: iso(addDays(t0, -30)), updatedAt: iso(addDays(t0, -30)) },
+  ];
+  const ritualRuns = [];
+  for (let i = 20; i >= 1; i--) {
+    const date = addDays(t0, -i);
+    for (const ritual of rituals) {
+      if (rng() > 0.82) continue; // the days nothing was said
+      const steps = ritual.steps.filter((st) => !st.optional);
+      /* The last step of the shower is the moisturiser, and it is the one that
+         gets missed — a demo where the drop-off is random teaches nothing. */
+      const drops = ritual.id === "rt_demo_shower" && rng() < 0.45;
+      const done = (drops ? steps.slice(0, -1) : steps).map((st) => st.id);
+      ritualRuns.push({
+        id: `rr_demo_${ritual.id}_${date}`, date, time: ritual.slot === "morning" ? "07:35" : "21:40",
+        ritualId: ritual.id, name: ritual.name, total: steps.length, done,
+        completedAt: done.length === steps.length
+          ? `${date}T${ritual.slot === "morning" ? "07:48" : "21:55"}` : undefined,
+        createdAt: iso(date), updatedAt: iso(date),
+      });
+    }
+  }
+
+  /* Both already tuned up this week, two days apart. That is deliberate on two
+     counts: the demo journal opens on the dashboard rather than under a popup,
+     and the Rituals screen can show the thing worth showing — two next-tune-up
+     dates that are not the same day. */
+  const ritualReviews = [
+    { id: "rv_demo_1", ritualId: "rt_demo_shower", date: addDays(t0, -2), felt: 4, friction: "time", tweak: "keep", createdAt: iso(addDays(t0, -2)) },
+    { id: "rv_demo_2", ritualId: "rt_demo_morning", date: addDays(t0, -4), felt: 5, tweak: "keep", createdAt: iso(addDays(t0, -4)) },
+  ];
+
+  return { profile, entries, routineItems, routine, rituals, ritualRuns, ritualReviews, ack: false };
 }
 
 /* ---------- persistence (window.storage with in-memory fallback) ---------- */
@@ -6421,7 +6478,9 @@ function ExportScreen({ db, setDb, goPack }) {
   const labsInRange = logsInRange(db.labs || [], bounds.start, bounds.end);
   const sunInRange = logsInRange(db.sun || [], bounds.start, bounds.end);
   const contextInRange = logsInRange(db.context || [], bounds.start, bounds.end);
+  const ritualRunsInRange = logsInRange(db.ritualRuns || [], bounds.start, bounds.end);
   const routineItems = db.routineItems || [];
+  const rituals = db.rituals || [];
   const count = inRange.length;
   const stamp = `${bounds.start === "0000-01-01" ? "all-time" : bounds.start + "_to_" + bounds.end}`;
 
@@ -6453,6 +6512,8 @@ function ExportScreen({ db, setDb, goPack }) {
       ["Bowel", "One row per bowel movement. ai_* columns are what a model suggested from a photo, kept separate from what you recorded"],
       ["Routine", "One row per dose taken or skipped — medications, supplements, creams, products. Names and doses are what you wrote at the time"],
       ["Routine items", "What you track and how often it is asked for — the plan behind the Routine sheet"],
+      ["Rituals", "Your named routines and the steps in each — the plan behind the Ritual days sheet"],
+      ["Ritual days", "One row per ritual per day. `step_list` names the steps actually done, which is the column worth sorting by"],
       ["Measurements", "Blood work and measurements somebody else took. lab_reference_* columns are the range your laboratory printed, not this app's"],
       ["Time outside", "One row per sun session. vitamin_d_estimated_iu_* is a research-model estimate of production, not a blood level — see the column that says so"],
       ["Weather", "One row per day of environmental context, if you switched it on. Coordinates are the coarse ones the app stored, rounded to about a kilometre"],
@@ -6515,6 +6576,20 @@ function ExportScreen({ db, setDb, goPack }) {
         : XLSX.utils.aoa_to_sheet([["Nothing in your routine yet."]]),
       "Routine items");
 
+    /* Rituals get the same two-sheet split as the routine, and for the same
+       reason: the plan changes, the record must not. */
+    const ritualsTbl = buildRitualsTable(rituals);
+    XLSX.utils.book_append_sheet(wb,
+      ritualsTbl.rows.length ? XLSX.utils.aoa_to_sheet([ritualsTbl.header, ...ritualsTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No rituals set up yet."]]),
+      "Rituals");
+
+    const ritualRunsTbl = buildRitualRunsTable(ritualRunsInRange, rituals);
+    XLSX.utils.book_append_sheet(wb,
+      ritualRunsTbl.rows.length ? XLSX.utils.aoa_to_sheet([ritualRunsTbl.header, ...ritualRunsTbl.rows])
+        : XLSX.utils.aoa_to_sheet([["No rituals recorded in this date range."]]),
+      "Ritual days");
+
     /* Three sheets rather than columns on Entries, because none of the three
        is one-value-per-day: several measurements can land on one date, so can
        several sun sessions, and the weather is a different *kind* of row from
@@ -6549,6 +6624,7 @@ function ExportScreen({ db, setDb, goPack }) {
       profile, entries: inRange,
       food: foodInRange, bowel: bowelInRange,
       routine: routineInRange, routineItems,
+      rituals, ritualRuns: ritualRunsInRange, ritualReviews: db.ritualReviews || [],
       labs: labsInRange, sun: sunInRange, context: contextInRange,
       experiments: db.experiments || [],
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
@@ -7604,6 +7680,8 @@ async function buildFullBackup(db) {
     profile: db.profile, entries: db.entries, reports: db.reports || [],
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
     routine: db.routine || [], routineItems: db.routineItems || [],
+    rituals: db.rituals || [], ritualRuns: db.ritualRuns || [],
+    ritualReviews: db.ritualReviews || [],
     episodes: db.episodes || [],
     /* The 1.21 collections. Sun sessions, lab results and experiments are
        journal content and travel like everything above. The environmental
@@ -7685,7 +7763,14 @@ async function restoreBackup(obj, setDb) {
     profile: obj.profile, entries: obj.entries, reports: Array.isArray(obj.reports) ? obj.reports : [],
     food: obj.food, bowel: obj.bowel, foods: obj.foods,
     routine: obj.routine, routineItems: obj.routineItems,
+    rituals: obj.rituals, ritualRuns: obj.ritualRuns, ritualReviews: obj.ritualReviews,
     episodes: obj.episodes,
+    /* The 1.21 collections were being written into every backup and dropped on
+       the way back in — a restore silently lost every sun session, lab result,
+       experiment and day of weather. Carried through here for the same reason
+       the rituals above are: a backup that cannot restore what it saved is not
+       a backup. */
+    sun: obj.sun, labs: obj.labs, experiments: obj.experiments, context: obj.context,
     // `enabled` is deliberately not restored — see buildFullBackup.
     ai: { ...DEFAULT_AI, analysis: obj.ai?.analysis ?? null, dismissed: Array.isArray(obj.ai?.dismissed) ? obj.ai.dismissed : [] },
     ack: true, onboarded: true,
@@ -15842,7 +15927,7 @@ function PinnedExperiment({ result, onOpen, onHighlight }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
   /* Where to put the sun. A place set by hand wins over the last fetched one,
      and both are absent when daily context is off — in which case every sun
@@ -16147,6 +16232,16 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             onLogRows={onLogRoutineRows}
             onLogAsNeeded={(item) => onSaveRoutine(logFromItem(item, { date: todayStr(), slot: slotForTime(localTime()) }))}
             onManage={goRoutine} />
+
+          {/* And the rituals directly under it, because they answer the same
+              question one level up: the routine is *what*, a ritual is *the
+              order it happens in*. Tapping a row here says the whole thing is
+              done — the steps are one more tap away, on the days somebody
+              wants them. */}
+          <RitualsCard
+            rituals={rituals} runs={ritualRuns} date={todayStr()} viewer={viewer}
+            onComplete={onCompleteRitual} onClear={onClearRitual}
+            onOpen={onPlayRitual} onManage={goRituals} />
         </>
       )}
 
@@ -16890,6 +16985,15 @@ function migrateDb(data) {
   /* The routine, for the same reason and on the same terms. */
   d.routineItems = sanitizeRoutineItems(d.routineItems);
   d.routine = sanitizeRoutineLogs(d.routine);
+  /* Rituals, their runs and their tune-ups. `spreadReviewDays` runs here
+     rather than at write time because the collision it fixes is only ever
+     created by a *file*: two rituals restored from a backup written before the
+     review day existed both land on Sunday, and the whole promise of the
+     feature is that they don't. It only moves rituals that actually clash, so
+     a spread somebody's app has been using is never reshuffled under them. */
+  d.rituals = spreadReviewDays(sanitizeRituals(d.rituals));
+  d.ritualRuns = sanitizeRitualRuns(d.ritualRuns);
+  d.ritualReviews = sanitizeRitualReviews(d.ritualReviews);
   /* Flares, likewise. These drive every duration in Insights, so a row with the
      dates the wrong way round would print negative weeks — sanitizeEpisodes
      repairs that rather than trusting the file. */
@@ -17082,6 +17186,15 @@ export default function App({ viewer = false }) {
      is that it survives navigation — light up a fortnight on Insights, go to
      History, and the same fortnight is lit. */
   const [lit, setLit] = useState(null); // { dates: Set<string>, label: string }
+  /* Which ritual the step player is open on, by id. In the shell rather than
+     in Today because both Today and the Rituals screen open the same player,
+     and two copies of it would be two places for a half-ticked shower to
+     live. */
+  const [playingRitual, setPlayingRitual] = useState(null);
+  /* A tune-up the person waved away this session. The scheduler's own memory
+     is a review row, written on "Not now" — this is only here so dismissing it
+     doesn't cost a re-render fight before that write lands. */
+  const [tuneDismissed, setTuneDismissed] = useState(null);
   /* Whether a context fetch is in flight, so the settings card can say so and
      two effects can never race each other into the same window. */
   const contextBusy = useRef(false);
@@ -17850,6 +17963,142 @@ export default function App({ viewer = false }) {
     });
   };
 
+  /* ---------- rituals ----------
+
+     A ritual is a plan and a run is a record, exactly like a routine item and
+     a routine log — so the plan is edited (no toast, the sheet was the
+     receipt) and the day's answer is written with an Undo behind it.
+
+     Two seams worth naming.
+
+     The review day is assigned *here*, on insert, rather than trusted from
+     whoever built the object. Every path that makes a ritual — a starter, a
+     blank one, a restored file — goes through this function, so this is the
+     one place that can promise no two tune-ups share a weekday, and a promise
+     kept in one place is a promise.
+
+     And a step that points at a routine item writes a dose as well as a tick.
+     That is the whole reason "Morning meds" is worth having as a ritual: it is
+     one surface, and the medication history still fills in behind it. */
+  const saveRitual = (ritual) => setDb((prev) => {
+    const rows = prev.rituals || [];
+    const i = rows.findIndex((r) => r.id === ritual.id);
+    if (i >= 0) return { ...prev, rituals: rows.map((r) => (r.id === ritual.id ? ritual : r)) };
+    return { ...prev, rituals: [...rows, { ...ritual, reviewDay: pickReviewDay(rows, todayStr()) }] };
+  });
+
+  const deleteRitual = (ritual) => {
+    const deviceId = engineRef.current?.getDeviceId?.() || "local";
+    setDb((prev) => addTombstone(
+      { ...prev, rituals: (prev.rituals || []).filter((r) => r.id !== ritual.id) },
+      "ritual", ritual.id, deviceId
+    ));
+    engineRef.current?.noteDeleted?.("ritual", ritual.id);
+    if (playingRitual === ritual.id) setPlayingRitual(null);
+    toast({
+      text: `${ritual.name} removed`,
+      icon: "trash",
+      cat: "fhj-cat-routine",
+      /* The runs are deliberately left alone. They carry their own copy of the
+         name, so the history stays readable, and an undo brings the plan back
+         to a week that never stopped existing. */
+      undo: () => {
+        setDb((prev) => ({
+          ...prev,
+          rituals: [...(prev.rituals || []), ritual],
+          tombstones: (prev.tombstones || []).filter((t) => !(t.kind === "ritual" && t.id === ritual.id)),
+        }));
+        engineRef.current?.noteDeleted?.("ritual", ritual.id);
+      },
+    });
+  };
+
+  const saveRitualRun = (run) => setDb((prev) => {
+    const rows = prev.ritualRuns || [];
+    const i = rows.findIndex((r) => r.id === run.id);
+    return { ...prev, ritualRuns: i >= 0 ? rows.map((r) => (r.id === run.id ? run : r)) : [...rows, run] };
+  });
+
+  /* A step pointing at a routine item, ticked or unticked. Writes the dose the
+     same way the routine checklist would, so the two surfaces cannot disagree
+     about whether this morning's vitamin D happened. */
+  const logRitualStep = (ritual, step, ticked, date) => {
+    const item = (db.routineItems || []).find((i) => i.id === step.itemId);
+    if (!item) return;
+    if (ticked) {
+      const already = (db.routine || []).some((r) => r.date === date && r.itemId === item.id && !r.skipped);
+      if (already) return;
+      const log = logFromItem(item, { date, slot: ritual.slot });
+      setDb((prev) => ({
+        ...prev,
+        routine: [...(prev.routine || []), log],
+        routineItems: bumpItemUse(prev.routineItems || [], item.id),
+      }));
+      return;
+    }
+    const log = (db.routine || []).find((r) => r.date === date && r.itemId === item.id && !r.skipped);
+    if (log) setDb((prev) => ({ ...prev, routine: (prev.routine || []).filter((r) => r.id !== log.id) }));
+  };
+
+  /* The one-tap path from Today: the whole ritual, done, with a single Undo.
+     This is the interaction the feature is built to protect — everything else
+     here exists so that this stays one tap. */
+  const completeRitual = (ritual) => {
+    const date = todayStr();
+    const before = db.ritualRuns || [];
+    const run = completeRun(runOn(before, ritual.id, date) || newRun(ritual, date), ritual);
+    saveRitualRun(run);
+    for (const step of ritual.steps) {
+      if (step.itemId) logRitualStep(ritual, step, true, date);
+    }
+    const routineBefore = db.routine || [];
+    const itemsBefore = db.routineItems || [];
+    toast({
+      text: `${ritual.name} — done`,
+      cat: "fhj-cat-routine",
+      undo: () => setDb((prev) => ({
+        ...prev, ritualRuns: before, routine: routineBefore, routineItems: itemsBefore,
+      })),
+    });
+  };
+
+  const clearRitual = (ritual) => {
+    const date = todayStr();
+    const run = runOn(db.ritualRuns || [], ritual.id, date);
+    if (!run) return;
+    saveRitualRun(clearRun(run));
+  };
+
+  /* ---------- the weekly tune-up ----------
+
+     Answering writes a review row, which is also what the scheduler reads to
+     decide that this ritual has been asked about — so "answered" and "won't be
+     asked again this week" are the same fact rather than two that can drift.
+     A dismissal writes the same row with `snoozed`, which costs a couple of
+     days instead of a week. */
+  const answerTuneUp = (ritual, answers, tweak) => {
+    setDb((prev) => {
+      const review = newReview({ ...answers, ritualId: ritual.id, date: todayStr() });
+      const rituals = tweak && tweak.action.type !== "keep"
+        ? (prev.rituals || []).map((r) => (r.id === ritual.id ? applyTweak(r, tweak.action) : r))
+        : prev.rituals || [];
+      return { ...prev, rituals, ritualReviews: [...(prev.ritualReviews || []), review] };
+    });
+    setTuneDismissed(ritual.id);
+    if (tweak) toast({ text: tweakReceipt(ritual, tweak), cat: "fhj-cat-routine" });
+  };
+
+  const snoozeTuneUp = (ritual) => {
+    setTuneDismissed(ritual.id);
+    setDb((prev) => ({
+      ...prev,
+      ritualReviews: [
+        ...(prev.ritualReviews || []),
+        newReview({ ritualId: ritual.id, date: todayStr(), snoozed: true }),
+      ],
+    }));
+  };
+
   /* ---------- flares ----------
      Marked by hand, never detected. `startFlare` refuses a second open flare
      for the same metric and hands back the running one, so the button can only
@@ -18159,6 +18408,25 @@ export default function App({ viewer = false }) {
     : [];
   const experimentStarters = screen === "experiments" ? availableStarters(seriesSource) : [];
 
+  /* The ritual the player is open on, resolved from its id so a delete or a
+     sync pull can never leave the sheet holding a stale copy. */
+  const playRitual = (db.rituals || []).find((r) => r.id === playingRitual) || null;
+
+  /* Today's one tune-up, or nothing at all.
+
+     Four conditions, and every one of them is a way of saying "not now":
+     the person has to be on Today (a popup over the export screen interrupts
+     work somebody chose to do), not in the read-only viewer, not already
+     looking at the player, and not have waved this one away this session. The
+     fifth and largest condition is `dueReview` itself, which enforces the
+     once-a-week, one-a-day, never-within-two-days stagger. */
+  const tuneUp = !viewer && screen === "dashboard" && !playingRitual && db.onboarded
+    ? (() => {
+        const r = dueReview(db.rituals || [], db.ritualRuns || [], db.ritualReviews || [], todayStr());
+        return r && r.id !== tuneDismissed ? r : null;
+      })()
+    : null;
+
   const todayProps = {
     profile, entries, openLog: goToLog, viewer, onPatch: upsertEntry,
     food: db.food || [], bowel: db.bowel || [], foods: db.foods || [],
@@ -18168,8 +18436,12 @@ export default function App({ viewer = false }) {
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     onSaveRoutine: upsertLog("routine"), onDeleteRoutine: removeLog("routine"),
     onLogRoutineRows: saveRoutineRows,
+    rituals: db.rituals || [], ritualRuns: db.ritualRuns || [],
+    onCompleteRitual: completeRitual, onClearRitual: clearRitual,
+    onPlayRitual: (r) => setPlayingRitual(r.id),
     goSettings: () => setScreen("settings"), goSetup: () => setScreen("setup"),
     goFood: () => setScreen("food"), goRoutine: () => setScreen("routine"),
+    goRituals: () => setScreen("rituals"),
     goInsights: () => setScreen("insights"),
     onUpdateQuickAdd: setQuickAdd, onUseAction: noteActionUse, ai: db.ai, syncStatus,
     /* Quick Add can start and end a flare, so Today needs the episodes and the
@@ -18256,6 +18528,14 @@ export default function App({ viewer = false }) {
         items={db.routineItems || []} viewer={viewer}
         onSaveItem={saveRoutineItem} onDeleteItem={deleteRoutineItem}
         goDiary={() => setScreen("food")} />
+    );
+  } else if (screen === "rituals") {
+    content = (
+      <RitualsScreen
+        rituals={db.rituals || []} runs={db.ritualRuns || []} reviews={db.ritualReviews || []}
+        items={db.routineItems || []} date={todayStr()} viewer={viewer}
+        onSave={saveRitual} onDelete={deleteRitual}
+        onOpen={(r) => setPlayingRitual(r.id)} />
     );
   } else if (screen === "episode") {
     content = (
@@ -18363,7 +18643,8 @@ export default function App({ viewer = false }) {
   const screenTitle = {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
-    routine: "Your Routine", episode: "Flare", pack: "Appointment Pack", history: "History",
+    routine: "Your Routine", rituals: "Your Rituals", episode: "Flare",
+    pack: "Appointment Pack", history: "History",
     fitbit: "Import Health Data", import: "Import Your Notes",
     sun: "Sun & Outdoor Light", experiments: "Experiments", labs: "Labs & Measurements",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
@@ -18463,6 +18744,31 @@ export default function App({ viewer = false }) {
         <ToastHost />
 
       </div>
+
+      {/* The step player, in the shell rather than in a screen: Today and the
+          Rituals screen both open it, and one instance is what stops a
+          half-ticked shower existing twice. */}
+      {playRitual && !viewer && (
+        <RitualPlayer
+          ritual={playRitual}
+          run={runOn(db.ritualRuns || [], playRitual.id, todayStr())}
+          runs={db.ritualRuns || []}
+          date={todayStr()} viewer={viewer}
+          onSaveRun={saveRitualRun}
+          onStepLogged={(step, ticked) => logRitualStep(playRitual, step, ticked, todayStr())}
+          onEdit={() => { setPlayingRitual(null); setScreen("rituals"); }}
+          onClose={() => setPlayingRitual(null)} />
+      )}
+
+      {/* And the week's one tune-up. Only on Today, and only ever one: the
+          scheduler in ./lib/rituals decides which — see `dueReview`, which
+          returns null far more often than it returns a ritual. */}
+      {tuneUp && (
+        <RitualTuneUp
+          ritual={tuneUp} runs={db.ritualRuns || []} date={todayStr()}
+          onFinish={(answers, tweak) => answerTuneUp(tuneUp, answers, tweak)}
+          onSnooze={() => snoozeTuneUp(tuneUp)} />
+      )}
 
       {/* Outside the shell on purpose, all three of them.
 

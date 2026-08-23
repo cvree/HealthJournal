@@ -229,6 +229,99 @@ export function buildRoutineItemsTable(items: RoutineItem[]): ExportTable {
   return { header, rows };
 }
 
+/* ---------- rituals ----------
+
+   Two sheets, the same split as the routine's: the plan, and what happened.
+
+   The run sheet has one column the others do not — `steps_done` names the
+   steps rather than counting them. That column is the entire reason somebody
+   would open this sheet: "showered 18 of 21 days" is a number anybody could
+   have guessed, and "moisturised on 9 of the 18 days I showered" is the thing
+   that explains a month of skin. The count would have hidden it. */
+
+/** Structural view of a ritual: this module deliberately imports nothing but
+    the model contract, so the shapes it needs are described rather than
+    imported from the module that computes over them. */
+export interface RitualLike {
+  id: string;
+  name: string;
+  emoji?: string;
+  slot?: string;
+  days: number[];
+  reviewDay: number;
+  steps: { id: string; label: string; optional?: boolean; itemId?: string; seconds?: number }[];
+  archived?: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RitualRunLike {
+  id: string;
+  date: string;
+  time: string;
+  ritualId: string;
+  name: string;
+  total: number;
+  done: string[];
+  skipped?: boolean;
+  completedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const dayNames = (days: number[]): string =>
+  !days.length || days.length === 7 ? "every day" : days.map((d) => DAY_NAMES[d] || "?").join("; ");
+
+export function buildRitualsTable(rituals: RitualLike[]): ExportTable {
+  const header = [
+    "ritual", "when", "days", "steps", "required_steps", "step_list",
+    "tune_up_day", "archived", "notes", "ritual_id", "created_at", "updated_at",
+  ];
+  const rows: ExportCell[][] = [...rituals]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((r) => [
+      r.name,
+      r.slot ? timeLabel(r.slot as never) : "",
+      dayNames(r.days || []),
+      (r.steps || []).length,
+      (r.steps || []).filter((s) => !s.optional).length,
+      (r.steps || []).map((s) => (s.optional ? `${s.label} (optional)` : s.label)).join("; "),
+      DAY_NAMES[r.reviewDay] || "",
+      r.archived ? "y" : "",
+      r.notes || "",
+      r.id, r.createdAt, r.updatedAt,
+    ]);
+  return { header, rows };
+}
+
+export function buildRitualRunsTable(runs: RitualRunLike[], rituals: RitualLike[] = []): ExportTable {
+  const header = [
+    "date", "time", "ritual", "status", "steps_done", "steps_asked", "step_list",
+    "finished_at", "notes", "ritual_id", "run_id", "created_at", "updated_at",
+  ];
+  const byId = new Map(rituals.map((r) => [r.id, r]));
+  const rows: ExportCell[][] = [...runs]
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .map((run) => {
+      const ritual = byId.get(run.ritualId);
+      const labels = new Map((ritual?.steps || []).map((s) => [s.id, s.label]));
+      const done = (run.done || []).map((id) => labels.get(id) || id);
+      const status = run.skipped ? "skipped"
+        : done.length >= run.total && run.total > 0 ? "done"
+        : done.length ? "part" : "nothing recorded";
+      return [
+        run.date, run.time, run.name, status,
+        done.length, run.total, done.join("; "),
+        run.completedAt || "", run.notes || "",
+        run.ritualId, run.id, run.createdAt, run.updatedAt,
+      ];
+    });
+  return { header, rows };
+}
+
 /* ---------- labs, sun and the weather ----------
 
    Three more sheets, and one rule shared by all of them: what the app measured,

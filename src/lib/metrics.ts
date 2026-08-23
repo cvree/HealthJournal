@@ -14,6 +14,8 @@
 import type { DerivedMetric, MetricCtx } from "./tracking";
 import { BOWEL_METRICS, FOOD_METRICS } from "./tracking";
 import { ROUTINE_METRICS } from "./routine";
+import { RITUAL_METRICS } from "./rituals";
+import type { Ritual, RitualRun } from "./rituals";
 import type { BowelLog, FoodLog, RoutineItem, RoutineLog } from "../types/models";
 
 export type { DerivedMetric, MetricCtx };
@@ -23,6 +25,7 @@ export const DERIVED_METRICS: DerivedMetric[] = [
   ...FOOD_METRICS,
   ...BOWEL_METRICS,
   ...ROUTINE_METRICS,
+  ...RITUAL_METRICS,
 ];
 
 export const derivedMetric = (k: string): DerivedMetric | undefined =>
@@ -37,6 +40,8 @@ export interface MetricSource {
   bowel?: BowelLog[];
   routine?: RoutineLog[];
   routineItems?: RoutineItem[];
+  rituals?: Ritual[];
+  ritualRuns?: RitualRun[];
 }
 
 /** One day's context, ready to hand to `metric.value`. */
@@ -45,6 +50,8 @@ export const metricCtx = (source: MetricSource, date: string): MetricCtx => ({
   bowel: source.bowel || [],
   routine: source.routine || [],
   routineItems: source.routineItems || [],
+  rituals: source.rituals || [],
+  ritualRuns: source.ritualRuns || [],
   date,
 });
 

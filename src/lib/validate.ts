@@ -67,7 +67,8 @@ export function validateDatabase(data: unknown): ValidationResult {
      per-row repair lives in each module's own sanitizer, and this exists so
      the recovery screen can say "your lab results are not an array" instead of
      handing somebody a journal that quietly lost them. */
-  for (const key of ["sun", "labs", "experiments", "context"] as const) {
+  for (const key of ["sun", "labs", "experiments", "context",
+    "rituals", "ritualRuns", "ritualReviews"] as const) {
     if (d[key] !== undefined && !Array.isArray(d[key])) {
       errors.push(`${key} is not an array.`);
     }

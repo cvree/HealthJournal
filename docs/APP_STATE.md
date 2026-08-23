@@ -1035,6 +1035,82 @@
 > focus, but the press-and-slide selection is a pointer gesture with no keyboard analogue
 > beyond tabbing the open fan.
 
+> **2026-08-23 addendum 27 — 1.24: rituals, and the staggered weekly tune-up.**
+> The routine (`src/lib/routine.ts`) models *things*. This adds the second shape it could
+> never carry: a **process**. A `Ritual` is an ordered list of `RitualStep`s; a `RitualRun`
+> is one day's attempt; a `RitualReview` is one answered (or dismissed) weekly tune-up —
+> and that last collection is also the scheduler's only memory, which is what makes
+> "answered" and "won't be asked again this week" the same fact rather than two that drift.
+>
+> - **`src/lib/rituals.ts` (new, fully typed, pure).** Catalogues (`RITUAL_STARTERS`,
+>   `FEELINGS`, `FRICTIONS`, weekday names); constructors (`newRitual`/`newStep`/`newRun`/
+>   `newReview`, `ritualFromStarter`); run arithmetic (`toggleStep`, `completeRun`,
+>   `clearRun`, `skipRun`, `runProgress`, `runComplete`); reading (`dayBoard`,
+>   `boardProgress`, `ritualStreak`, `bestStreak`, `weekDots`, `ritualReport`); **the
+>   scheduler** (`pickReviewDay`, `nextReviewDate`, `dueReviews`, `dueReview`,
+>   `spreadReviewDays`); the payout (`suggestTweaks`, `applyTweak`, `tweakReceipt`,
+>   `tuneUpCards`, `weekLine`, `celebrationFor`); `RITUAL_METRICS`; three sanitisers.
+> - **`src/components/Rituals.tsx` (new, typed).** `RitualsCard` (Today), `RitualPlayer`,
+>   `RitualTuneUp`, `RitualsScreen` (+ `StarterPicker`, `RitualEditor`), `WeekStrip`. It
+>   inlines its own handful of SVG glyphs rather than importing the icon set, for the same
+>   reason `ThumbNav` takes `Icon` as a prop: the set lives in App.tsx and App.tsx imports
+>   this file.
+>
+> **The scheduler is the feature.** The failure it is built around: four rituals set up on
+> one Sunday afternoon produce four dialogs the next Sunday, and the feature is off by the
+> third week. Five rules, all tested: each ritual gets its own weekday (`pickReviewDay`
+> picks the least-used day and, among ties, the one with the widest circular gap to any day
+> already taken — seven rituals fill seven days before any day repeats); one a week per
+> ritual, which *waits* rather than being lost if the app isn't opened; never two within
+> `REVIEW_GAP_DAYS` (2) of each other, enforced against the newest review date across *all*
+> rituals; nothing before `REVIEW_MIN_AGE` (7) days and `REVIEW_MIN_RUNS` (3) days of
+> history; and a snooze costs `SNOOZE_DAYS` (2), not a week. `dueReview` also only runs when
+> `screen === "dashboard"`, not in the viewer, and not while the player is open.
+>
+> **Rule 1 (a run is a record) is enforced in `runProgress`, not in a comment.** Both `done`
+> and `total` come off the run — `done = min(run.done.length, run.total)` — so no edit to a
+> ritual can recount a past day. `total` is re-read from the plan on every *write*
+> (`toggleStep`, `completeRun`), which is how today catches up with an edit made this
+> morning while yesterday is never touched. An earlier version filtered `run.done` against
+> the ritual's current required-step set; that made the tune-up's own "make this step
+> optional" tweak silently un-complete a fortnight, which is the exact bug the rule exists
+> to prevent.
+>
+> **Wiring in App.tsx:** three db slices (`rituals`, `ritualRuns`, `ritualReviews`), all
+> sanitised in `migrateDb` with `spreadReviewDays` on top (it only moves rituals that
+> actually clash, so an existing spread is never reshuffled); writers `saveRitual`
+> (assigns `reviewDay` on **insert only** — every creation path goes through it, so it is
+> the one place that can promise the stagger), `deleteRitual`, `saveRitualRun`,
+> `completeRitual`/`clearRitual`, `logRitualStep`, `answerTuneUp`, `snoozeTuneUp`; two
+> pieces of shell state (`playingRitual` by id, `tuneDismissed`); the player and the
+> tune-up mounted **outside** the shell alongside `ThumbNav`, for the transformed-parent
+> reason addendum 26 gives.
+>
+> **Gotchas.**
+> 1. `.fhj-section` is a *horizontal flex header row*, not a container. Wrapping the card's
+>    rows in it laid the whole list out sideways off the right edge. The heading is
+>    `.fhj-section`; the list is its sibling. `RoutineCard` was already built this way.
+> 2. Giving the demo journal rituals with no reviews put a tune-up dialog over the
+>    dashboard on mount and broke **41 existing tests** that assert on the demo app. The
+>    sample data now ships two reviews, dated `t0-2` and `t0-4`, which also puts two
+>    different next-tune-up dates on the manage screen — the stagger, visible.
+> 3. `tests/ritualsUi.test.tsx` clears `ritualReviews` when it wants the dialog. Do not
+>    "fix" the demo by removing them.
+>
+> **Also fixed (pre-existing):** `restoreBackup` dropped `sun`, `labs`, `experiments` and
+> `context` — `buildFullBackup` wrote them and the restore never read them back.
+>
+> **Exports:** `buildRitualsTable` + `buildRitualRunsTable` in `src/lib/exports.ts`
+> (structural `RitualLike`/`RitualRunLike` types, so that module still imports nothing but
+> the model contract). Two XLSX sheets, "Rituals" and "Ritual days".
+>
+> **Metrics:** `MetricCtx` in `tracking.ts` grew `rituals`/`ritualRuns` behind a **type-only**
+> import of `./rituals` (erased at build, so no runtime cycle — `rituals.ts` imports
+> `tracking.ts` for the clock helpers). `RITUAL_METRICS` folded into `DERIVED_METRICS`.
+>
+> **Tests: 1,533 across 62 suites** (was 1,436/60). New: `tests/rituals.test.ts` (75) and
+> `tests/ritualsUi.test.tsx` (22). Verified in a real browser at 390×844 in both themes.
+
 
 _Last updated: 2026-07-07. This file is the single source of truth for resuming work on this project in a new chat._
 

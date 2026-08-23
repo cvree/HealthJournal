@@ -1,5 +1,151 @@
 # Changelog
 
+## 1.24.0
+
+Rituals.
+
+The routine has always been able to answer *what am I taking, and did I take
+it*. It is a flat checklist of things and for pills that is exactly right.
+
+It is wrong for a shower.
+
+A shower is not one tick. It is a shower that is cooler and shorter than you
+want it to be, then getting out, then the ninety seconds afterwards where the
+moisturiser either goes onto damp skin or doesn't work. That last part is the
+one that matters and the one that gets dropped, and ticking "showered" records
+the half that was never in doubt and loses the half that was. The same is true
+of a morning: the pills, the water, the cream, in that order, because two of
+them need food and one needs a wet face.
+
+So there is a second shape now. A **ritual** is an ordered list of steps with
+one name on it, and a **run** is one day's attempt at it.
+
+### One tap, every day
+
+The row on Today is the whole feature on a normal day. Tap it and the ritual is
+done — all of it, in one write, with an Undo in the toast. Tap it again and it
+is undone. There is no form, no confirmation and no step-by-step unless you ask
+for one, because a five-step ritual that costs five taps on an ordinary Tuesday
+is a ritual that gets abandoned in a fortnight, and a fortnight of data is worth
+nothing.
+
+Beside the name: how many steps, which part of the day, the streak if there is
+one, and seven dots for the week behind it. The dots are the same seven dots
+everywhere they appear, meaning the same seven things — done, part-way, skipped
+on purpose, missed, and *never asked for*, which is drawn as a gap rather than a
+failure because a weekday-only ritual has not missed a Saturday.
+
+### The player, for the days you want the process
+
+The second control on the row opens it as a list of very large steps — taller
+than anything else in the app, because this is a surface people tap standing up,
+half awake, with one wet hand. Exactly one step is lit as the next one, and the
+light moves as you tick. Steps carry their reason in a few words underneath
+("damp skin holds it; dry skin doesn't"), and the ones that are really
+instructions with a number in them carry a timer you can start and ignore.
+
+Done steps stay in the list and recede rather than vanishing, so the ritual
+keeps teaching itself.
+
+A step can point at something in your routine. Ticking "Vitamin D3" inside
+Morning meds writes the dose into your medication history exactly as the routine
+checklist would, so there is one surface and two records rather than two places
+to write the same fact down.
+
+### Six of them are already written out
+
+Shower & after · Morning meds · Night meds & supplements · Wind-down · Morning
+skin · Move a bit. Steps, hints and all. The two medication ones fill themselves
+in from the routine you already keep — pick "Morning meds" and every item filed
+under Morning is already a step in it, carrying its dose.
+
+### The weekly tune-up, and the reason it has arithmetic behind it
+
+Once a week the app asks how one ritual is going. This is the part that is easy
+to build badly, so here is the failure it was built around:
+
+Somebody sets up four rituals on a Sunday afternoon, because Sunday afternoon is
+when people set things up. A naive weekly check-in gives all four the same
+anniversary. A week later they get four dialogs in a row. The week after that,
+four more. By the third Sunday the feature is off.
+
+Five rules make that impossible.
+
+- **Each ritual gets its own weekday.** The first takes today's; the second goes
+  as far from it as the week allows; the third takes the widest gap left. Seven
+  rituals occupy seven different days before any day is used twice.
+- **One a week per ritual**, on or after its own day — and it waits rather than
+  being lost if the app isn't opened that day.
+- **Never two within two days of each other**, whatever their own days say. Even
+  a pathological setup can only surface one tune-up every other day.
+- **Never before there is something to say.** A ritual younger than a week, or
+  with fewer than three days of history, is not reviewed at all. The first
+  tune-up anybody sees has a real week behind it.
+- **"Not now" costs two days, not a week.** Dismissing one must not quietly
+  switch the feature off.
+
+It also only ever appears on Today, never over the export screen or a report.
+
+### What the tune-up actually does
+
+It opens with the week you had, not with a question: seven dots landing one at a
+time, the count, the streak, and one line that does not pretend a hard week was
+a good one. Somebody who managed two showers in seven days knows it, and being
+congratulated for it is how an app loses their trust.
+
+Then two questions, each answered with one tap — five faces for how it went, and
+what got in the way, which is skipped entirely on a week nothing got in the way
+of.
+
+Then it pays out. The last card is a short list of **changes to your plan,
+written from your own week**, any of which is applied by tapping it:
+
+> 🪶 Make "Moisturise within 3 minutes" optional — *2 of 7 days*
+> ✂️ Drop "Any treatment cream last" — *not once this week*
+> 🕰️ Move it to bedtime — *you usually finish around 9:55 pm*
+> 📆 Stop asking on Wednesday — *not once in four weeks*
+> 👌 It's good — leave it
+
+"Leave it" is a real answer and it is listed *first* on a week that went well,
+because the most common right answer to "change anything?" is no, and burying
+that under three suggestions is an app talking somebody into editing a routine
+that was working.
+
+Applying one can never leave a ritual asked for on no day at all — that is a
+deletion wearing a schedule change, and nobody chose it.
+
+### A run is a record
+
+The same contract the routine has kept since it shipped. A run carries its own
+copy of the name and of how many steps were required at the moment it happened,
+so dropping a step tomorrow cannot un-complete a fortnight. A tune-up that trims
+one step changes what today asks for and nothing about what last Tuesday says.
+
+An absent run means nothing was said. It is not a missed day. "Not today" is its
+own thing, recorded as its own thing.
+
+### Everywhere else
+
+Two new sheets in the spreadsheet: the plan, and one row per ritual per day.
+The day sheet has a column the others don't — `step_list` names the steps
+actually done rather than counting them, because "showered 18 of 21 days" is a
+number anybody could have guessed and "moisturised on 9 of the 18 days I
+showered" is the thing that explains a month of skin.
+
+Two new things to chart, both neutral in direction, because there is no healthy
+number of showers and colouring a quiet week red would be this app grading
+somebody's life.
+
+Rituals are in the fan, in backups, and repaired on every load like every other
+collection.
+
+### Also fixed
+
+Restoring a backup silently dropped every sun session, lab result, experiment
+and day of weather. They were being written into the file correctly and thrown
+away on the way back in. A backup that cannot restore what it saved is not a
+backup.
+
 ## 1.23.0
 
 One hand.

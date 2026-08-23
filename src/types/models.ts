@@ -9,6 +9,7 @@ import type { ContextConsent, DayContext } from "../lib/context";
 import type { Experiment } from "../lib/experiments";
 import type { LabResult } from "../lib/labs";
 import type { SunProfile, SunSession } from "../lib/sun";
+import type { Ritual, RitualReview, RitualRun } from "../lib/rituals";
 
 /* ---------- questions ---------- */
 
@@ -521,6 +522,14 @@ export interface AppDatabase extends OnboardingState {
   routineItems?: RoutineItem[];
   /** One row per use of a routine item. Many per day. */
   routine?: RoutineLog[];
+  /** Rituals: the routine as a process — a shower and what follows it, the
+      morning handful, the wind-down. See src/lib/rituals.ts. */
+  rituals?: Ritual[];
+  /** One row per ritual per day. */
+  ritualRuns?: RitualRun[];
+  /** One row per answered (or dismissed) weekly tune-up. Also the scheduler's
+      memory — it is what stops the same ritual being asked about twice. */
+  ritualReviews?: RitualReview[];
   /** Flares and bad stretches, marked by the user. See src/lib/episodes.ts. */
   episodes?: HealthEpisode[];
   /** Time outside, with the sun's own arithmetic attached. See src/lib/sun.ts. */
@@ -551,3 +560,4 @@ export type { ContextConsent, DayContext };
 export type { Experiment };
 export type { LabResult };
 export type { SunProfile, SunSession };
+export type { Ritual, RitualReview, RitualRun, RitualStep } from "../lib/rituals";
