@@ -385,7 +385,7 @@ describe("starter questions", () => {
       fields: [{ k: "mood", label: "Mood", type: "scale", dir: "pos" as const }],
       sun: Array.from({ length: 20 }, (_, i) => ({
         id: `s${i}`, date: day(i), start: `${day(i)}T10:00:00Z`, minutes: 20 + i,
-        exposure: "arms" as const, shade: "open" as const, samples: [], uvSource: "modelled" as const,
+        exposure: "arms" as const, shade: "open" as const, samples: [], uvSource: "modelled" as const, endSource: "manual" as const, estimated: false, confirmed: true,
         avgUV: 4, peakUV: 5, avgElevation: 40, sed: 0.8, medFraction: 0.3,
         iu: 600, iuLow: 400, iuHigh: 800, belowThreshold: false,
         source: "live" as const, createdAt: "", updatedAt: "",

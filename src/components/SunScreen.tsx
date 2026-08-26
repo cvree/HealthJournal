@@ -27,10 +27,12 @@ import {
   type Coords, type ExposureLevel, type ShadeLevel, type SkinType,
 } from "../lib/solar";
 import {
-  addSample, burnState, finishSession, firstLightAfterWaking, readout, sessionSummary,
-  startSession, sunDay, sunTotals,
+  autoEndArmed, autoEndStatus, burnState, confirmPrompt, endNote, firstLightAfterWaking, readout,
+  sessionSummary, sunDay, sunTotals, unconfirmed,
   type LiveSession, type SunSession,
 } from "../lib/sun";
+import { presenceLine } from "../lib/presence";
+import { automationDecided, automationOn, type AutomationSettings } from "../lib/automation";
 
 type Props = {
   coords: Coords | null;
@@ -45,7 +47,18 @@ type Props = {
   forecastUV?: number | null;
   cloudCover?: number;
   viewer?: boolean;
-  onSave: (session: SunSession) => void;
+  /** The running session, owned by App so it survives leaving this screen. */
+  live?: LiveSession | null;
+  onStart?: () => void;
+  onFinish?: (opts: FinishPatch) => void;
+  onDiscard?: () => void;
+  onAdjust?: (patch: Partial<LiveSession>) => void;
+  /** Which automations are on, and the one door for changing that. */
+  automations?: AutomationSettings;
+  onDecideAutomation?: (id: "sun-auto-end", on: boolean) => void;
+  /** Answering an end time the app guessed. */
+  onConfirm?: (id: string) => void;
+  onRevise?: (id: string, end: Date) => void;
   onDelete?: (id: string) => void;
   onOpenSettings?: () => void;
   onFeedback?: (kind: string) => void;
@@ -53,32 +66,25 @@ type Props = {
   highlight?: Set<string>;
 };
 
+type FinishPatch = { note?: string; exposure?: ExposureLevel; shade?: ShadeLevel; spf?: number };
+
 export default function SunScreen({
   coords, today, sessions, skin, exposure = "arms", wake, age, forecastUV, cloudCover,
-  viewer = false, onSave, onDelete, onOpenSettings, onFeedback, highlight,
+  viewer = false, live = null, onStart, onFinish, onDiscard, onAdjust,
+  automations, onDecideAutomation, onConfirm, onRevise,
+  onDelete, onOpenSettings, onFeedback, highlight,
 }: Props) {
-  const [live, setLive] = useState<LiveSession | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [finishing, setFinishing] = useState(false);
 
-  /* One timer for the whole screen. It ticks a second at a time so the
-     stopwatch is honest, and takes a UV sample every fifteen seconds — the sky
-     does not need to be asked more often than that, and a phone in a pocket in
-     a field should not be woken up to find out. */
-  const liveRef = useRef(live);
-  liveRef.current = live;
+  /* This screen no longer owns the session — App does, because the session has
+     to keep running when nobody is looking at it. What is left here is the
+     display clock: one tick a second, because a stopwatch that jumps in
+     fifteen-second steps looks broken. The sampling and the auto-end live
+     upstairs with the session. */
   useEffect(() => {
     if (!live) return;
-    const tick = setInterval(() => {
-      const at = new Date();
-      setNow(at);
-      const cur = liveRef.current;
-      if (cur && at.getTime() - cur.startedAt >= 0) {
-        const lastT = cur.samples.length ? cur.samples[cur.samples.length - 1].t : -1;
-        const t = Math.round((at.getTime() - cur.startedAt) / 60000);
-        if (t !== lastT) setLive((s) => (s ? addSample(s, at) : s));
-      }
-    }, 1000);
+    const tick = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(tick);
   }, [!!live]);
 
@@ -99,20 +105,21 @@ export default function SunScreen({
 
   const start = () => {
     if (viewer) return;
-    const at = new Date();
-    setNow(at);
-    setLive(addSample(startSession(at, { coords, exposure, skin, forecastUV, cloudCover }), at));
-    onFeedback?.("start");
+    setNow(new Date());
+    onStart?.();
   };
 
-  const finish = (opts: Parameters<typeof finishSession>[3]) => {
+  const finish = (opts: FinishPatch) => {
     if (!live) return;
-    const at = new Date();
-    onSave(finishSession(live, at, today, { ...opts, age }));
-    setLive(null);
     setFinishing(false);
-    onFeedback?.("save");
+    onFinish?.(opts);
   };
+
+  /* Sessions the app ended by itself and nobody has looked at yet. Newest
+     first, and only the newest is offered — a queue of five questions is a
+     chore, and the one that just happened is the only one anybody remembers
+     well enough to correct. */
+  const waiting = useMemo(() => unconfirmed(sessions), [sessions]);
 
   if (live) {
     return (
@@ -123,20 +130,34 @@ export default function SunScreen({
         day={day}
         skin={skin}
         finishing={finishing}
+        canAutoEnd={!!coords}
+        autoEndDecided={automationDecided(automations, "sun-auto-end")}
+        autoEndOn={automationOn(automations, "sun-auto-end")}
+        onDecideAutoEnd={(on) => onDecideAutomation?.("sun-auto-end", on)}
         onOpenFinish={() => setFinishing(true)}
         onCancelFinish={() => setFinishing(false)}
         onFinish={finish}
         onDiscard={() => {
-          setLive(null);
           setFinishing(false);
+          onDiscard?.();
         }}
-        onAdjust={(patch) => setLive((s) => (s ? { ...s, ...patch } : s))}
+        onAdjust={(patch) => onAdjust?.(patch)}
       />
     );
   }
 
   return (
     <div className="fhj-sun">
+      {!viewer && waiting.length > 0 && (
+        <ConfirmCard
+          session={waiting[0]}
+          more={waiting.length - 1}
+          onConfirm={() => onConfirm?.(waiting[0].id)}
+          onRevise={(end) => onRevise?.(waiting[0].id, end)}
+          onDelete={onDelete ? () => onDelete(waiting[0].id) : undefined}
+        />
+      )}
+
       <section className="fhj-card fhj-sun-today">
         <div className="fhj-eyebrow">Today's sun</div>
         <SolarArc coords={coords} day={day} now={now} height={132} cloudCover={cloudCover} />
@@ -202,6 +223,7 @@ export default function SunScreen({
                       {new Date(s.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                     </div>
                     <div className="fhj-sun-list-meta">{sessionSummary(s)}</div>
+                    {endNote(s) && <div className="fhj-sun-list-est">{endNote(s)}</div>}
                   </div>
                   {onDelete && !viewer && (
                     <button type="button" className="fhj-icon-btn fhj-icon-btn-sm" aria-label="Delete this session" onClick={() => onDelete(s.id)}>
@@ -223,7 +245,8 @@ export default function SunScreen({
 /* ---------- the live session ---------- */
 
 function LiveSessionView({
-  live, now, coords, day, skin, finishing, onOpenFinish, onCancelFinish, onFinish, onDiscard, onAdjust,
+  live, now, coords, day, skin, finishing, canAutoEnd, autoEndDecided, autoEndOn,
+  onDecideAutoEnd, onOpenFinish, onCancelFinish, onFinish, onDiscard, onAdjust,
 }: {
   live: LiveSession;
   now: Date;
@@ -231,6 +254,10 @@ function LiveSessionView({
   day: Date;
   skin?: SkinType;
   finishing: boolean;
+  canAutoEnd: boolean;
+  autoEndDecided: boolean;
+  autoEndOn: boolean;
+  onDecideAutoEnd: (on: boolean) => void;
   onOpenFinish: () => void;
   onCancelFinish: () => void;
   onFinish: (opts: { note?: string; exposure?: ExposureLevel; shade?: ShadeLevel; spf?: number }) => void;
@@ -288,6 +315,15 @@ function LiveSessionView({
           <span>{burn.detail}</span>
         </div>
       </div>
+
+      <AutoEndStrip
+        live={live}
+        now={now}
+        canAutoEnd={canAutoEnd}
+        decided={autoEndDecided}
+        on={autoEndOn}
+        onDecide={onDecideAutoEnd}
+      />
 
       <div className="fhj-sun-live-actions">
         <button type="button" className="fhj-btn fhj-btn-primary fhj-btn-block fhj-pop-lg" onClick={onOpenFinish}>
@@ -441,6 +477,190 @@ function FinishSheet({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ---------- the automation, said out loud ----------
+
+   Three states, and the app is in exactly one of them at any moment:
+
+   · **Never asked.** One offer, here, the first time somebody runs a session on
+     a device that could actually do it. Not in a settings screen they will
+     never open — here, while they are standing outside holding the phone, which
+     is the only moment the feature is self-explanatory.
+   · **On.** A line saying what it currently thinks, updated as it thinks it.
+     This is not decoration. An automation whose reasoning is invisible is one
+     that feels like a malfunction the first time it is wrong, and this one will
+     sometimes be wrong.
+   · **On, but blind.** Position has dried up. Say so, plainly, while there is
+     still time to do something about it — a promise quietly not being kept is
+     the worst of the three. */
+
+function AutoEndStrip({
+  live, now, canAutoEnd, decided, on, onDecide,
+}: {
+  live: LiveSession;
+  now: Date;
+  canAutoEnd: boolean;
+  decided: boolean;
+  on: boolean;
+  onDecide: (on: boolean) => void;
+}) {
+  if (!canAutoEnd) return null;
+
+  if (!decided) {
+    return (
+      <div className="fhj-sun-auto fhj-sun-auto-offer">
+        <div className="fhj-sun-auto-text">
+          <strong>End this by itself when you head in?</strong>
+          <span>
+            Your phone can tell roughly when it stops seeing open sky, and close the session at
+            that time rather than whenever you remember. It reads how accurate its own position
+            is — not where you are — and asks you to confirm the time afterwards.
+          </span>
+        </div>
+        <div className="fhj-sun-auto-actions">
+          <button type="button" className="fhj-btn fhj-btn-ghost fhj-btn-sm" onClick={() => onDecide(false)}>
+            No, I'll finish it
+          </button>
+          <button type="button" className="fhj-btn fhj-btn-primary fhj-btn-sm" onClick={() => onDecide(true)}>
+            Yes, do that
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!on || !live.autoEnd) return null;
+
+  const status = autoEndStatus(live, now);
+  const armed = status === "armed";
+  const line =
+    status === "blocked"
+      ? "Your phone isn't giving this app a position, so you'll need to finish this one yourself."
+      : status === "waiting"
+        ? "Waiting for a first fix."
+        : live.presence
+          ? presenceLine(live.presence, now.getTime())
+          : "Waiting for a first fix.";
+
+  return (
+    <div className="fhj-sun-auto" data-armed={armed ? "true" : "false"}>
+      <div className="fhj-sun-auto-text">
+        <strong>
+          {armed
+            ? "Ending itself when you head in"
+            : status === "blocked"
+              ? "Can't watch for that on this device"
+              : "Watching, but not getting a position"}
+        </strong>
+        <span>{line}</span>
+      </div>
+      <button type="button" className="fhj-btn fhj-btn-ghost fhj-btn-sm" onClick={() => onDecide(false)}>
+        Turn off
+      </button>
+    </div>
+  );
+}
+
+/* ---------- confirming an end the app chose ----------
+
+   The whole cost of the automation, in one card, and it is deliberately a card
+   rather than a modal: it does not block anything, it does not come back a
+   second time louder, and scrolling past it is a legitimate way to use this
+   app forever. The session underneath it is already saved and already counted.
+
+   The correction is a slider over minutes rather than a time picker, because
+   the question a person can actually answer is "was it more like forty" and not
+   "was it 3:47 or 3:52". */
+
+function ConfirmCard({
+  session, more, onConfirm, onRevise, onDelete,
+}: {
+  session: SunSession;
+  more: number;
+  onConfirm: () => void;
+  onRevise: (end: Date) => void;
+  onDelete?: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [minutes, setMinutes] = useState(session.minutes);
+
+  /* A new session arriving while this card is open must not leave the slider
+     holding the previous one's duration. */
+  useEffect(() => {
+    setMinutes(session.minutes);
+    setEditing(false);
+  }, [session.id, session.minutes]);
+
+  const start = new Date(session.start);
+  const proposed = new Date(start.getTime() + minutes * 60000);
+  const ceiling = Math.max(session.minutes * 2, session.minutes + 60);
+
+  return (
+    <section className="fhj-card fhj-sun-confirm">
+      <div className="fhj-eyebrow">One thing to check</div>
+      <p className="fhj-sun-confirm-q">{confirmPrompt(session)}</p>
+
+      {editing ? (
+        <div className="fhj-sun-confirm-edit">
+          <div className="fhj-sun-confirm-read">
+            <strong>{durationLabel(minutes)}</strong>
+            <span>
+              {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} –{" "}
+              {proposed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          </div>
+          <input
+            className="fhj-range"
+            type="range"
+            min={1}
+            max={ceiling}
+            step={1}
+            value={minutes}
+            aria-label="How long you were outside, in minutes"
+            onChange={(e) => setMinutes(Number(e.target.value))}
+          />
+          <p className="fhj-note">
+            Everything else moves with it — the UV dose and the vitamin D range are worked out
+            again over the shorter or longer window, not just relabelled.
+          </p>
+          <div className="fhj-sun-confirm-actions">
+            <button type="button" className="fhj-btn fhj-btn-ghost fhj-btn-sm" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="fhj-btn fhj-btn-primary fhj-btn-sm"
+              onClick={() => onRevise(proposed)}
+            >
+              Save {durationLabel(minutes)}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="fhj-sun-confirm-actions">
+          {onDelete && (
+            <button type="button" className="fhj-btn fhj-btn-ghost fhj-btn-sm" onClick={onDelete}>
+              Wasn't outside
+            </button>
+          )}
+          <button type="button" className="fhj-btn fhj-btn-ghost fhj-btn-sm" onClick={() => setEditing(true)}>
+            Change the time
+          </button>
+          <button type="button" className="fhj-btn fhj-btn-primary fhj-btn-sm" onClick={onConfirm}>
+            That's right
+          </button>
+        </div>
+      )}
+
+      {more > 0 && (
+        <p className="fhj-note" style={{ marginTop: 10 }}>
+          {more} more {more === 1 ? "session is" : "sessions are"} waiting on the same question. They
+          are saved either way — the label is the only thing an answer changes.
+        </p>
+      )}
+    </section>
   );
 }
 

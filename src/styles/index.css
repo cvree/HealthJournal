@@ -9889,3 +9889,258 @@ button.fhj-section:disabled {
     border: 1px solid #adafb8 !important;
   }
 }
+
+/* ==========================================================================
+   Automation — the app's own conclusions, and how they announce themselves.
+
+   Everything here is deliberately quiet. An automation that shouts is one that
+   feels like it is in charge, and none of these are: the running-session row is
+   a doorway, the auto-end strip is a status line, and the confirmation card is
+   a question that can be scrolled past forever. The only colour any of it takes
+   is the accent, and only on the two elements that are actually live.
+   ========================================================================== */
+
+/* The running session, on Today. A row rather than a card, because it is a way
+   back to somewhere and not a thing to read. */
+.fhj-live-sun {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 1.125rem;
+  padding: 0.8125rem 0.9375rem;
+  text-align: left;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-accent-line, #4d5563);
+  background: var(--fhj-accent-soft, rgba(120, 150, 190, 0.12));
+  color: var(--fhj-ink, #ecebe7);
+  transition: background 200ms var(--fhj-ease), transform 200ms var(--fhj-ease);
+}
+.fhj-live-sun:hover { background: var(--fhj-card-hover, #2f323b); }
+.fhj-live-sun:active { transform: scale(0.99); }
+
+/* One dot, breathing. The only animated thing on Today, and it earns it: it is
+   the difference between "you have a session" and "a session is running". */
+.fhj-live-sun-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--fhj-accent, #7d94b8);
+  animation: fhj-live-pulse 2.4s ease-in-out infinite;
+}
+@keyframes fhj-live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--fhj-accent-soft, rgba(125, 148, 184, 0.5)); }
+  50% { opacity: 0.65; box-shadow: 0 0 0 6px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhj-live-sun-dot { animation: none; }
+}
+
+.fhj-live-sun-body { min-width: 0; flex: 1; }
+.fhj-live-sun-title {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.fhj-live-sun-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.75rem;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-live-sun-go {
+  flex: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--fhj-subtle, #8a8d97);
+}
+
+/* The auto-end status strip on a live session. */
+.fhj-sun-auto {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 0.875rem;
+  padding: 0.8125rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-sun-auto[data-armed="true"] {
+  border-color: var(--fhj-accent-line, #4d5563);
+}
+/* Not armed is not an error — it is a promise the app cannot currently keep,
+   and it says so in the warning colour rather than the alarming one. */
+.fhj-sun-auto[data-armed="false"] {
+  border-color: var(--fhj-warn, #d68a4a);
+}
+.fhj-sun-auto-text { flex: 1; min-width: 0; }
+.fhj-sun-auto-text strong {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-auto-text span {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #adafb8);
+}
+/* The one-time offer stacks, because it is two sentences and two buttons and
+   nobody reads a paragraph squeezed beside a button. */
+.fhj-sun-auto-offer { flex-direction: column; }
+.fhj-sun-auto-actions {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.625rem;
+}
+.fhj-sun-auto-offer .fhj-sun-auto-actions .fhj-btn { flex: 1; }
+
+/* The confirmation card. */
+.fhj-sun-confirm {
+  border-color: var(--fhj-accent-line, #4d5563);
+}
+.fhj-sun-confirm-q {
+  margin: 0.375rem 0 0.875rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-sun-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.fhj-sun-confirm-edit { display: grid; gap: 0.625rem; }
+.fhj-sun-confirm-read {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.fhj-sun-confirm-read strong {
+  font-size: 1.375rem;
+  font-family: var(--fhj-font-display);
+  font-variant-numeric: tabular-nums;
+}
+.fhj-sun-confirm-read span {
+  font-size: 0.75rem;
+  color: var(--fhj-sub, #adafb8);
+  font-variant-numeric: tabular-nums;
+}
+
+/* An estimated end, wherever a session is listed. */
+.fhj-sun-list-est {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  color: var(--fhj-subtle, #8a8d97);
+}
+
+/* The automations list in Settings. */
+.fhj-automation {
+  padding: 0.8125rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-automation[data-on="true"] { border-color: var(--fhj-accent-line, #4d5563); }
+.fhj-automation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.fhj-automation-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-automation-what {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--fhj-sub, #adafb8);
+}
+/* Watches / Writes / Undo. The three things that make a switch a decision
+   rather than a leap of faith, so they are laid out as a definition list and
+   not buried in a disclosure. */
+.fhj-automation-facts {
+  margin-top: 0.625rem;
+  display: grid;
+  gap: 0.3125rem;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+.fhj-automation-facts > div {
+  display: grid;
+  grid-template-columns: 3.75rem 1fr;
+  gap: 0.5rem;
+}
+.fhj-automation-facts dt {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--fhj-subtle, #8a8d97);
+}
+.fhj-automation-facts dd { margin: 0; color: var(--fhj-sub, #adafb8); }
+.fhj-automation-unmet {
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--fhj-warn, #d68a4a);
+}
+
+/* A plain slider, for the one place a person corrects a number the app guessed.
+   Deliberately not the hue slider: that one is a colour picker wearing a range,
+   this one is a quantity, and the difference has to be visible at a glance. */
+.fhj-range {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+}
+.fhj-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fhj-line, #31343d);
+}
+.fhj-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fhj-line, #31343d);
+}
+.fhj-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 999px;
+  background: var(--fhj-accent, #7d94b8);
+  border: 2px solid var(--fhj-bg, #141519);
+  box-shadow: 0 0 0 1.5px var(--fhj-line-strong, #464a55);
+}
+.fhj-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--fhj-bg, #141519);
+  border-radius: 999px;
+  background: var(--fhj-accent, #7d94b8);
+  box-shadow: 0 0 0 1.5px var(--fhj-line-strong, #464a55);
+}
+.fhj-range:focus-visible { outline: none; }
+.fhj-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--fhj-focus, rgba(125, 148, 184, 0.55));
+}
+.fhj-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--fhj-focus, rgba(125, 148, 184, 0.55));
+}

@@ -181,7 +181,7 @@ describe("changesBetween", () => {
       exposure: "arms" as const,
       shade: "open" as const,
       samples: [],
-      uvSource: "modelled" as const,
+      uvSource: "modelled" as const, endSource: "manual" as const, estimated: false, confirmed: true,
       avgUV: 5, peakUV: 6, avgElevation: 40, sed: 1, medFraction: 0.3,
       iu: 800, iuLow: 500, iuHigh: 1100, belowThreshold: false,
       source: "live" as const, createdAt: "", updatedAt: "",
@@ -244,7 +244,7 @@ describe("vitaminDBesideSun", () => {
     start: "2026-05-01T10:00:00Z",
     minutes: 30,
     exposure: "arms" as const, shade: "open" as const, samples: [],
-    uvSource: "modelled" as const, avgUV: 6, peakUV: 7, avgElevation: 50,
+    uvSource: "modelled" as const, endSource: "manual" as const, estimated: false, confirmed: true, avgUV: 6, peakUV: 7, avgElevation: 50,
     sed: 1.2, medFraction: 0.4, iu: 1000, iuLow: 650, iuHigh: 1350,
     belowThreshold: false, source: "live" as const, createdAt: "", updatedAt: "",
   }));

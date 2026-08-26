@@ -418,6 +418,28 @@ atmosphere behind the whole screen warms with it. Also kept: first outdoor light
 window, and the next vitamin-D-producing one — which correctly says *none in the next week* in a
 British January instead of inventing one.
 
+**A session you can walk away from, and one that ends itself.** The reason time-outside tracking
+fails is not starting — it is stopping. Starting is one tap on the way out of a door; stopping is
+a chore you will forget on the day you feel worst. So the session no longer belongs to the screen
+it was started on: leave it, lock the phone, close the app entirely, come back an hour later, and
+it is still running, with a live row on Today counting up and one tap back to it. **It ends when
+you end it.** And if you say so, it ends when you head in — your phone can tell roughly when it
+stops seeing open sky, because a position fix that resolved to eight metres under the sky reports
+sixty or ninety under a roof, and the session closes at the moment the fixes changed rather than
+whenever the app worked it out. It reads **how accurate its own position is, not where you are** —
+no coordinate ever reaches that model, which is a guarantee a test enforces rather than a claim
+this file makes. A session it closed is saved immediately, marked as the app's own estimate, and
+asks one question the next time you look: *is that about right?* One tap accepts it, a slider
+corrects it — and correcting it recomputes the dose and the vitamin D range over the new window
+rather than relabelling the old one. Ignoring the question forever is a valid answer: the session
+stays on your timeline, permanently labelled an estimate. One left running for six hours closes
+itself at the last moment it could honestly still have been sunlight — a session begun at 8pm and
+forgotten closes at sundown, not at 2am — and says out loud that the time is a guess. All of it is
+one switch in **Settings → Automations**, which lists every automation in the app beside the three
+things that make a switch mean anything: what it *watches*, what it *writes*, and how you *undo*
+it. Nothing any of them does leaves the device. [The full map, including what was deliberately
+rejected.](docs/AUTOMATION.md)
+
 **Personal experiments.** *Does morning sunlight relate to better sleep? Does humidity line up
 with my eczema? Did anything change after I started this cream?* Ask, and the app builds the
 smallest comparison that could answer it — from a list of real questions in plain words, from its
@@ -934,6 +956,11 @@ health-journal/
 │   │   ├── quickActions.ts     # learned ordering + one-tap repeats, scored
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
 │   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors
+  │   ├── automation.ts       # the registry of everything the app concludes on
+  │   │                       #   its own, and the contract all of it runs under
+  │   ├── presence.ts         # indoors or outdoors, from how accurate the phone
+  │   │                       #   says its own position is. Holds no coordinates
+  │   ├── presenceWatch.ts    # the one file that touches a platform Position
 │   │   ├── exports.ts          # typed CSV / wide-table generation
 │   │   ├── questions.ts        # custom-question sanitising
 │   │   ├── answers.ts          # type-safe answer read/write
@@ -962,8 +989,8 @@ health-journal/
 ├── supabase/schema.sql         # sync tables, RLS policies, conflict rule
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
-├── docs/                       # APP_STATE, product plan, widget setup
-└── tests/                      # 967 tests across 44 suites
+├── docs/                       # APP_STATE, product plan, automation, widget setup
+└── tests/                      # 1,616 tests across 65 suites
 ```
 
 Colours are not written into components. `src/lib/theme.ts` owns two palettes and a live token

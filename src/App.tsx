@@ -144,9 +144,20 @@ import {
    feel like one product rather than five features: `lit`, the set of dates a
    finding is currently illuminating everywhere at once. */
 import {
-  dayLight, nextVitaminDWindow, durationLabel as minutesLabel,
+  dayLight, nextVitaminDWindow, durationLabel as minutesLabel, stopwatchLabel,
 } from "./lib/solar";
-import { sanitizeSunProfile, sanitizeSunSessions, sunDay } from "./lib/sun";
+import {
+  addSample, autoEndArmed, autoEndDecision, clearLiveSession, confirmSession, finishSession,
+  loadLiveSession, resumeDecision, reviseSession, sanitizeSunProfile,
+  sanitizeSunSessions, saveLiveSession, startSession, sunDay, tickPresence,
+  unconfirmed,
+} from "./lib/sun";
+import { emptyPresence, observe } from "./lib/presence";
+import { watchPresence } from "./lib/presenceWatch";
+import {
+  AUTOMATIONS, REQUIREMENT_LABEL, automationDecided, automationOn,
+  sanitizeAutomationSettings, setAutomation, unmetRequirements,
+} from "./lib/automation";
 import { EXPOSURE_LEVELS, SKIN_TYPES } from "./lib/solar";
 import {
   DEFAULT_CONSENT, coarse, contextLine, contextObservations, contextOn, fetchContext,
@@ -178,7 +189,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.24.0";
+export const APP_VERSION = "1.25.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -6515,7 +6526,7 @@ function ExportScreen({ db, setDb, goPack }) {
       ["Rituals", "Your named routines and the steps in each — the plan behind the Ritual days sheet"],
       ["Ritual days", "One row per ritual per day. `step_list` names the steps actually done, which is the column worth sorting by"],
       ["Measurements", "Blood work and measurements somebody else took. lab_reference_* columns are the range your laboratory printed, not this app's"],
-      ["Time outside", "One row per sun session. vitamin_d_estimated_iu_* is a research-model estimate of production, not a blood level — see the column that says so"],
+      ["Time outside", "One row per sun session. vitamin_d_estimated_iu_* is a research-model estimate of production, not a blood level — see the column that says so. end_time_is_an_estimate marks the sessions the app closed by itself rather than ones somebody ended"],
       ["Weather", "One row per day of environmental context, if you switched it on. Coordinates are the coarse ones the app stored, rounded to about a kilometre"],
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(readme), "README");
@@ -9016,6 +9027,18 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, go
           profile: { ...prev.profile, sun: sanitizeSunProfile(sun), updatedAt: new Date().toISOString() },
         }))} />
 
+      <AutomationsCard
+        profile={db.profile}
+        hasLocation={!!db.profile?.context?.enabled}
+        onSet={(id, on) => setDb((prev) => ({
+          ...prev,
+          profile: {
+            ...prev.profile,
+            automations: setAutomation(prev.profile?.automations, id, on),
+            updatedAt: new Date().toISOString(),
+          },
+        }))} />
+
       <Card className="mt-3">
         <div className="fhj-eyebrow mb-1.5">Report cards</div>
         <p className="text-[11.5px] leading-relaxed mb-2" style={{ color: C.subtle }}>
@@ -9258,6 +9281,65 @@ function DailyContextCard({ profile, onSave, contextCount = 0 }) {
           </Button>
         )}
       </Disclosure>
+    </Card>
+  );
+}
+
+/* Automations — everything the app is allowed to conclude on its own.
+
+   One list, one switch each, and under every switch the two sentences that make
+   the switch meaningful: what it *watches*, and what it *writes*. Not "smart
+   features". A person who wants their sun sessions to close themselves and
+   wants nothing else inferred about them can have precisely that, and can see
+   at a glance that nothing else is running.
+
+   The contract every entry here obeys lives at the top of lib/automation, and
+   the fifth clause of it is the one worth repeating on this screen: none of
+   these sends anything anywhere. */
+function AutomationsCard({ profile, hasLocation, onSet }) {
+  return (
+    <Card className="mt-3">
+      <div className="fhj-eyebrow mb-1.5">Automations</div>
+      <p className="text-[12px] leading-relaxed mb-3" style={{ color: C.sub }}>
+        Things the app works out for itself, so you don't have to remember them. Everything one of
+        these writes is marked as the app's own guess until you confirm it, and none of them sends
+        anything anywhere.
+      </p>
+
+      <div className="grid gap-2.5">
+        {AUTOMATIONS.map((a) => {
+          const on = automationOn(profile?.automations, a.id);
+          const unmet = unmetRequirements(a, { hasLocation });
+          return (
+            <div key={a.id} className="fhj-automation" data-on={on ? "true" : undefined}>
+              <div className="fhj-automation-head">
+                <div className="fhj-automation-name">{a.label}</div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  aria-label={a.label}
+                  className={"fhj-switch" + (on ? " is-on" : "")}
+                  onClick={() => { feedback("select"); onSet(a.id, !on); }}
+                >
+                  <span />
+                </button>
+              </div>
+              <p className="fhj-automation-what">{a.what}</p>
+              <dl className="fhj-automation-facts">
+                <div><dt>Watches</dt><dd>{a.watches}</dd></div>
+                <div><dt>Writes</dt><dd>{a.writes}</dd></div>
+                <div><dt>Undo</dt><dd>{a.reversible}</dd></div>
+              </dl>
+              {on && unmet.length > 0 && (
+                <p className="fhj-automation-unmet">
+                  Not running yet — it needs: {unmet.map((r) => REQUIREMENT_LABEL[r]).join("; ")}.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </Card>
   );
 }
@@ -15849,6 +15931,36 @@ function DailyPulse({
   );
 }
 
+/* A sun session that is still running.
+
+   Three facts and a way back: how long it has been going, whether it is going
+   to end itself, and one tap to the screen where it lives. It deliberately does
+   not repeat the UV, the dose or the estimate — those are on the sun screen,
+   this is a doorway, and a doorway that tries to be a dashboard is how a Today
+   screen stops fitting on a phone. */
+function LiveSunRow({ live, onOpen }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const armed = autoEndArmed(live, now);
+  return (
+    <button type="button" onClick={onOpen} className="fhj-live-sun" aria-label="Return to your running sun session">
+      <span className="fhj-live-sun-dot" aria-hidden />
+      <span className="fhj-live-sun-body">
+        <span className="fhj-live-sun-title">Outside — {stopwatchLabel(Math.max(0, now - live.startedAt))}</span>
+        <span className="fhj-live-sun-sub">
+          {armed
+            ? "Running. It will end itself when you head in."
+            : "Running. Tap to finish when you come in."}
+        </span>
+      </span>
+      <span className="fhj-live-sun-go" aria-hidden>›</span>
+    </button>
+  );
+}
+
 /* Today's context: the weather behind the day, the sun so far, and the one
    thing worth acting on — when the next window is.
 
@@ -15927,7 +16039,7 @@ function PinnedExperiment({ result, onOpen, onHighlight }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], pinnedExperiments = [], onHighlight }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], liveSun = null, pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
   /* Where to put the sun. A place set by hand wins over the last fetched one,
      and both are absent when daily context is off — in which case every sun
@@ -16165,6 +16277,14 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           </div>
         )}
       </div>
+
+      {/* A session that is still running, above everything.
+
+          It is the only thing on this app that is *counting while you look at
+          it*, and until it is finished it outranks the pulse — you can answer
+          today's question at any point tonight, and you cannot go back outside
+          later to end a walk properly. One tap returns to it. */}
+      {!viewer && liveSun && <LiveSunRow live={liveSun} onOpen={goSun} />}
 
       {/* ---------- The Daily Pulse ----------
           Above everything, including Quick Add. Quick Add is a menu of things
@@ -17017,6 +17137,11 @@ function migrateDb(data) {
   d.profile.context = sanitizeConsent(d.profile.context);
   /* Skin type and usual exposure, which the vitamin D estimate reads. */
   d.profile.sun = sanitizeSunProfile(d.profile.sun);
+  /* Which automations somebody has said yes to. A standing decision about the
+     journal rather than about one phone, so it travels in a backup and a sync —
+     unlike the position watch itself, which is a per-device capability and is
+     re-checked against `activeCoords` every time a session starts. */
+  d.profile.automations = sanitizeAutomationSettings(d.profile.automations);
   if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
@@ -17678,6 +17803,154 @@ export default function App({ viewer = false }) {
 
   // App lock gates come first — before onboarding/corrupt-data/viewer screens,
   // since those can surface raw journal content too.
+  /* ---------- the sun session that outlives its screen ----------
+
+     A session used to live in SunScreen's own state, which meant it lived
+     exactly as long as somebody was looking at it. That is the wrong lifetime
+     for the only feature in this app whose entire premise is that you put the
+     phone away and go outside. Lock the screen, glance at a message, open Today
+     to check something — any of those and forty minutes in a garden was gone.
+
+     So it lives up here now, above the early returns, for three reasons:
+
+     · It is **returnable**. The session is mirrored to device-local storage on
+       every tick, so it survives a reload, a crash and a phone going flat, and
+       it is still running when you come back. It ends when you end it.
+     · It is **watched from anywhere**. The auto-end below is not a sun-screen
+       feature; the whole point is that it works while you are on Today, or
+       while the app is in your pocket and being woken by the platform.
+     · Today can **say it out loud**. A running session is the single most
+       important thing on that screen while it is running, and a card that only
+       exists on the screen you are not looking at is no use to anyone.
+
+     Nothing here writes to the journal until the session is over — a running
+     session is not a fact yet, and putting one in the synced database would
+     hand another device a session that is somehow still running over there. */
+
+  const [liveSun, setLiveSun] = useState(null);
+  const liveSunRef = useRef(liveSun);
+  liveSunRef.current = liveSun;
+
+  /* Pick up whatever was running when this device was last awake.
+
+     Three outcomes, and the middle one is the reason this feature exists: a
+     session that is plainly still going gets resumed, a session old enough that
+     nobody is watching it gets closed at the app's best guess and asks about it
+     later, and a session from another day gets dropped rather than given an
+     invented end time. Gated on `db` because closing one writes a record, and a
+     write before the journal has loaded would land on the empty placeholder. */
+  const sunRestored = useRef(false);
+  useEffect(() => {
+    if (viewer || !db || sunRestored.current) return;
+    sunRestored.current = true;
+    const stored = loadLiveSession();
+    if (!stored) return;
+    const decision = resumeDecision(stored, new Date());
+    if (decision.verdict === "resume") {
+      setLiveSun(stored);
+      return;
+    }
+    clearLiveSession();
+    if (decision.verdict === "close" && decision.autoEnd) {
+      const session = finishSession(stored.live, decision.autoEnd.at, stored.date, {
+        age: profileAge(db.profile) ?? undefined,
+        endSource: decision.autoEnd.reason,
+      });
+      setDb((prev) => ({ ...prev, sun: [...(prev.sun || []), session] }));
+    }
+  }, [viewer, !!db]);
+
+  /* The mirror. Cheap — one JSON write of a few kilobytes, on a state change
+     that already happens at most four times a minute.
+
+     Deliberately write-only. The obvious version of this — save when there is
+     a session, clear when there isn't — deletes the session it exists to
+     protect, because on the very first render `liveSun` is null for the boring
+     reason that the restore above has not read it yet. Clearing is therefore
+     done explicitly at the four places a session actually ends (finish,
+     discard, auto-end, and a restore that closes one) rather than inferred
+     from a state that is also null before anything has happened. */
+  useEffect(() => {
+    if (viewer || !liveSun) return;
+    saveLiveSession(liveSun.live, liveSun.date);
+  }, [liveSun, viewer]);
+
+  /* The sampler. Fifteen seconds, not one: the stopwatch on the live screen
+     ticks on its own for the display, and the *session* only needs a UV sample
+     a minute. A phone in a pocket in a field should not be woken four times a
+     second to redraw a clock nobody is looking at. */
+  useEffect(() => {
+    if (viewer || !liveSun) return;
+    const tick = setInterval(() => {
+      const at = new Date();
+      setLiveSun((cur) => {
+        if (!cur) return cur;
+        let next = cur.live;
+        const lastT = next.samples.length ? next.samples[next.samples.length - 1].t : -1;
+        const t = Math.round((at.getTime() - next.startedAt) / 60000);
+        if (t !== lastT) next = addSample(next, at);
+        next = tickPresence(next, at);
+        return next === cur.live ? cur : { ...cur, live: next };
+      });
+    }, 15_000);
+    return () => clearInterval(tick);
+  }, [!!liveSun, viewer]);
+
+  /* The watch. Only while a session is running and only while it is allowed to
+     end itself — an automation somebody switched off must not leave a position
+     watch running, which is the difference between a preference and a lie. */
+  const liveAutoEnd = !!liveSun?.live?.autoEnd && !liveSun?.live?.autoEndBlocked;
+  useEffect(() => {
+    if (viewer || !liveSun || !liveAutoEnd) return;
+    const handle = watchPresence({
+      onFix: (fix) => setLiveSun((cur) => (cur
+        ? { ...cur, live: { ...cur.live, presence: observe(cur.live.presence || emptyPresence(), fix) } }
+        : cur)),
+      onUnavailable: () => {
+        /* Refused, or a browser with no geolocation at all. Recorded as an
+           obstruction rather than as a change of mind — see `autoEndBlocked` in
+           lib/sun for why those must not be the same flag. The live screen goes
+           on saying the automation is wanted and explains what is stopping it,
+           instead of quietly showing nothing. */
+        setLiveSun((cur) => (cur ? { ...cur, live: { ...cur.live, autoEndBlocked: true } } : cur));
+      },
+    });
+    return () => handle.stop();
+  }, [!!liveSun, liveAutoEnd, viewer]);
+
+  /* The decision. Separate from the sampler because it must also fire for the
+     six-hour cap, which has nothing to do with position and has to work on a
+     device that never granted it. */
+  useEffect(() => {
+    if (viewer || !liveSun) return;
+    const check = setInterval(() => {
+      const cur = liveSunRef.current;
+      if (!cur) return;
+      const decision = autoEndDecision(cur.live, new Date());
+      if (!decision) return;
+      const session = finishSession(cur.live, decision.at, cur.date, {
+        age: db ? profileAge(db.profile) ?? undefined : undefined,
+        endSource: decision.reason,
+      });
+      setLiveSun(null);
+      clearLiveSession();
+      setDb((prev) => ({ ...prev, sun: [...(prev.sun || []), session] }));
+      feedback("save");
+      toast({
+        text: `Sun session closed — ${minutesLabel(session.minutes)} outside`,
+        cat: "fhj-cat-symptom",
+        /* Undo puts the session back on the clock rather than merely deleting
+           the record. Somebody who is still outside and watched their session
+           close should get their session back, not a tidy removal of it. */
+        undo: () => {
+          setDb((prev) => ({ ...prev, sun: (prev.sun || []).filter((x) => x.id !== session.id) }));
+          setLiveSun({ ...cur, live: { ...cur.live, autoEnd: false } });
+        },
+      });
+    }, 20_000);
+    return () => clearInterval(check);
+  }, [!!liveSun, viewer]);
+
   /* The arrival, once. Declared here with the other effects rather than beside
      the JSX it animates: everything below this point sits under early returns
      (first run, the lock screen, recovery), and a hook after one of those is
@@ -18184,6 +18457,90 @@ export default function App({ viewer = false }) {
     });
   };
 
+  /* Confirming what the app guessed.
+
+     The other half of the bargain in lib/sun. The session is already saved and
+     already counted; this only settles whether its *end time* has been looked
+     at by a person. Accepting costs one tap, correcting costs a slider, and
+     doing neither leaves a session that says "estimated" on it forever — which
+     is a perfectly honest thing for a health record to contain and a much
+     better outcome than a nag. */
+  const confirmSunSession = (id) => setDb((prev) => ({
+    ...prev,
+    sun: (prev.sun || []).map((x) => (x.id === id ? confirmSession(x) : x)),
+  }));
+
+  const reviseSunSession = (id, end) => {
+    let before = null;
+    setDb((prev) => {
+      before = prev.sun || [];
+      return {
+        ...prev,
+        sun: before.map((x) => (x.id === id
+          ? reviseSession(x, end, { age: profileAge(prev.profile) ?? undefined })
+          : x)),
+      };
+    });
+    feedback("save");
+    toast({
+      text: "End time corrected",
+      cat: "fhj-cat-symptom",
+      undo: () => setDb((prev) => (before ? { ...prev, sun: before } : prev)),
+    });
+  };
+
+  /* Starting, adjusting and ending a live session. These live beside the other
+     journal writers rather than inside SunScreen because the session no longer
+     belongs to that screen — see the block of effects above. */
+  const startSunSession = () => {
+    if (viewer || liveSun) return;
+    const at = new Date();
+    const live = startSession(at, {
+      coords: activeCoords,
+      exposure: profile.sun?.exposure,
+      skin: profile.sun?.skin,
+      forecastUV: todayContext?.uvMax ?? null,
+      autoEnd: !!activeCoords && automationOn(profile.automations, "sun-auto-end"),
+    });
+    setLiveSun({ live: addSample(live, at), date: todayStr(), savedAt: at.toISOString() });
+    feedback("start");
+  };
+
+  const patchLiveSun = (patch) =>
+    setLiveSun((cur) => (cur ? { ...cur, live: { ...cur.live, ...patch } } : cur));
+
+  const finishSunSession = (opts = {}) => {
+    const cur = liveSunRef.current;
+    if (!cur) return;
+    setLiveSun(null);
+    clearLiveSession();
+    saveSunSession(finishSession(cur.live, new Date(), cur.date, {
+      ...opts,
+      age: profileAge(profile) ?? undefined,
+    }));
+  };
+
+  const discardSunSession = () => {
+    setLiveSun(null);
+    clearLiveSession();
+  };
+
+  /* One switch, answered once. The live screen offers auto-end the first time
+     somebody runs a session with a position available; after that the answer is
+     a standing preference and the offer never appears again. */
+  const decideAutomation = (id, on) => {
+    setDb((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        automations: setAutomation(prev.profile?.automations, id, on),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    if (id === "sun-auto-end") patchLiveSun({ autoEnd: on && !!activeCoords });
+    feedback("select");
+  };
+
   /* ---------- labs ---------- */
 
   const saveLab = (input) => {
@@ -18451,6 +18808,11 @@ export default function App({ viewer = false }) {
     /* 1.21: the sun surface, the day's weather, and whichever experiments the
        person pinned. Today shows them; it does not own any of them. */
     sun: db.sun || [], context: db.context || [], labs: db.labs || [],
+    /* A session that is running right now. Today is where somebody looks when
+       they pick the phone up, so it is where a session that is still counting
+       has to be visible — anything else and the app is quietly holding a
+       stopwatch nobody can see. */
+    liveSun: liveSun?.live || null,
     goSun: () => setScreen("sun"), goLabs: () => setScreen("labs"),
     goExperiments: () => setScreen("experiments"),
     goImport: () => setScreen("import"),
@@ -18560,7 +18922,15 @@ export default function App({ viewer = false }) {
         forecastUV={todayContext?.uvMax ?? null}
         cloudCover={undefined}
         viewer={viewer}
-        onSave={saveSunSession}
+        live={liveSun?.live || null}
+        onStart={startSunSession}
+        onFinish={finishSunSession}
+        onDiscard={discardSunSession}
+        onAdjust={patchLiveSun}
+        automations={profile.automations}
+        onDecideAutomation={decideAutomation}
+        onConfirm={confirmSunSession}
+        onRevise={reviseSunSession}
         onDelete={viewer ? undefined : deleteSunSession}
         onOpenSettings={() => setScreen("settings")}
         onFeedback={feedback}

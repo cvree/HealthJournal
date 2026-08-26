@@ -1,5 +1,110 @@
 # Changelog
 
+## 1.25.0
+
+Sessions that end themselves.
+
+Starting a sun session is one tap on the way out of a door. Ending one is a
+chore, and it is the specific kind of chore this app exists to not charge you:
+something you have to remember, on the day you feel worst, about a thing you
+have already stopped doing.
+
+Unended sessions are not merely missing data. A session that says four hours
+because a phone sat on a kitchen counter poisons every average built on top of
+it, silently, forever. So the app takes both halves of the problem.
+
+### It is still running when you come back
+
+The session used to live in the sun screen's own memory, which meant it lived
+exactly as long as somebody was looking at it — the wrong lifetime for the one
+feature in this app whose entire premise is that you put the phone away and go
+outside. Lock the screen, check a message, open Today, close the app for an
+hour: forty minutes in a garden was gone.
+
+Now it is written to the device on every tick and owned above every screen.
+Leave the screen and Today grows a live row with the clock still counting and
+one tap back to it. Close the app entirely and it is picked up on the next
+launch, however long that was.
+
+It ends when you end it. That is the whole rule.
+
+### Or it ends when you head in
+
+Your phone can tell, roughly, when it stops seeing open sky. A position fix that
+resolves to eight metres under the sky reports sixty or ninety under a roof —
+the person has not moved, the *sky* has, and the sky is exactly what a sun
+session was measuring.
+
+Switch it on and the session closes itself, **at the moment the fixes changed
+rather than whenever the app became sure**. That backdating is the difference
+between "we ended your session" and "we think you came in at 3:42". Six minutes
+of consistent evidence is required before it will act, so a supermarket aisle on
+the way home does not end a walk, and a phone that has simply gone quiet is
+never read as a roof.
+
+What it reads is **how accurate its own position is — not where you are**. There
+is no latitude or longitude anywhere in the model, at any point in a session, on
+disk or in memory, and a test asserts the exact shape of what is stored so that
+stays true.
+
+### And it asks, once
+
+A session the app ended is saved immediately and marked as the app's own guess.
+The next time you look, one card: *It looked like you headed in, so it was
+closed at 3:42 — 47 min outside. Is that about right?*
+
+One tap accepts it. A slider corrects it, and correcting it works the dose and
+the vitamin D range out again over the new window rather than relabelling the
+old one. Ignoring it forever is a valid answer — the session stays on your
+timeline and in your charts, permanently labelled an estimate, which is a fine
+thing for a health record to contain and a much better outcome than a nag.
+
+Confirming does not clear the label. Agreeing with a guess does not turn it into
+a measurement.
+
+### One that was forgotten closes gracefully
+
+Six hours with nobody watching and the session closes at the last time it could
+honestly still have been sunlight: the newest moment with the sun above the
+horizon, or the cap, whichever came first. A session begun at 8pm and forgotten
+closes at sundown, not at 2am — and says out loud that the time is a guess. One
+left running into another day is dropped rather than given an invented end,
+because a made-up number in a health record is worse than a missing one.
+
+### Settings → Automations
+
+Every automation in the app, one switch each, and under each one the three lines
+that make a switch mean anything: what it **watches**, what it **writes**, and
+how you **undo** it. Not one "smart features" toggle — that is not one decision,
+and bundling it is how consent stops meaning anything.
+
+An automation that cannot run says why, instead of sitting there switched on and
+doing nothing. A phone that refuses the app a position is recorded as an
+obstruction rather than as a change of mind, so the live screen goes on saying
+the automation is wanted and explains what is stopping it.
+
+Nothing any of them does leaves the device.
+
+### The contract, written down
+
+`docs/AUTOMATION.md` is the full map: the five clauses every automation here
+obeys, what ships, what is designed and not built — environment, sleep,
+adherence, episodes, relationships, the determinants of health — and, more
+usefully, the list of automations that were considered and **rejected**. A
+stress score. Inferring meals from where you were. Inferring that a dose was
+taken. Reading contacts or calendars. Each with the reason.
+
+The short version of all of it: the app may write without being asked, in
+exchange for never being able to hide that it did.
+
+### Also
+
+- Sun sessions carry `endSource`, `estimated` and `confirmed`. Sessions written
+  before this release read back as confirmed manual finishes, because that is
+  what they were, and never appear in the queue of things to confirm.
+- 1,616 tests across 65 suites, up from 1,533 across 62.
+
+
 ## 1.24.0
 
 Rituals.
