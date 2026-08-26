@@ -12,6 +12,8 @@
    are structural: every item is in the tree and reachable, the wheel is
    claimed rather than left to the page, and the keyboard walks the row. */
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import React from "react";
 import { render, screen, fireEvent, within, cleanup, waitFor } from "@testing-library/react";
@@ -126,9 +128,40 @@ describe("the rail", () => {
     expect(screen.getAllByRole("button")).toHaveLength(9);
     expect(document.querySelectorAll(".fhj-picker-arrow")).toHaveLength(2);
   });
+
+  /* A dead wizard header used to claim `.fhj-rail` too, later in the same
+     stylesheet, and `.fhj-rail button` handed every card in every rail a pill
+     radius and a transparent background. That is what made the "Again" row on
+     Today look like a row of lozenges with the names falling out of them, and
+     it went unnoticed for a long time because nothing about the markup was
+     wrong. The class name has one owner now, and this is the guard on that. */
+  it("owns its class name — nothing else in the stylesheet restyles a rail button", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/styles/index.css"), "utf8");
+    expect(css).not.toMatch(/(^|,)\s*\.fhj-rail\s+button/m);
+    expect(css.match(/^\.fhj-rail \{/gm) || []).toHaveLength(1);
+  });
 });
 
 describe("the Again row on Today", () => {
+  const mountToday = async () => {
+    (window as any).storage = (() => {
+      const db = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
+      const kv = new Map([["fhj_v1", JSON.stringify(db)]]);
+      return {
+        async get(k: string) { return kv.has(k) ? { key: k, value: kv.get(k) } : null; },
+        async set(k: string, v: string) { kv.set(k, String(v)); return { key: k, value: v }; },
+        async delete(k: string) { kv.delete(k); return { key: k, deleted: true }; },
+        async list() { return { keys: [...kv.keys()] }; },
+      };
+    })();
+    render(<App />);
+    await screen.findByText(/Quick Add/);
+    await waitFor(() => {
+      const el = screen.getByRole("list", { name: /again/i });
+      expect(within(el).getAllByRole("listitem").length).toBeGreaterThan(0);
+    });
+  };
+
   it("is a rail, so every repeat past the edge of the screen can be reached", async () => {
     (window as any).storage = (() => {
       const db = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
@@ -150,5 +183,38 @@ describe("the Again row on Today", () => {
     });
     expect(again.classList.contains("fhj-scroller")).toBe(true);
     expect(again.closest(".fhj-rail")).toBeTruthy();
+  });
+
+  /* The row used to draw a shrink-to-fit chip with the icon set inline in the
+     middle of a line of text, and a long name simply ran out of the border.
+     Three structural facts are what stop that happening again: the icon is its
+     own element rather than a glyph in a sentence, the name and the meta share
+     a column that is allowed to shrink, and the card's own class carries the
+     fixed width. A test cannot measure pixels in jsdom, so it pins the shape
+     the stylesheet needs to be able to do its job. */
+  it("draws each repeat as a card: a medallion, a column that can truncate, and one verb", async () => {
+    await mountToday();
+    const again = screen.getByRole("list", { name: /again/i });
+    const cards = within(again).getAllByRole("listitem");
+    expect(cards.length).toBeGreaterThan(0);
+
+    for (const card of cards) {
+      expect(card.classList.contains("fhj-again")).toBe(true);
+      // The kind of thing, as its own tinted element outside the sentence.
+      expect(card.querySelector(".fhj-again-icon")).toBeTruthy();
+      // The two lines, in the column that is allowed to shrink to nothing.
+      const text = card.querySelector(".fhj-again-text")!;
+      expect(text.querySelector(".fhj-again-name")!.textContent!.trim()).not.toBe("");
+      expect(text.querySelector(".fhj-again-meta")).toBeTruthy();
+      // What the tap does, drawn once rather than written on every card.
+      expect(card.querySelector(".fhj-again-plus")).toBeTruthy();
+      // And the old chip is gone for good.
+      expect(card.querySelector(".fhj-repeat-name")).toBeNull();
+    }
+  });
+
+  it("says what a tap does, because a tap here writes a row in the journal", async () => {
+    await mountToday();
+    expect(screen.getByText(/One tap logs it again/i)).toBeTruthy();
   });
 });

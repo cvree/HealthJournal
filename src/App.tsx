@@ -97,6 +97,9 @@ import {
   answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord, surveyProgress,
 } from "./lib/pulse";
 import {
+  checkinStatus, checkinLine, checkinVerb, checkinPips,
+} from "./lib/checkin";
+import {
   noteUse, rankIds, repeatSuggestions, sanitizeActionStats,
 } from "./lib/quickActions";
 import {
@@ -189,7 +192,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.25.0";
+export const APP_VERSION = "1.26.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -5929,13 +5932,91 @@ function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen, ctx
   );
 }
 
+/* Today, at the top of the record.
+
+   History used to begin with yesterday. That is a strange thing for a journal
+   to do: the day somebody is actually living is the one they most often want
+   to check on, and "have I done today yet" was a question this screen could
+   not answer at all — you had to go back to Today and read the pulse card.
+
+   So the record now opens with the day it is, and it opens with the *state* of
+   that day rather than a row for it: the ring, the marks, and the breakdown
+   part by part — what today asked for, and how much of it is in. It is the
+   same arithmetic the card on Today uses, from the same module, which is what
+   stops the two screens ever disagreeing about somebody's own day.
+
+   It is a button, and it goes where you would expect: into today's check-in.
+   Which means the answer to "what haven't I done today" and the way to do it
+   are the same object. */
+function HistoryTodayCard({ status, tint, keyField, value, date, viewer, onOpen }) {
+  const line = checkinLine(status);
+  const body = (
+    <Card className={"fhj-today-card" + (status.complete ? " is-complete" : "")}>
+      <div className="fhj-today-card-top">
+        <div className="min-w-0">
+          <div className="fhj-eyebrow">Today</div>
+          <h2 className="font-display text-[1.25rem] leading-tight mt-0.5">{fmtNice(date)}</h2>
+          {/* The day's own number, said with the name of the thing it measures.
+              Two bare numerals in two circles is a puzzle; this is a fact. */}
+          {value != null && keyField && (
+            <div className="fhj-today-score">
+              <span className="fhj-today-score-dot" style={{
+                background: colorFor(value, keyField.dir),
+                color: readableInk(colorFor(value, keyField.dir)),
+              }}>{value}</span>
+              <span className="fhj-today-score-label">{keyField.label}</span>
+            </div>
+          )}
+          <p className="text-[12px] mt-1.5" style={{ color: C.sub }}>{line}</p>
+        </div>
+        <CheckinRing status={status} tint={tint} size={58} stroke={5} />
+      </div>
+
+      <CheckinPips status={status} tint={tint} />
+      <CheckinParts status={status} />
+
+      {!viewer && (
+        <div className="fhj-today-card-go">
+          {checkinVerb(status)}
+          <Icon name="right" size={13} color="currentColor" />
+        </div>
+      )}
+    </Card>
+  );
+
+  if (viewer) return <div className="mt-4">{body}</div>;
+  return (
+    <button type="button" className="w-full text-left mt-4"
+      onClick={() => { feedback("nav"); onOpen(date); }}
+      aria-label={`Today's check-in — ${line}`}>
+      {body}
+    </button>
+  );
+}
+
 function HistoryScreen({
-  profile, entries, food = [], bowel = [], routine = [],
+  profile, entries, food = [], bowel = [], routine = [], routineItems = [],
   openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, goSun, goLabs,
   goExperiments, viewer, syncStatus, context = [], sun = [], labs = [], lit, onClearLit,
 }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
+  const today = todayStr();
+  const todayEntry = entryOn(entries, today);
+  /* The same numbers the card on Today draws, from the same module. See
+     HistoryTodayCard, and lib/checkin.ts for what a ring here may claim. */
+  const todayStatus = useMemo(() => checkinStatus({
+    fields: tpl.fields,
+    primaryKey: tpl.keyMetric,
+    answers: todayEntry?.answers,
+    score: typeof todayEntry?.answers?.[tpl.keyMetric] === "number"
+      ? todayEntry.answers[tpl.keyMetric] : null,
+    notes: todayEntry?.notes,
+    photos: todayEntry?.photos,
+    hasPhotoFields: tpl.fields.some((f) => f.type === "photo"),
+    routine: routineProgress(routineItems || [], routine || [], today),
+    meals: food.filter((f) => f.date === today).length,
+  }), [tpl, todayEntry, routineItems, routine, food, today]);
   /* When a finding is illuminating a set of days, History shows those days
      rather than the last fortnight. That is the whole cross-feature promise:
      tapping "8 of your 10 hardest days were above 29°C" and arriving on the
@@ -5946,7 +6027,10 @@ function HistoryScreen({
       const hits = sorted.filter((e) => lit.dates.has(e.date));
       if (hits.length) return hits.slice(0, 60);
     }
-    return sorted.slice(0, 14);
+    /* Today has its own card at the top of the screen, with far more on it
+       than a row could carry. Repeating it here would be the same day twice on
+       one screen, four inches apart, saying different amounts. */
+    return sorted.filter((e) => e.date !== todayStr()).slice(0, 14);
   }, [entries, lit]);
   const washing = useMemo(() => washScale(context), [context]);
   const ctxByDate = useMemo(() => new Map(context.map((c) => [c.date, c])), [context]);
@@ -5986,6 +6070,13 @@ function HistoryScreen({
           <button type="button" className="fhj-linkish" onClick={onClearLit}>Clear</button>
         </div>
       ) : null}
+
+      {/* The day being lived, before the days already lived. See
+          HistoryTodayCard. */}
+      <HistoryTodayCard status={todayStatus} tint={tpl.color} keyField={keyField}
+        value={typeof todayEntry?.answers?.[tpl.keyMetric] === "number"
+          ? todayEntry.answers[tpl.keyMetric] : null}
+        date={today} viewer={viewer} onOpen={openLog} />
 
       {traceRows.length > 4 && (
         <div className="fhj-hist-trace mt-4">
@@ -13302,7 +13393,7 @@ function MealChips({ meals, onAdd }) {
           onClick={() => { feedback("tap"); onAdd(m.id); }}
           aria-label={`Add food to ${m.label}`}
           className="fhj-chip fhj-pop">
-          <Icon name="plus" size={12} color="currentColor" />
+          <Icon name="plus" size={11} color="currentColor" />
           {m.label}
         </button>
       ))}
@@ -15017,17 +15108,7 @@ function greetingFor(d = new Date(), name = "") {
   return first ? `${hello}, ${first}` : hello;
 }
 
-/** One-tap repeat.
 
-    The food library already knows what someone eats over and over; until now
-    it only paid out *inside* the picker, three taps deep. These are the same
-    rows, hoisted onto the first screen: tap the chip, the meal is logged at
-    the current time under whichever category the clock implies, and the toast
-    offers an Undo. That is the shortest path this app has to anything.
-
-    Frequency beats recency here on purpose. "Recent" puts the one-off you
-    logged yesterday at the front; "frequent" puts the coffee you have every
-    morning there, which is the thing a repeat button is for. */
 /* One tap, again.
 
    The second time somebody logs a thing is the tap this row exists to save,
@@ -15036,7 +15117,24 @@ function greetingFor(d = new Date(), name = "") {
    Sundays, the weight they record on Mondays. They are ranked against each
    other by the same score (see src/lib/quickActions.ts), so this is the
    person's own week in their own order rather than a menu of everything the
-   app can do. */
+   app can do.
+
+   ---
+
+   The row was right and the chip was wrong.
+
+   What it used to draw was a shrink-to-fit box with a max width, an icon set
+   inline in the middle of a line of text, and nothing to stop either from
+   running past the edge — so a long name ("Hydrocortisone 1%") spilled out of
+   its own border, every chip was a different width, and the rail's arrows
+   landed on top of whatever happened to be at the edge. Four kinds of thing
+   ranked into one row, and the row looked like a mistake.
+
+   The card is now a fixed width with a hard `min-width: 0` on its text column,
+   which is what actually guarantees an ellipsis rather than an overflow, and
+   the icon has moved out of the sentence into a tinted medallion — so the kind
+   of thing a card logs is legible before its name is read, and every card in
+   the row is the same object at the same size. */
 function QuickRepeats({ items, onRun, onOpenPicker }) {
   if (!items.length) return null;
   return (
@@ -15050,16 +15148,26 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
           </button>
         )}
       </div>
+      {/* What the row is, said once. Without it the cards read as a filter or a
+          set of tabs — the one thing they must not be mistaken for, because a
+          tap here writes a row in the journal. */}
+      <p className="fhj-again-hint">One tap logs it again, at the time you tap it.</p>
       <Rail label="Do something again">
         {items.map((item) => (
           <button key={item.id} type="button" role="listitem"
             onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); onRun(item); }}
             aria-label={`${item.kind === "food" ? "Log" : item.kind === "photo" ? "Take" : "Add"} ${item.label} again`}
-            className={"fhj-repeat fhj-pop " + REPEAT_CAT[item.kind]}>
-            <span className="fhj-repeat-name">
-              <Icon name={item.icon} size={12} color="currentColor" /> {item.label}
+            className={"fhj-again fhj-pop " + REPEAT_CAT[item.kind]}>
+            <span className="fhj-again-icon" aria-hidden="true">
+              <Icon name={item.icon} size={15} color="currentColor" />
             </span>
-            <span className="fhj-repeat-meta">{item.sub}</span>
+            <span className="fhj-again-text">
+              <span className="fhj-again-name">{item.label}</span>
+              <span className="fhj-again-meta">{item.sub}</span>
+            </span>
+            <span className="fhj-again-plus" aria-hidden="true">
+              <Icon name="plus" size={11} color="currentColor" />
+            </span>
           </button>
         ))}
       </Rail>
@@ -15076,58 +15184,6 @@ const REPEAT_CAT = {
   food: "fhj-cat-food", routine: "fhj-cat-routine", photo: "fhj-cat-photo",
   measurement: "fhj-cat-symptom", note: "fhj-cat-symptom",
 };
-
-function RepeatRow({ library, onLog, onOpenPicker }) {
-  const items = useMemo(() => {
-    /* Everything the library knows, most-logged first — including a food
-       logged exactly once. Waiting for a second log before offering the
-       one-tap repeat had it backwards: the second time is precisely the tap
-       this row exists to save. */
-    const frequent = browseFoods(library, "frequent");
-    const favourites = browseFoods(library, "favorite");
-    /* Favourites first — they are an explicit "I will want this again" — then
-       whatever the counts say, de-duped. */
-    const seen = new Set();
-    const out = [];
-    for (const f of [...favourites, ...frequent]) {
-      if (seen.has(f.id)) continue;
-      seen.add(f.id);
-      out.push(f);
-    }
-    return out.slice(0, 8);
-  }, [library]);
-
-  if (!items.length) return null;
-
-  return (
-    <>
-      <div className="fhj-section mt-6 fhj-cat-food">
-        <h2 className="fhj-section-title">Again</h2>
-        <button type="button" onClick={onOpenPicker}
-          className="text-[11px] font-semibold" style={{ color: C.accentText }}>
-          All foods
-        </button>
-      </div>
-      <Rail label="Log a food again" className="fhj-cat-food">
-        {items.map((item) => {
-          const cal = item.nutrition?.calories;
-          return (
-            <button key={item.id} type="button" role="listitem"
-              onClick={() => { feedback("save"); onLog(item); }}
-              aria-label={`Log ${item.name} again`}
-              className="fhj-repeat fhj-pop">
-              <span className="fhj-repeat-name">{item.name}</span>
-              <span className="fhj-repeat-meta">
-                {item.serving}
-                {cal != null && ` · ${formatNutrient("calories", cal)} kcal`}
-              </span>
-            </button>
-          );
-        })}
-      </Rail>
-    </>
-  );
-}
 
 /** The invitation a new journal needs, and an old one does not.
 
@@ -15655,7 +15711,7 @@ function PulseScale({ field, value, onSet, disabled }) {
 
     The Daily Pulse answers "how was today" in one tap, and for most people on
     most days that is the whole log. But some days somebody *wants* to do the
-    round — and until now the only route to it was "Add more detail", which
+    round — and the only route to it was the card at the foot of this one, which
     opens the survey: a screen, a scroll, forty fields, and a Back button. The
     chip row underneath is not that route either. A chip row is a menu; it
     shows what could be answered and hands the choosing back. Choosing is work,
@@ -15717,6 +15773,143 @@ function NextQuestion({ tpl, field, value, ghost, progress, onSet, onAdvance, on
         </button>
       </div>
     </div>
+  );
+}
+
+/* ============================================================
+   Today's check-in
+   ============================================================
+
+   The link at the foot of the pulse card used to say **Add more detail**. Two
+   words of it were wrong and the third was worse.
+
+   "More" is a quantity, and the thing on the other side of that link is not a
+   quantity — it is the daily check-in, the set of questions somebody built
+   around their own body, the reason this app exists at all. "Detail" is what
+   you add to a form you have already filled in. And "Add" made it a chore
+   offered to people who had just finished one.
+
+   So it has its name back, and with the name it gets the three things a core
+   surface needs and a footnote never has:
+
+   **A state.** The card knows how much of today is in. `lib/checkin.ts` owns
+   that number and both screens read it from there, so Today and History can
+   never disagree about somebody's own day.
+
+   **A shape.** A fraction is read; a row of small blocks going solid one at a
+   time is *seen* — from the top of the screen, without reading. That is the
+   difference between "four questions left" as a fact and as a thing somebody
+   finishes. The ring says how far round the day is, the pips say which pieces
+   of it, and both move the instant a tap lands anywhere in the app, because
+   both are derived from the journal rather than from having been here.
+
+   **A door that is obviously a door.** Full width, a real border, a press that
+   moves, and an arrow.
+
+   What it deliberately does not have: a badge, a score, a congratulation, or a
+   streak counted at somebody. The finished state is a statement about the
+   record — *today is fully on the record* — and not about the person. A
+   journal that praises you for using it has started optimising for being used.
+   The satisfaction here is meant to come from the same place it comes from on
+   paper: the page is full. */
+
+/** How far round the day is. The middle carries the count, so the ring can be
+    read at a glance and the exact number at a look. */
+function CheckinRing({ status, tint, size = 52, stroke = 5 }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const on = circ * status.ratio;
+  return (
+    <span className="fhj-ring" style={{ width: size, height: size }} aria-hidden="true">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="fhj-ring-svg">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke}
+          stroke={C.line} />
+        {/* Drawn only when there is an arc to draw: a round cap on a zero-length
+            dash renders as a dot in some engines, which reads as 1 of 11. */}
+        {on > 0.5 && (
+          <circle className="fhj-ring-arc" cx={size / 2} cy={size / 2} r={r} fill="none"
+            stroke={tint} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={`${on} ${Math.max(0, circ - on)}`}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        )}
+      </svg>
+      <span className="fhj-ring-mid" style={{ color: status.done ? C.ink : C.subtle }}>
+        {status.complete
+          ? <Icon name="check" size={Math.round(size * 0.36)} color={tint} />
+          : status.done}
+      </span>
+    </span>
+  );
+}
+
+/** One mark per thing today asked for. Long setups get a bar instead — forty
+    pips is not a progress indicator, it is a texture. */
+function CheckinPips({ status, tint }) {
+  if (!status.total) return null;
+  const pips = checkinPips(status);
+  if (!pips.length) {
+    return (
+      <span className="fhj-checkin-bar" aria-hidden="true">
+        <span className="fhj-checkin-bar-fill" style={{ width: `${status.pct}%`, background: tint }} />
+      </span>
+    );
+  }
+  return (
+    <span className="fhj-checkin-pips" aria-hidden="true">
+      {pips.map((p, i) => (
+        <span key={i}
+          className={`fhj-checkin-pip fhj-pip-${p.part}${p.on ? " is-on" : ""}`}
+          style={p.on && p.part === "questions" ? { background: tint, borderColor: tint } : undefined} />
+      ))}
+    </span>
+  );
+}
+
+/** The breakdown, in words: what today asked for, part by part, and which of
+    the optional things happened. Counted parts carry a fraction; the rest
+    carry a tick or a dash, because inventing a target for "notes today" would
+    be the app deciding how much somebody ought to write. */
+function CheckinParts({ status }) {
+  return (
+    <div className="fhj-checkin-parts">
+      {status.parts.map((p) => {
+        const ok = p.counted ? p.total > 0 && p.done >= p.total : p.done > 0;
+        const value = p.counted
+          ? `${p.done}/${p.total}`
+          : !p.done ? "—"
+            : p.id === "meals" ? String(p.done)
+              : "Yes";
+        return (
+          <span key={p.id} className={"fhj-checkin-part" + (ok ? " is-on" : "")}>
+            <Icon name={ok && !p.counted ? "check" : p.icon} size={12} color="currentColor" />
+            <span className="fhj-checkin-part-label">{p.label}</span>
+            <b className="fhj-checkin-part-val">{value}</b>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The door, on Today. Sits at the foot of the pulse card, where the old link
+    was, at about six times its weight. */
+function TodayCheckinCard({ status, tint, onOpen }) {
+  const line = checkinLine(status);
+  return (
+    <button type="button"
+      onClick={() => { feedback("nav"); onOpen(); }}
+      aria-label={`Today's check-in — ${line}`}
+      className={"fhj-checkin fhj-pop" + (status.complete ? " is-complete" : "")}>
+      <CheckinRing status={status} tint={tint} size={48} />
+      <span className="fhj-checkin-body">
+        <span className="fhj-checkin-title">Today's check-in</span>
+        <CheckinPips status={status} tint={tint} />
+        <span className="fhj-checkin-line">{line}</span>
+      </span>
+      <span className="fhj-checkin-go" aria-hidden="true">
+        <Icon name="right" size={15} color="currentColor" />
+      </span>
+    </button>
   );
 }
 
@@ -15793,6 +15986,19 @@ function DailyPulse({
 
   const queue = useMemo(() => askQueue(pulseCtx, skipped), [pulseCtx, skipped]);
   const progress = useMemo(() => surveyProgress(pulseCtx), [pulseCtx]);
+  /* The state of the whole check-in, for the card at the foot of this one.
+     Read from the journal on every render, from the same module History reads
+     it from — the two screens are not allowed to disagree about today. */
+  const status = useMemo(() => checkinStatus({
+    fields: tpl.fields,
+    primaryKey: keyField.k,
+    answers,
+    score: value,
+    notes: entry?.notes,
+    photos: entry?.photos,
+    hasPhotoFields: photoFields.length > 0,
+    routine: routineProgress(routineItems || [], routine || [], date),
+  }), [tpl.fields, keyField.k, answers, value, entry, photoFields, routineItems, routine, date]);
   const asking = (cursor && tpl.fields.find((f) => f.k === cursor)) || queue[0] || null;
   const ghosts = useMemo(
     () => recentAnswers(tpl.fields.filter((f) => f.type === "number"), entries, date),
@@ -15920,13 +16126,9 @@ function DailyPulse({
         </div>
       )}
 
-      {!viewer && (
-        <button type="button" onClick={() => { feedback("nav"); onOpenLog(); }}
-          className="fhj-pulse-more">
-          Add more detail
-          <Icon name="right" size={13} color="currentColor" />
-        </button>
-      )}
+      {/* The way into the rest of it. Not a footnote — see the note above
+          TodayCheckinCard. */}
+      {!viewer && <TodayCheckinCard status={status} tint={tpl.color} onOpen={onOpenLog} />}
     </Card>
   );
 }
@@ -18975,6 +19177,7 @@ export default function App({ viewer = false }) {
       <HistoryScreen
         profile={profile} entries={entries}
         food={db.food || []} bowel={db.bowel || []} routine={db.routine || []}
+        routineItems={db.routineItems || []}
         openLog={goToLog} viewer={viewer} syncStatus={syncStatus}
         goInsights={() => setScreen("insights")} goDiary={() => setScreen("food")}
         goExport={() => setScreen("export")} goGallery={() => setScreen("gallery")}

@@ -107,8 +107,66 @@ describe("the optional detail after it", () => {
 
   it("keeps the full check-in one tap away, and never in the way", async () => {
     await mountToday();
-    fireEvent.click(screen.getByRole("button", { name: /Add more detail/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Today's check-in —/ }));
     expect(await screen.findByRole("heading", { name: "Today" })).toBeTruthy();
+  });
+});
+
+/* The card that replaced "Add more detail".
+
+   Three things have to be true of it, and the third is the one worth pinning:
+   it must be named after the thing rather than after the work, it must move
+   the moment anything is answered anywhere, and it must never be the app
+   claiming progress a journal cannot back up. */
+describe("today's check-in, on Today", () => {
+  const card = () => document.querySelector(".fhj-checkin")!;
+  const line = () => document.querySelector(".fhj-checkin-line")!.textContent!.trim();
+  const filledPips = () => document.querySelectorAll(".fhj-checkin-pip.is-on").length;
+
+  it("is named after the check-in, not after adding detail to something", async () => {
+    await mountToday();
+    expect(screen.getByText("Today's check-in")).toBeTruthy();
+    expect(screen.queryByText(/Add more detail/i)).toBeNull();
+  });
+
+  it("says how much of the day is in, before anything is", async () => {
+    await mountToday();
+    expect(line()).toMatch(/^\d+ to answer, about a minute\.$/);
+    expect(card().querySelector(".fhj-ring-mid")!.textContent).toBe("0");
+  });
+
+  it("counts the one tap on the pulse, immediately", async () => {
+    await mountToday();
+    const before = line();
+    fireEvent.click(rung(5));
+    await waitFor(() => expect(line()).not.toBe(before));
+    expect(line()).toMatch(/^1 of \d+ in\./);
+    expect(card().querySelector(".fhj-ring-mid")!.textContent).toBe("1");
+  });
+
+  it("moves again for a question answered in the queue, without opening a form", async () => {
+    await mountToday();
+    fireEvent.click(rung(5));
+    await waitFor(() => expect(line()).toMatch(/^1 of/));
+    const marks = filledPips();
+
+    const rungs = document.querySelectorAll<HTMLButtonElement>(".fhj-next .fhj-scale-rung");
+    expect(rungs.length).toBeGreaterThan(0);
+    fireEvent.click(rungs[3]);
+
+    await waitFor(() => expect(line()).toMatch(/^2 of/));
+    expect(filledPips()).toBe(marks + 1);
+    // Still on Today. Nothing was opened to make that number move.
+    expect(screen.getByRole("button", { name: "Today" })).toHaveProperty("ariaCurrent", "page");
+  });
+
+  it("goes back down when an answer is cleared — the marks read the journal", async () => {
+    await mountToday();
+    fireEvent.click(rung(5));
+    await waitFor(() => expect(line()).toMatch(/^1 of/));
+    fireEvent.click(rung(5));
+    await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBeNull());
+    expect(line()).toMatch(/to answer, about a minute\.$/);
   });
 });
 

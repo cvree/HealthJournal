@@ -165,6 +165,58 @@ describe("History", () => {
     expect(await screen.findByRole("heading", { name: /^(Today|\w{3},)/ })).toBeTruthy();
   });
 
+  /* The record used to begin with yesterday, which meant the one day somebody
+     is actually living was the one day History could say nothing about. */
+  it("opens with today, and says what today still wants", async () => {
+    await mountApp();
+    fireEvent.click(nav().getByRole("button", { name: "History" }));
+    await screen.findByRole("heading", { name: "History" });
+
+    const card = document.querySelector(".fhj-today-card")!;
+    expect(card).toBeTruthy();
+    expect(within(card as HTMLElement).getByText("Today")).toBeTruthy();
+    // The breakdown, part by part: the questions and the routine carry a
+    // fraction, the optional things carry a tick or a dash.
+    const parts = [...card.querySelectorAll(".fhj-checkin-part")].map((p) => p.textContent!.trim());
+    expect(parts.some((t) => /^Questions\d+\/\d+$/.test(t.replace(/\s+/g, "")))).toBe(true);
+    expect(parts.some((t) => /^Routine\d+\/\d+$/.test(t.replace(/\s+/g, "")))).toBe(true);
+    expect(card.querySelector(".fhj-today-card-go")!.textContent).toMatch(/today's check-in/i);
+  });
+
+  it("shows today once, not twice — the recent list starts at yesterday", async () => {
+    await mountApp();
+    fireEvent.click(nav().getByRole("button", { name: "History" }));
+    await screen.findByRole("heading", { name: "History" });
+    /* The sample journal stops at yesterday, so put something on today first
+       and check the list still refuses to repeat the card above it. */
+    fireEvent.click(nav().getByRole("button", { name: "Today" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Overall skin severity 6 out of 10/ }));
+    await waitFor(() => expect(saved().entries.some((e: any) => e.date === today())).toBe(true));
+
+    fireEvent.click(nav().getByRole("button", { name: "History" }));
+    await screen.findByRole("heading", { name: "History" });
+    const rowDates = [...document.querySelectorAll(".fhj-hist-row")]
+      .map((r) => r.textContent!.trim());
+    expect(rowDates.length).toBeGreaterThan(0);
+    expect(rowDates.some((t) => /^Today/.test(t))).toBe(false);
+  });
+
+  it("counts the day's own tap into the ring on the other screen", async () => {
+    await mountApp();
+    fireEvent.click(await screen.findByRole("button", { name: /Overall skin severity 7 out of 10/ }));
+    await waitFor(() => expect(saved().entries.some((e: any) => e.date === today())).toBe(true));
+
+    fireEvent.click(nav().getByRole("button", { name: "History" }));
+    await screen.findByRole("heading", { name: "History" });
+    const card = document.querySelector(".fhj-today-card")!;
+    expect(card.querySelector(".fhj-ring-mid")!.textContent).toBe("1");
+    // The day's number is said with the name of the thing it measures, rather
+    // than as a second bare numeral in a second circle.
+    expect(card.querySelector(".fhj-today-score-dot")!.textContent).toBe("7");
+    expect(card.querySelector(".fhj-today-score-label")!.textContent)
+      .toBe("Overall skin severity");
+  });
+
   it("still reaches Insights in one tap", async () => {
     await mountApp();
     fireEvent.click(nav().getByRole("button", { name: "History" }));

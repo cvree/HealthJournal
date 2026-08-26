@@ -702,7 +702,7 @@ describe("editing Quick Add", () => {
 describe("Today's Logs is a way in, not just a heading", () => {
   it("opens today's check-in when the heading row is pressed", async () => {
     await mountApp();
-    fireEvent.click(await screen.findByRole("button", { name: /today's check-in/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(Open|Start) today's check-in$/i }));
     /* The Log screen is up. Its header says which *day* rather than which
        screen — the nav already says that, and a second title row was what
        pushed the first question a third of the way down the phone — so this

@@ -1035,6 +1035,62 @@
 > focus, but the press-and-slide selection is a pointer gesture with no keyboard analogue
 > beyond tabbing the open fan.
 
+> **2026-08-26 addendum 28 — 1.26: today's check-in has a name, a state, and a place in
+> History; and the "Again" row stops being dressed by a dead screen.**
+> Three changes, one of which is a bug that had been deforming the busiest row on the first
+> screen for a long time without anybody being able to see why from the markup.
+>
+> - **`src/lib/checkin.ts` (new, fully typed, pure).** One answer to "of what today asked
+>   for, how much is in", read by both screens so they cannot disagree.
+>   `checkinStatus(src)` → `{ parts, done, total, left, ratio, pct, untouched, complete,
+>   extras }`; `checkinLine` / `checkinVerb` (the words); `checkinPips` + `PIP_LIMIT` (the
+>   marks). **The policy is the module's reason to exist:** only *counted* parts are in the
+>   fraction — the askable questions (via `isAskable` from `lib/pulse`) and the routine rows
+>   scheduled for today (a skip counts, same rule as `routineProgress`). A photo, a note and
+>   a meal are `counted: false` and shown beside the ring, because there is no honest daily
+>   denominator for any of them and a progress ring in a medical journal may not invent one.
+>   Two edge cases have tests: a primary key that is not itself askable adds one question
+>   *only if that field exists in the setup* (otherwise an empty journal reads a permanent
+>   "0 of 1"), and `complete` is never true when `total === 0`.
+> - **App.tsx.** New shared pieces beside the pulse: `CheckinRing` (SVG arc + count, arc
+>   suppressed below half a pixel so a round line-cap cannot draw a dot that reads as 1),
+>   `CheckinPips`, `CheckinParts`, `TodayCheckinCard` (replaces the `fhj-pulse-more` link)
+>   and `HistoryTodayCard`. `HistoryScreen` now takes `routineItems`, computes the same
+>   status, renders today at the top, and **filters today out of `recent`** so the day is
+>   not on one screen twice with two different amounts on it.
+> - **Naming.** "Add more detail" → **Today's check-in** everywhere. Three test files named
+>   the old string; `foodBowelUi`'s "Today's Logs is a way in" case now matches the section
+>   heading exactly (`/^(Open|Start) today's check-in$/i`) because Today legitimately has two
+>   doors into the check-in now.
+>
+> **The `.fhj-rail` collision (the actual "Again" bug).** A wizard header from an older first
+> run owned `.fhj-rail` — `display:flex`, `overflow-x:auto`, a mask, and crucially
+> `.fhj-rail button { border-radius: pill; background: transparent; padding: 5px 7px }` —
+> and it outlived its markup. `src/components/Rail.tsx`, the app's one horizontal scroller,
+> claims the same class, and the dead block sat *later in the stylesheet*, so it won. Every
+> card in every rail was being given a wizard step's clothes, which is what made the Again
+> row look like lozenges with the names falling out, and what stripped the scroll arrows of
+> the card background separating them from the content underneath. Nothing rendered
+> `.fhj-rail-dot`, `.fhj-rail-label`, or a rail button with a `data-state`, so the block was
+> deleted rather than renamed. `tests/rail.test.tsx` now reads `index.css` and asserts both
+> that nothing matches `.fhj-rail button` and that `.fhj-rail {` is declared exactly once —
+> the only kind of guard that catches a class-name collision, since jsdom has no cascade.
+>
+> **`.fhj-repeat*` → `.fhj-again*`.** Rebuilt on top of the fix: fixed `width` (not
+> shrink-to-fit, so the row is a row), `min-width: 0` on the text column (which is the
+> property that actually produces an ellipsis rather than an overflow), and the icon moved
+> out of the sentence into a `--fhj-mark`-tinted medallion. The dead `RepeatRow` — an older
+> food-only "Again" that nothing rendered and that was the only other consumer of
+> `.fhj-repeat` — went with it. The rail's edge fade widened 1.75rem → 3rem and its arrows
+> shrank to 1.875rem so an arrow always lands on faded content.
+>
+> **Pips are a CSS grid, not a wrapping flex row.** `flex: 1 1 0` gave a full first row of
+> 5px hairlines and a short second row of 18px lozenges — the same mark at two sizes, which
+> stops the row being countable. `repeat(auto-fit, minmax(0.5rem, 1fr))` keeps every mark
+> the same width when the row wraps and still lets a short setup spread across the card.
+> `PIP_LIMIT` is 36, not 18, because the shipped packs run to ~31 questions-plus-doses and
+> at 18 almost nobody would ever have seen the marks at all.
+>
 > **2026-08-23 addendum 27 — 1.24: rituals, and the staggered weekly tune-up.**
 > The routine (`src/lib/routine.ts`) models *things*. This adds the second shape it could
 > never carry: a **process**. A `Ritual` is an ordered list of `RitualStep`s; a `RitualRun`

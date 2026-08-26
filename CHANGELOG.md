@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.26.0
+
+Today's check-in.
+
+The most important thing this app does had the worst name in it. Under the
+Daily Pulse, in a dashed box, in the app's quietest colour, was a link that said
+**Add more detail** — and on the other side of it was the daily check-in: the
+set of questions somebody built around their own body, the thing the entire
+journal is made of.
+
+Every word of that was wrong. "More" is a quantity, and what is behind the link
+is not a quantity. "Detail" is what you add to a form you have already filled
+in. "Add" made it a chore, offered to somebody who had just finished one. And
+the box it sat in was drawn like a footnote, which is what people treated it as.
+
+### It has its name back, and a state to go with it
+
+It says **Today's check-in**, and it knows how much of today is in.
+
+A ring, filled as far as the day has got, with the count in the middle. One
+small mark for every single thing today asked for — a row you can read from the
+top of the screen without reading anything, which is the difference between
+"four left" as a fact and as a thing somebody finishes. And a line that says
+where you are: *6 of 31 in. 25 to go.*
+
+Every mark is derived from the journal rather than from having been here. Tap
+the pulse and it moves. Answer a question in the queue and it moves. Tick a dose
+off the routine and it moves. Clear an answer and it moves back down. Nothing on
+that card is ever the app claiming progress it cannot show you the entry for.
+
+### What a ring in a health journal is allowed to count
+
+The fraction is **what your own setup asked for**: your questions, and the doses
+scheduled for today. A skip counts as answered, because the question a routine
+row asks is "did you deal with this", not "did you swallow it".
+
+A photo, a note and a meal are shown beside the ring and never inside it. There
+is no honest denominator for them — the right number of notes for a Tuesday is
+not one, it is however many were worth writing — and counting meals would let a
+day with three in it read as more complete than a day with one, which is a claim
+about somebody's eating rather than about their journal.
+
+Finished, it says *All 31 answered. Today is fully on the record.* That is a
+statement about the record and not about the person. There is no badge, no
+score, and no streak counted at anybody: the satisfaction is meant to come from
+the same place it comes from on paper, which is that the page is full.
+
+### And today is at the top of History
+
+History used to begin at yesterday. For a journal that is a strange thing to do
+— the day you are actually living is the one you most often want to check on,
+and *have I done today yet* was a question the record could not answer at all.
+
+Now it opens with today: the same ring, the same numbers, and the breakdown part
+by part — *Questions 6/27*, *Routine 0/4*, *Photo —*, *Note —*, *Meals —* —
+with the day's own number said beside the name of the thing it measures. Both
+screens read the same module, so they cannot disagree about somebody's own day,
+and the card is the way in rather than a report about it: tapping it opens the
+check-in it was just describing. Today no longer appears twice, either — the
+recent list starts at yesterday, because the same day in two places four inches
+apart is how two different answers end up on one screen.
+
+### The "Again" row was being dressed by a screen nobody can reach
+
+The row of one-tap repeats on Today looked broken, and it was, for a reason that
+had nothing to do with its own markup.
+
+A wizard header from an older first run had claimed the class name `.fhj-rail`
+and then outlived the markup that wanted it. The app's one horizontal scroller
+claims the same name, and the dead rules sat *after* it in the stylesheet — so
+every card in every rail in the app was quietly being handed a wizard step's
+clothes: a pill radius, a transparent background, a step's padding. It is also
+what stripped the scroll arrows of the card background that is the only thing
+separating them from whatever is underneath.
+
+The dead block is gone, and the row was rebuilt on top of that. Every repeat is
+now a card the same width as every other one, with the kind of thing it logs
+drawn as a tinted medallion outside the sentence rather than as a glyph in the
+middle of it — so a dose and a meal are told apart before either name is read.
+A long name ends in an ellipsis inside its own border instead of running out of
+it, which is what "Hydrocortisone 1%" used to do. The row says once, quietly,
+what a tap on it does, because a tap there writes a row in a medical journal.
+And the edge fade is now wider than the arrow that sits in it, so the arrow lands
+on something faded rather than on a solid card.
+
 ## 1.25.0
 
 Sessions that end themselves.

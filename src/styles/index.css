@@ -1649,63 +1649,113 @@ button.fhj-section:disabled {
   scroll-snap-align: start;
   flex: none;
 }
+/* The fade has to be at least as wide as the arrow that sits in it, or the
+   arrow lands on a fully-opaque card and reads as a bug rather than a control.
+   3rem clears a 1.875rem button at 0.25rem from the edge with room to spare —
+   which is the whole reason this number is not 1.75rem any more. */
 .fhj-scroller.fade-start {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 1.75rem);
-  mask-image: linear-gradient(to right, transparent 0, #000 1.75rem);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 3rem);
+  mask-image: linear-gradient(to right, transparent 0, #000 3rem);
 }
 .fhj-scroller.fade-end {
-  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 1.75rem);
-  mask-image: linear-gradient(to left, transparent 0, #000 1.75rem);
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 3rem);
+  mask-image: linear-gradient(to left, transparent 0, #000 3rem);
 }
 .fhj-scroller.fade-start.fade-end {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 1.75rem, #000 calc(100% - 1.75rem), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 1.75rem, #000 calc(100% - 1.75rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 3rem, #000 calc(100% - 3rem), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 3rem, #000 calc(100% - 3rem), transparent 100%);
 }
 /* The rail's chips are card-height, so its arrows centre on the row rather
    than sitting under its top edge the way the 36px chip picker's do — and they
    sit a little further in from the edge, because the rail bleeds all the way
    to the screen and an arrow flush against it looks broken rather than
-   deliberate. */
+   deliberate. Slightly smaller than the picker's, so the pair of them fit
+   inside the fade above instead of overhanging a card. */
 .fhj-rail .fhj-picker-arrow {
   top: 50%;
+  width: 1.875rem;
+  height: 1.875rem;
   transform: translateY(-50%);
 }
 .fhj-rail .fhj-picker-arrow-start {
-  left: 0.375rem;
+  left: 0.25rem;
 }
 .fhj-rail .fhj-picker-arrow-end {
-  right: 0.375rem;
+  right: 0.25rem;
 }
 
-/* ---------- repeat chip ----------
-   One tap re-logs a food. Sized like a card rather than a chip because it
-   carries two lines and because this is a *destructive-adjacent* control —
-   it writes a row on a single tap — so it wants a target nobody hits by
-   accident while scrolling past it. */
+/* ---------- "Again" ----------
+   One tap re-logs a thing — a meal, a dose, a photo, a measurement. Sized like
+   a card rather than a chip because it carries two lines and because this is a
+   *destructive-adjacent* control: it writes a row in a medical journal on a
+   single tap, so it wants a target nobody hits by accident on the way past.
 
-.fhj-repeat {
+   Three rules, and the old chip broke all three:
+
+   **Every card is the same size.** A shrink-to-fit box with a max width gave a
+   row of six different widths that read as six different kinds of control. The
+   width is fixed here, so the row is a row.
+
+   **Nothing escapes the border.** `min-width: 0` on the text column is the
+   part that actually makes an ellipsis happen — without it a flex item refuses
+   to shrink below its content and the name simply runs out of the card, which
+   is exactly what "Hydrocortisone 1%" used to do.
+
+   **The kind is legible before the name is read.** The icon is a tinted
+   medallion rather than a glyph sitting in the middle of a sentence, and it
+   takes the category's own hue from `--fhj-mark`, so a dose and a meal are
+   told apart at a glance from the top of the screen. */
+
+.fhj-again-hint {
+  margin: -0.125rem 0 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-again {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 0.125rem;
-  min-height: 3.5rem;
-  max-width: 11rem;
-  padding: 0.5625rem 0.875rem;
+  align-items: center;
+  gap: 0.5rem;
+  /* Fixed, not shrink-to-fit. Two and a bit cards visible on the narrowest
+     phone, which is what says "this scrolls" before anything is scrolled. */
+  width: 11.5rem;
+  min-height: 3.625rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.4375rem;
   border-radius: var(--fhj-radius);
   background: var(--fhj-card, #1e2026);
   border: var(--fhj-bw-strong) solid var(--fhj-line, #31343d);
   text-align: left;
+  overflow: hidden;
   cursor: pointer;
 }
 @media (hover: hover) {
-  .fhj-repeat:hover {
+  .fhj-again:hover {
     border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
   }
 }
-.fhj-repeat-name {
+
+.fhj-again-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: var(--fhj-radius-sm);
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  background: var(--fhj-tint-soft, var(--fhj-faint, rgba(255, 255, 255, 0.04)));
+}
+
+/* The line that makes truncation possible at all. */
+.fhj-again-text {
+  flex: 1;
+  min-width: 0;
   display: block;
-  max-width: 100%;
+}
+
+.fhj-again-name {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1714,14 +1764,41 @@ button.fhj-section:disabled {
   line-height: 1.25;
   color: var(--fhj-ink, #ecebe7);
 }
-.fhj-repeat-meta {
+.fhj-again-meta {
   display: block;
-  max-width: 100%;
+  margin-top: 0.0625rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.6875rem;
+  line-height: 1.3;
   color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* What the tap does, drawn once rather than written on every card. Quiet at
+   rest and the card's own hue under a finger — the affordance without the
+   sentence. */
+.fhj-again-plus {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-subtle, #9a9ca6);
+  border: 1px solid var(--fhj-line, #31343d);
+  transition: color var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
+}
+.fhj-again:active .fhj-again-plus {
+  color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+}
+@media (hover: hover) {
+  .fhj-again:hover .fhj-again-plus {
+    color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+    border-color: var(--fhj-mark, var(--fhj-accent, #8fb0e3));
+  }
 }
 
 /* ---------- routine checklist ----------
@@ -3842,97 +3919,26 @@ button.fhj-section:disabled {
   color: var(--fhj-good, #7fbe9e);
 }
 
-/* ---------- the step rail ----------
-   Scrolls horizontally when seven labels don't fit, which on a narrow phone is
-   most of the time — the current step is what has to be legible, and the ones
-   on either side of it are the context. */
+/* ---------- the step rail, removed ----------
 
-.fhj-rail {
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 0.125rem;
-  /* Seven named steps do not fit beside a back button in a 28rem column, and
-     they are not going to. The mask is the same answer the rest of the app
-     gives an overflowing row of chips: the last one fades out instead of being
-     guillotined by the container's edge, which is what "there is more over
-     here" looks like. The rail also scrolls the current step into view on
-     every change, so the fade is never hiding the one that matters. */
-  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
-  scroll-padding-inline: 1.5rem;
-}
-.fhj-rail::-webkit-scrollbar {
-  display: none;
-}
-.fhj-rail > li {
-  flex: none;
-}
-.fhj-rail button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3125rem;
-  padding: 0.3125rem 0.4375rem;
-  border-radius: var(--fhj-radius-pill);
-  background: transparent;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--fhj-muted, #787b86);
-  cursor: pointer;
-}
-/* Steps ahead of you are shown, not offered: knowing what is coming is the
-   point, and jumping to a screen whose answers depend on the current one is
-   not. */
-.fhj-rail button:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-.fhj-rail-dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--fhj-line-strong, #464a55);
-  transition: background-color var(--fhj-ease) ease, transform var(--fhj-ease) var(--fhj-spring);
-}
-.fhj-rail button[data-state="done"] {
-  color: var(--fhj-sub, #adafb8);
-}
-.fhj-rail button[data-state="done"] .fhj-rail-dot {
-  background: var(--fhj-rail-on, var(--fhj-accent, #8fb0e3));
-}
-.fhj-rail button[data-state="current"] {
-  color: var(--fhj-ink, #ecebe7);
-  background: var(--fhj-faint, #2a2d35);
-}
-.fhj-rail button[data-state="current"] .fhj-rail-dot {
-  background: var(--fhj-rail-on, var(--fhj-accent, #8fb0e3));
-  transform: scale(1.5);
-}
-/* Only the current step carries its name at phone width; seven labels in a row
-   would either wrap the header or shrink past reading. The rest keep their dot,
-   which is all a step you are not on needs to say. */
-.fhj-rail-label {
-  display: none;
-}
-.fhj-rail button[data-state="current"] .fhj-rail-label {
-  display: inline;
-}
-@media (min-width: 420px) {
-  .fhj-rail-label {
-    display: inline;
-  }
-}
-@media (hover: hover) {
-  .fhj-rail button:not(:disabled):hover {
-    color: var(--fhj-ink, #ecebe7);
-  }
-}
+   A wizard header from an older first run used to live here under `.fhj-rail`,
+   and it outlived the markup that wanted it. That mattered, because
+   `components/Rail.tsx` — the app's one horizontal scroller, which draws the
+   "Again" row on Today — claims the same class name, and this block sat *after*
+   it in the file.
+
+   So every button inside every rail in the app was being given a wizard step's
+   clothes: a pill radius, a transparent background, and a step's padding. That
+   is what made the "Again" row look like a row of lozenges with the names
+   falling out of them, and what stripped the scroll arrows of the card
+   background that is the only thing separating them from whatever is
+   underneath. Two rules from a screen nobody can reach any more, quietly
+   deforming the busiest row on the first screen.
+
+   Deleted rather than renamed: nothing renders `.fhj-rail-dot`,
+   `.fhj-rail-label`, or a rail button with a `data-state`. The horizontal
+   scroller's own styles are up beside the mask and the arrows, where the
+   component that uses them is documented. */
 
 /* ---------- the check-in, read back ----------
    Three real question labels, set as the rows they will be. A count of nine is
@@ -6151,6 +6157,75 @@ button.fhj-section:disabled {
   color: var(--fhj-ink, #ecebe7);
 }
 
+/* ---------- today, at the top of the record ----------
+   See HistoryTodayCard in App.tsx. The one card on History that is about a day
+   still being written rather than one already filed, so it is the only thing
+   on the screen that carries the accent border. */
+
+.fhj-today-card {
+  /* The same weight the check-in card on Today carries, and for the same
+     reason: this is the day still being written. */
+  border-color: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 38%, transparent);
+  border-width: var(--fhj-bw-strong);
+}
+.fhj-today-card.is-complete {
+  border-color: color-mix(in srgb, var(--fhj-good, #7fbe9e) 40%, transparent);
+}
+
+.fhj-today-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.875rem;
+  margin-bottom: 0.875rem;
+}
+
+/* The day's number and the name of what it measures, on one line — see the
+   note in HistoryTodayCard about why this is not a second circle. */
+.fhj-today-score {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.fhj-today-score-dot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.625rem;
+  height: 1.625rem;
+  padding: 0 0.3125rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fhj-today-score-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+.fhj-today-card-go {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--fhj-accent-text, #8fb0e3);
+}
+.fhj-today-card.is-complete .fhj-today-card-go {
+  color: var(--fhj-good, #7fbe9e);
+}
+
 .fhj-hist-row {
   display: flex;
   align-items: center;
@@ -6311,26 +6386,219 @@ button.fhj-section:disabled {
   color: var(--fhj-subtle, #9a9ca6);
 }
 
-.fhj-pulse-more {
+/* ---------- today's check-in ----------
+
+   What replaced "Add more detail". See the note above TodayCheckinCard in
+   App.tsx for why the old link was wrong in all three of its words.
+
+   Everything here is drawn at the weight of a destination rather than a link:
+   a real border, a hard shadow it presses into, a ring, and the day laid out
+   as marks. It is the second-heaviest thing on Today after the pulse scale
+   itself, and it is meant to be — those two are the app. */
+
+.fhj-checkin {
+  display: flex;
+  align-items: center;
+  gap: 0.8125rem;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.8125rem 0.75rem 0.8125rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  color: var(--fhj-ink, #ecebe7);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: var(--fhj-bw-strong) solid color-mix(in srgb, var(--fhj-accent, #8fb0e3) 38%, transparent);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-checkin:hover {
+    border-color: var(--fhj-accent, #8fb0e3);
+  }
+}
+/* Finished. The colour moves from "this is the way in" to "this is done", and
+   nothing else changes — no badge, no confetti, no count of days. The claim is
+   about the record, not about the person. */
+.fhj-checkin.is-complete {
+  border-color: color-mix(in srgb, var(--fhj-good, #7fbe9e) 45%, transparent);
+  background: color-mix(in srgb, var(--fhj-good, #7fbe9e) 9%, transparent);
+}
+
+.fhj-checkin-body {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+
+.fhj-checkin-title {
+  display: block;
+  font-family: var(--fhj-font-display);
+  font-size: 1.125rem;
+  line-height: 1.2;
+  color: var(--fhj-ink, #ecebe7);
+}
+
+.fhj-checkin-line {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+.fhj-checkin-go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--fhj-radius-pill);
+  color: var(--fhj-accent-text, #8fb0e3);
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-checkin.is-complete .fhj-checkin-go {
+  color: var(--fhj-good, #7fbe9e);
+}
+
+/* ---------- the pips ----------
+
+   One block per thing today asked for. This is the part people watch: a
+   fraction has to be read, a row of marks going solid is seen from the top of
+   the screen without reading anything. Deliberately square-ish and slightly
+   separated, so the row counts rather than reading as a bar. */
+
+/* A grid rather than a wrapping flex row, and the reason is the second line.
+   Flex items that grow give a full first row of hairlines and a short second
+   row of fat lozenges — the same mark drawn at two sizes, which stops the row
+   being countable. `auto-fit` keeps every mark the width of every other mark
+   when the row wraps, and still lets a short setup spread across the whole
+   card instead of huddling in one corner of it. */
+.fhj-checkin-pips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0.5rem, 1fr));
+  align-items: center;
+  gap: 3px;
+  margin-top: 0.5rem;
+}
+
+.fhj-checkin-pip {
+  display: block;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  border: 1px solid transparent;
+  transition:
+    background-color 260ms var(--fhj-out),
+    border-color 260ms var(--fhj-out),
+    transform 260ms var(--fhj-out);
+}
+.fhj-checkin-pip.is-on {
+  transform: scaleY(1.28);
+}
+/* The routine's own gold, so a row of marks says *which* part of the day is
+   still open without a legend under it. Questions take the pack's colour,
+   which arrives inline. */
+.fhj-checkin-pip.fhj-pip-routine.is-on {
+  background: var(--fhj-chart2, #dcbb78);
+}
+.fhj-checkin-pip.fhj-pip-routine {
+  border-radius: var(--fhj-radius-pill);
+}
+
+/* The fallback for a setup with more questions than a row of marks can carry
+   legibly. Same information, less of a texture. */
+.fhj-checkin-bar {
+  display: block;
+  height: 6px;
+  margin-top: 0.5rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  overflow: hidden;
+}
+.fhj-checkin-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--fhj-radius-pill);
+  transition: width 320ms var(--fhj-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-checkin-pip,
+  .fhj-checkin-bar-fill,
+  .fhj-ring-arc {
+    transition: none;
+  }
+  .fhj-checkin-pip.is-on {
+    transform: none;
+  }
+}
+
+/* ---------- the ring ----------
+   How far round the day is, with the count in the middle. The arc is drawn
+   from the journal on every render, never from "a tap happened" — the same
+   rule the saved line under the pulse scale follows, for the same reason. */
+
+.fhj-ring {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fhj-ring-svg {
+  display: block;
+}
+.fhj-ring-arc {
+  transition: stroke-dasharray 420ms var(--fhj-out);
+}
+.fhj-ring-mid {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
-  width: 100%;
-  min-height: var(--fhj-tap);
-  margin-top: 0.75rem;
-  border-radius: var(--fhj-radius);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--fhj-accent-text, #8fb0e3);
-  background: transparent;
-  border: 1px dashed var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
-  transition: background var(--fhj-quick) ease;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
-@media (hover: hover) {
-  .fhj-pulse-more:hover {
-    background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
-  }
+
+/* ---------- the breakdown ----------
+   What today asked for, part by part. Counted parts carry a fraction; the
+   optional ones carry a tick or a dash, because a target for "notes today"
+   is a number no app is entitled to invent. */
+
+.fhj-checkin-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+}
+
+.fhj-checkin-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.5rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.6875rem;
+  line-height: 1;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-checkin-part.is-on {
+  color: var(--fhj-ink, #ecebe7);
+  border-color: color-mix(in srgb, var(--fhj-good, #7fbe9e) 40%, transparent);
+  background: color-mix(in srgb, var(--fhj-good, #7fbe9e) 10%, transparent);
+}
+.fhj-checkin-part-label {
+  font-weight: 600;
+}
+.fhj-checkin-part-val {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- the next question ----------

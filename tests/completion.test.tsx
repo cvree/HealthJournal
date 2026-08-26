@@ -42,7 +42,7 @@ async function mountQuickLog() {
     async list() { return { keys: [...kv.keys()] }; },
   };
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Add more detail/ }, { timeout: 10000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /Today's check-in/ }, { timeout: 10000 }));
   await screen.findByRole("button", { name: "Skip" }, { timeout: 10000 });
 }
 
@@ -104,7 +104,7 @@ describe("skipping is not erasing", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Overall skin severity 7 out of 10/ }));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(7));
 
-    fireEvent.click(await screen.findByRole("button", { name: /Add more detail/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Today's check-in/ }));
     await screen.findByRole("button", { name: "Skip" });
     await skipEverything();
 
@@ -120,7 +120,7 @@ describe("when something was written", () => {
     fireEvent.click(within(document.querySelector("nav")!).getByRole("button", { name: "Today" }));
     fireEvent.click(await screen.findByRole("button", { name: /Overall skin severity 6 out of 10/ }));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(6));
-    fireEvent.click(await screen.findByRole("button", { name: /Add more detail/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Today's check-in/ }));
     await screen.findByRole("button", { name: "Skip" });
     await skipEverything();
 

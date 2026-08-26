@@ -253,7 +253,30 @@ tap has started deciding what you track.
 **Detail comes after, never in front.** Under the queue: the things a question cannot be — the
 routine still owed, the camera, and the note, which is last because it is the one that needs
 typing. Nothing already answered is offered, and a photo is only asked for on a bad day or after
-a week without one. "Add more detail" keeps the full check-in one tap away.
+a week without one.
+
+**Today's check-in, and how much of it is in.** The way into the rest of the day used to be a
+dashed link at the foot of the card that said *Add more detail* — a name for an afterthought,
+attached to the thing this app is for. It is **Today's check-in** now, and it carries the state
+of the day rather than an invitation to do more work: a ring that fills as far as today has got,
+one small mark for every single thing today asked for, and a line that says where you are (*6 of
+31 in. 25 to go*). Every mark is drawn from the journal, so the number moves the instant you
+answer anything, anywhere — a tap on the pulse, a question in the queue, a dose ticked off the
+routine — and it moves back down if you clear one.
+
+What the fraction counts is **what your own setup asked for**: your questions, and the doses
+scheduled for today. A skip counts as answered, because the question a routine row asks is "did
+you deal with this". A photo, a note and a meal are shown beside the ring and never inside it —
+the right number of notes for a Tuesday is not one, it is however many were worth writing, and a
+progress ring in a medical journal is not allowed to invent a target nobody set. Finished, it
+says *All 31 answered. Today is fully on the record* — a statement about the record, not about
+you. There is no badge, no score and no streak counted at you.
+
+**And today is at the top of History**, with the same ring and the same numbers, broken down part
+by part: *Questions 6/27*, *Routine 0/4*, *Photo —*, *Note —*, *Meals —*. The record used to
+begin at yesterday, which meant the one day you are actually living was the one day it could say
+nothing about. Both screens read the same module, so they can never disagree about your own day,
+and the card is the way in: tapping it opens the check-in you were being told about.
 
 **One hand.** The whole app is reachable by the thumb of the hand holding the phone. The bar is
 **Today**, **History** and a **+**, and those three never swap places — the value of a bar to a
@@ -292,7 +315,10 @@ settings trip: hold a button until it lifts, drag it, and the rest slide out of 
 Alt and press an arrow key, or use the arrows in the editor. If you would rather the row sorted
 itself by what you tap most, that is one switch in the editor. **Again** is the row under it, and it is the shortest path in the
 app — your most-logged foods, the doses you take daily, the spot you photograph, the number you
-record, one tap each, ranked together so it is your own week in your own order. It scrolls
+record, one tap each, ranked together so it is your own week in your own order. Each one is a
+card the same size as every other one, with the kind of thing it logs drawn as a tinted medallion
+so a dose and a meal are told apart before either name is read, and a long name ends in an
+ellipsis inside its own border rather than falling out of it. It scrolls
 sideways on every input it can be given: a flick, a trackpad, a vertical wheel over the row, the
 arrow keys, or the two buttons that appear at whichever edge still has something behind it — and
 it fades at that edge rather than being cut off, so "there is more over here" is visible instead
