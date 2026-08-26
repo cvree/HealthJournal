@@ -401,6 +401,9 @@ export interface SunRow {
   belowThreshold: boolean;
   note?: string;
   source: string;
+  endSource?: string;
+  estimated?: boolean;
+  confirmed?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -415,7 +418,14 @@ export function buildSunTable(sun: SunRow[]): ExportTable {
        column of laboratory values, "vitamin_d_iu" would be a lie by omission. */
     "vitamin_d_estimated_iu_low", "vitamin_d_estimated_iu_high",
     "vitamin_d_estimate_is_a_model_not_a_measurement",
-    "below_uvb_threshold", "logged_as", "notes", "session_id", "created_at", "updated_at",
+    "below_uvb_threshold", "logged_as",
+    /* How the session stopped, and whether a person has ever looked at that
+       time. A row the app closed by itself must be distinguishable from one
+       somebody ended, in the file as well as on the screen — an estimate that
+       is only labelled inside the app stops being labelled the moment the data
+       is handed to anybody, which is exactly when it matters most. */
+    "ended_by", "end_time_is_an_estimate", "end_time_confirmed_by_person",
+    "notes", "session_id", "created_at", "updated_at",
   ];
   const rows: ExportCell[][] = [...sun]
     .sort((a, b) => a.start.localeCompare(b.start))
@@ -425,7 +435,11 @@ export function buildSunTable(sun: SunRow[]): ExportTable {
       s.uvSource, s.avgUV, s.peakUV, s.avgElevation,
       s.sed, s.medFraction,
       s.iuLow, s.iuHigh, "yes",
-      s.belowThreshold ? "yes" : "no", s.source, s.note || "",
+      s.belowThreshold ? "yes" : "no", s.source,
+      s.endSource || "manual",
+      s.estimated ? "yes" : "no",
+      s.estimated ? (s.confirmed ? "yes" : "no") : "n/a",
+      s.note || "",
       s.id, s.createdAt, s.updatedAt,
     ]);
   return { header, rows };

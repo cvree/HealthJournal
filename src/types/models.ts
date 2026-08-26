@@ -9,6 +9,7 @@ import type { ContextConsent, DayContext } from "../lib/context";
 import type { Experiment } from "../lib/experiments";
 import type { LabResult } from "../lib/labs";
 import type { SunProfile, SunSession } from "../lib/sun";
+import type { AutomationSettings } from "../lib/automation";
 import type { Ritual, RitualReview, RitualRun } from "../lib/rituals";
 
 /* ---------- questions ---------- */
@@ -171,6 +172,10 @@ export interface TrackingSetup {
   /** Skin type, usual exposure and waking time — the three answers the vitamin
       D estimate personalises on. Asked once, all refusable. See lib/sun. */
   sun?: SunProfile;
+  /** Which of the app's automations are allowed to run. Absent means nobody has
+      expressed a view and each falls back to its own default. See
+      lib/automation for the contract every one of them runs under. */
+  automations?: AutomationSettings;
   /** ISO timestamp of the last restorable backup the user downloaded. */
   lastBackupAt?: string;
   createdAt?: string;
