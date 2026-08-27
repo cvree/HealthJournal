@@ -142,6 +142,14 @@ describe("the rail", () => {
   });
 });
 
+/* The "Again" row, which is no longer on a rail.
+
+   It used to be a horizontal scroller, and the reason it stopped being one is
+   the thing worth pinning here: ranking by frequency filled its first slots
+   with the doses that the Routine checklist already shows on the same screen,
+   and pushed everything unique to it off the edge. Both halves of that are
+   tested — nothing it offers may be a dose, and everything it offers must be
+   in the document rather than behind a fade. */
 describe("the Again row on Today", () => {
   const mountToday = async () => {
     (window as any).storage = (() => {
@@ -160,61 +168,60 @@ describe("the Again row on Today", () => {
       const el = screen.getByRole("list", { name: /again/i });
       expect(within(el).getAllByRole("listitem").length).toBeGreaterThan(0);
     });
+    return screen.getByRole("list", { name: /again/i });
   };
 
-  it("is a rail, so every repeat past the edge of the screen can be reached", async () => {
-    (window as any).storage = (() => {
-      const db = I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
-      const kv = new Map([["fhj_v1", JSON.stringify(db)]]);
-      return {
-        async get(k: string) { return kv.has(k) ? { key: k, value: kv.get(k) } : null; },
-        async set(k: string, v: string) { kv.set(k, String(v)); return { key: k, value: v }; },
-        async delete(k: string) { kv.delete(k); return { key: k, deleted: true }; },
-        async list() { return { keys: [...kv.keys()] }; },
-      };
-    })();
-    render(<App />);
-    await screen.findByText(/Quick Add/);
+  /* The bug the row actually had. The demo journal takes CeraVe twice a day,
+     Vitamin D3 and Fish oil daily — the highest use counts in it — so the old
+     row led with all three, and the Routine checklist below repeated every one
+     of them with a better control on it. */
+  it("offers nothing the routine checklist below it is already showing", async () => {
+    const again = await mountToday();
+    const offered = within(again).getAllByRole("listitem").map((r) => r.textContent!);
+    expect(offered.length).toBeGreaterThan(0);
 
-    const again = await waitFor(() => {
-      const el = screen.getByRole("list", { name: /again/i });
-      expect(within(el).getAllByRole("listitem").length).toBeGreaterThan(0);
-      return el;
-    });
-    expect(again.classList.contains("fhj-scroller")).toBe(true);
-    expect(again.closest(".fhj-rail")).toBeTruthy();
+    const routine = [...document.querySelectorAll(".fhj-check-row, .fhj-routine-row")]
+      .map((r) => r.textContent!.trim());
+    expect(routine.length).toBeGreaterThan(0);
+
+    for (const row of offered) {
+      for (const dose of routine) {
+        expect(row).not.toBe(dose);
+      }
+    }
+    // And specifically: the demo's daily doses are not in it.
+    expect(offered.join(" ")).not.toMatch(/CeraVe|Vitamin D3|Fish oil/);
   });
 
-  /* The row used to draw a shrink-to-fit chip with the icon set inline in the
-     middle of a line of text, and a long name simply ran out of the border.
-     Three structural facts are what stop that happening again: the icon is its
-     own element rather than a glyph in a sentence, the name and the meta share
-     a column that is allowed to shrink, and the card's own class carries the
-     fixed width. A test cannot measure pixels in jsdom, so it pins the shape
-     the stylesheet needs to be able to do its job. */
-  it("draws each repeat as a card: a medallion, a column that can truncate, and one verb", async () => {
-    await mountToday();
-    const again = screen.getByRole("list", { name: /again/i });
-    const cards = within(again).getAllByRole("listitem");
-    expect(cards.length).toBeGreaterThan(0);
+  it("shows everything it offers, rather than hiding most of it past an edge", async () => {
+    const again = await mountToday();
+    const rows = within(again).getAllByRole("listitem");
+    // A list, not a scroller: no rail, no fade, no arrows to reach the rest.
+    expect(again.closest(".fhj-rail")).toBeNull();
+    expect(again.querySelector(".fhj-scroller")).toBeNull();
+    expect(document.querySelectorAll(".fhj-picker-arrow")).toHaveLength(0);
+    // Short enough to be worth showing in full.
+    expect(rows.length).toBeLessThanOrEqual(5);
+  });
 
-    for (const card of cards) {
-      expect(card.classList.contains("fhj-again")).toBe(true);
-      // The kind of thing, as its own tinted element outside the sentence.
-      expect(card.querySelector(".fhj-again-icon")).toBeTruthy();
-      // The two lines, in the column that is allowed to shrink to nothing.
-      const text = card.querySelector(".fhj-again-text")!;
+  /* jsdom has no layout, so what can be pinned is the structure the stylesheet
+     needs: the kind as its own tinted element rather than a glyph in the middle
+     of a sentence, and a text column that is allowed to shrink — which is the
+     property that produces an ellipsis instead of an overflow. */
+  it("draws each repeat as a row: a medallion, a column that can truncate, and one verb", async () => {
+    const again = await mountToday();
+    for (const row of within(again).getAllByRole("listitem")) {
+      expect(row.classList.contains("fhj-again-row")).toBe(true);
+      expect(row.querySelector(".fhj-again-icon")).toBeTruthy();
+      const text = row.querySelector(".fhj-again-text")!;
       expect(text.querySelector(".fhj-again-name")!.textContent!.trim()).not.toBe("");
       expect(text.querySelector(".fhj-again-meta")).toBeTruthy();
-      // What the tap does, drawn once rather than written on every card.
-      expect(card.querySelector(".fhj-again-plus")).toBeTruthy();
-      // And the old chip is gone for good.
-      expect(card.querySelector(".fhj-repeat-name")).toBeNull();
+      expect(row.querySelector(".fhj-again-plus")).toBeTruthy();
     }
   });
 
   it("says what a tap does, because a tap here writes a row in the journal", async () => {
     await mountToday();
-    expect(screen.getByText(/One tap logs it again/i)).toBeTruthy();
+    expect(screen.getByText(/One tap logs it/i)).toBeTruthy();
   });
 });

@@ -28,6 +28,27 @@
    been able to flick it, and everything above is what makes the same row
    usable with a mouse, a trackpad, or a keyboard. */
 
+/* ---------------------------------------------------------------------------
+   NOTE (1.26.1): this component currently has no consumer.
+
+   The "Again" row on Today was the only one, and it moved off a rail
+   deliberately — see QuickRepeats in App.tsx. A horizontal scroller answers
+   "there is more of this than fits", and that row's problem turned out to be
+   the opposite one: most of what was in it did not belong there at all, and
+   what was left was short enough to show in full.
+
+   It is kept rather than deleted because the app still has a *second*,
+   worse horizontal scroller — the metric picker on Insights keeps its own
+   `.fhj-picker-scroll` implementation, which this was extracted from and was
+   meant to replace. Deleting the good one and leaving the duplicate would be
+   the wrong way round. Migrating MetricPicker onto it is the open task.
+
+   Its styles are scoped to classes only this file emits, so unlike the dead
+   `.fhj-rail` wizard block that used to sit below them in the stylesheet, an
+   idle component here cannot reach out and restyle anything else. A test in
+   tests/rail.test.tsx asserts that stays true.
+   --------------------------------------------------------------------------- */
+
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C } from "../lib/theme";
 

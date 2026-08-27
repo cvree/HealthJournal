@@ -313,16 +313,15 @@ after that. **The buttons stay where you put them**, on both, because the value 
 phone is that after a week your thumb knows where it is. Moving one is a gesture rather than a
 settings trip: hold a button until it lifts, drag it, and the rest slide out of the way — or hold
 Alt and press an arrow key, or use the arrows in the editor. If you would rather the row sorted
-itself by what you tap most, that is one switch in the editor. **Again** is the row under it, and it is the shortest path in the
-app — your most-logged foods, the doses you take daily, the spot you photograph, the number you
-record, one tap each, ranked together so it is your own week in your own order. Each one is a
-card the same size as every other one, with the kind of thing it logs drawn as a tinted medallion
-so a dose and a meal are told apart before either name is read, and a long name ends in an
-ellipsis inside its own border rather than falling out of it. It scrolls
-sideways on every input it can be given: a flick, a trackpad, a vertical wheel over the row, the
-arrow keys, or the two buttons that appear at whichever edge still has something behind it — and
-it fades at that edge rather than being cut off, so "there is more over here" is visible instead
-of discovered. **Today's Logs**
+itself by what you tap most, that is one switch in the editor. **Again** is the list under it, and it is the shortest path in the
+app — your most-logged foods, the spot you photograph, the number you record, the note, one tap
+each, ranked together so it is your own week in your own order. **It deliberately never offers a
+dose**: the Routine checklist a couple of inches below is already showing every one of those with
+a better control on it, and a row that ranks by frequency would otherwise open with the same three
+medications every single day and push everything with no other home on Today off the bottom of
+itself. What is left is short, so all of it is shown — five rows at most, each with the kind drawn
+as a tinted medallion, the name and the detail on one line, and a **+**. Nothing behind an edge,
+nothing truncated, no arrows to reach the rest. **Today's Logs**
 is one timeline carrying check-ins, meals, bowel movements, doses and photos in the order they
 happened.
 

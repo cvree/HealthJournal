@@ -192,7 +192,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.26.0";
+export const APP_VERSION = "1.26.1";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -15111,30 +15111,44 @@ function greetingFor(d = new Date(), name = "") {
 
 /* One tap, again.
 
-   The second time somebody logs a thing is the tap this row exists to save,
-   and it does not care what kind of thing it is: the porridge they have every
-   morning, the cream they put on twice a day, the arm they photograph on
-   Sundays, the weight they record on Mondays. They are ranked against each
-   other by the same score (see src/lib/quickActions.ts), so this is the
-   person's own week in their own order rather than a menu of everything the
-   app can do.
+   The second time somebody logs a thing is the tap this row exists to save.
+   The porridge they have every morning, the arm they photograph on Sundays,
+   the weight they record on Mondays — ranked against each other by the same
+   score (see src/lib/quickActions.ts), so this is the person's own week in
+   their own order rather than a menu of everything the app can do.
 
    ---
 
-   The row was right and the chip was wrong.
+   Twice now this row has been rebuilt, and the first rebuild fixed the wrong
+   layer. It was drawn badly — a shrink-to-fit chip whose long names ran out of
+   their own border, wearing a dead wizard header's styles because of a class
+   collision — and fixing the drawing made it a tidy row that was still wrong,
+   because the problem was never how it looked. It was what was in it.
 
-   What it used to draw was a shrink-to-fit box with a max width, an icon set
-   inline in the middle of a line of text, and nothing to stop either from
-   running past the edge — so a long name ("Hydrocortisone 1%") spilled out of
-   its own border, every chip was a different width, and the rail's arrows
-   landed on top of whatever happened to be at the edge. Four kinds of thing
-   ranked into one row, and the row looked like a mistake.
+   **It led with things that were already on the screen.** The row ranks by how
+   often something is logged, and the things somebody logs most often are the
+   doses in their routine — so the front of it was always CeraVe, Vitamin D3,
+   Fish oil. Those are the first three rows of the Routine checklist, which sits
+   two inches below with a better control on it: a progress count, an All button
+   and a way to adjust the dose. Four kinds of duplication in the first two
+   visible slots.
 
-   The card is now a fixed width with a hard `min-width: 0` on its text column,
-   which is what actually guarantees an ellipsis rather than an overflow, and
-   the icon has moved out of the sentence into a tinted medallion — so the kind
-   of thing a card logs is legible before its name is read, and every card in
-   the row is the same object at the same size. */
+   **And it hid the things that were not.** Everything unique to this row —
+   the weight, the sleep, the photo, the note — was ranked *behind* that
+   duplication, off the edge of a horizontal scroller, behind a fade. The one
+   part of the row that had no other home on Today was the part nobody could
+   see.
+
+   So: the routine is gone from it entirely (see repeatSuggestions — that is a
+   fact about the app rather than a preference of this screen, so it is enforced
+   where the ranking happens), and what is left is drawn as a list rather than a
+   rail. Five rows at most, all of them visible, no arrows, no fade, no
+   truncation, and no second copy of anything the person can already see.
+
+   A rail was the wrong shape for it in the first place. A horizontal scroller
+   is a good answer to "there is more of this than fits" and this row's problem
+   was the opposite: once the duplicates are gone there is not much of it, and
+   all of it matters. */
 function QuickRepeats({ items, onRun, onOpenPicker }) {
   if (!items.length) return null;
   return (
@@ -15148,16 +15162,15 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
           </button>
         )}
       </div>
-      {/* What the row is, said once. Without it the cards read as a filter or a
-          set of tabs — the one thing they must not be mistaken for, because a
-          tap here writes a row in the journal. */}
-      <p className="fhj-again-hint">One tap logs it again, at the time you tap it.</p>
-      <Rail label="Do something again">
+      {/* Said once, because a tap here writes a row in a medical journal
+          without opening anything to confirm it. */}
+      <p className="fhj-again-hint">One tap logs it, at the time you tap it.</p>
+      <div className="fhj-again-list" role="list" aria-label="Do something again">
         {items.map((item) => (
           <button key={item.id} type="button" role="listitem"
             onClick={(e) => { feedback("quickadd", { el: e.currentTarget }); onRun(item); }}
             aria-label={`${item.kind === "food" ? "Log" : item.kind === "photo" ? "Take" : "Add"} ${item.label} again`}
-            className={"fhj-again fhj-pop " + REPEAT_CAT[item.kind]}>
+            className={"fhj-again-row " + REPEAT_CAT[item.kind]}>
             <span className="fhj-again-icon" aria-hidden="true">
               <Icon name={item.icon} size={15} color="currentColor" />
             </span>
@@ -15166,11 +15179,11 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
               <span className="fhj-again-meta">{item.sub}</span>
             </span>
             <span className="fhj-again-plus" aria-hidden="true">
-              <Icon name="plus" size={11} color="currentColor" />
+              <Icon name="plus" size={13} color="currentColor" />
             </span>
           </button>
         ))}
-      </Rail>
+      </div>
     </>
   );
 }
@@ -15181,7 +15194,7 @@ function QuickRepeats({ items, onRun, onOpenPicker }) {
 const IMPORT_INVITE_UNTIL_DAYS = 14;
 
 const REPEAT_CAT = {
-  food: "fhj-cat-food", routine: "fhj-cat-routine", photo: "fhj-cat-photo",
+  food: "fhj-cat-food", photo: "fhj-cat-photo",
   measurement: "fhj-cat-symptom", note: "fhj-cat-symptom",
 };
 
@@ -16338,7 +16351,6 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     return repeatSuggestions({
       today: t0,
       foods,
-      routineItems,
       photoFields: photoFields.map((f) => ({ k: f.k, label: f.label, lastAt: lastPhoto[f.k] })),
       numberFields: numberFields.map((f) => ({
         k: f.k, label: f.label, unit: f.unit,
@@ -16347,9 +16359,11 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
       hasNoteToday: !!(today?.notes || "").trim(),
       hasEverNoted: entries.some((e) => (e.notes || "").trim()),
       stats,
-      max: 8,
+      /* Five, and every one of them on screen. The old eight only fitted
+         because six of them were off the edge of a scroller. */
+      max: 5,
     });
-  }, [entries, foods, routineItems, photoFields, numberFields, today, stats]);
+  }, [entries, foods, photoFields, numberFields, today, stats]);
 
   const runRepeat = (item) => {
     onUseAction?.(item.id);
@@ -16358,12 +16372,6 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
       if (!food) return;
       const time = localTime();
       onSaveFood(logFromFoodItem(food, { date: todayStr(), time, meal: mealForTime(time), servings: 1 }));
-      return;
-    }
-    if (item.kind === "routine") {
-      const rItem = routineItems.find((r) => r.id === item.refId);
-      if (!rItem) return;
-      onSaveRoutine(logFromItem(rItem, { date: todayStr(), slot: slotForTime(localTime()) }));
       return;
     }
     if (item.kind === "photo") return openLog(todayStr(), { photos: true });

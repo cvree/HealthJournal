@@ -279,7 +279,8 @@ describe("AI stays out of the way when it is off", () => {
     // On the timeline, and on the one-tap Again row — hence the scoping.
     const timeline = document.querySelector(".fhj-tl") as HTMLElement;
     expect(within(timeline).getByText("Eggs")).toBeTruthy();
-    expect(within(document.querySelector(".fhj-scroller") as HTMLElement).getByText("Eggs")).toBeTruthy();
+    const again = document.querySelector(".fhj-again-list") as HTMLElement;
+    expect(within(again).getByText("Eggs")).toBeTruthy();
   });
 
   it("makes no network request at any point", async () => {

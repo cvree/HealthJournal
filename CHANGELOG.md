@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.26.1
+
+The "Again" row was fixed at the wrong layer.
+
+1.26.0 rebuilt how that row was *drawn* — a class collision was dressing its
+cards in a dead wizard header's styles, and fixing it turned a row of lozenges
+with the names falling out into a tidy row of cards. It still felt wrong,
+because how it looked was never the problem. What was in it was.
+
+### It led with things that were already on the screen
+
+The row ranks by how often something is logged. The things anybody logs most
+often are the doses they take every day — so the front of it was always the
+same three medications, and the Routine checklist that sits a couple of inches
+below on the same screen was already showing every one of them, with a better
+control on them: a progress count, an "All" button, and a way to adjust the
+dose.
+
+So the first two slots — the only two visible without scrolling sideways — were
+a worse copy of what was directly underneath them.
+
+### And it hid the things that were not
+
+Everything the row offered that had *no* other home on Today — the weight, the
+sleep, the photo of a spot, the note — was ranked behind that duplication and
+pushed off the edge of a horizontal scroller. The only part of the row that
+justified its existence was the part nobody could see.
+
+### Both halves are gone
+
+**The routine is no longer among the things it offers at all.** That is
+enforced in the ranking rather than left to the screen, because there is no
+setup in which it is not true: the Routine card renders on Today whenever there
+is a routine, and an item with nothing logged against it never reaches this
+ranking in the first place.
+
+**And it is a list now, not a rail.** Five rows at most, every one of them on
+screen — no arrows, no fade, no ellipsis, nothing behind an edge. A horizontal
+scroller is a good answer to "there is more of this than fits", and once the
+duplicates were gone this row had the opposite problem: not much of it, and all
+of it worth seeing. Each row carries the kind as a tinted medallion, the name
+and the detail on one line, and a `+` — and the whole row is the target.
+
 ## 1.26.0
 
 Today's check-in.

@@ -1035,6 +1035,43 @@
 > focus, but the press-and-slide selection is a pointer gesture with no keyboard analogue
 > beyond tabbing the open fan.
 
+> **2026-08-27 addendum 29 — 1.26.1: the "Again" row's real bug was its contents,
+> not its CSS.**
+> Addendum 28 fixed a genuine class collision that was deforming this row, and the row still
+> read as broken afterwards, because the collision was the second problem. The first:
+> `repeatSuggestions` ranks by frequency, the highest-frequency items anybody has are daily
+> routine doses, and `RoutineCard` renders on Today for every active routine item — so the
+> two visible slots of a horizontal scroller were always a worse copy of the checklist a
+> couple of inches below (which has a progress count, an All button and an Adjust control),
+> while the weight/sleep/photo/note that had no other home on Today sat off the edge behind
+> a fade.
+>
+> - **`src/lib/quickActions.ts`.** `RepeatKind` loses `"routine"`; `RepeatSource` loses
+>   `routineItems`; the routine loop is deleted. Enforced in the ranking rather than by the
+>   caller because there is no configuration where it is not true — `RoutineCard` always
+>   renders when a routine exists, and an item with no logs never reaches the ranking.
+>   `tests/quickActions.test.ts` now passes `routineItems` anyway (cast) and asserts nothing
+>   routine-shaped comes back, so the rule survives a caller that has not read the change.
+> - **App.tsx.** `QuickRepeats` is a `.fhj-again-list` of `.fhj-again-row`s in one divided
+>   card, not a `Rail`; `max` 8 → 5 (the eight only fitted because six were off-screen);
+>   `runRepeat` loses its routine branch; `REPEAT_CAT` loses its routine tint.
+> - **CSS.** `.fhj-again` (fixed-width horizontal card) → `.fhj-again-row` (full-width row).
+>   The row idiom is deliberately a third thing: Quick Add above is a grid of large tiles
+>   that *open* pickers, the Routine below is separate row-cards with checkboxes, this is one
+>   card of divided rows where the tap writes immediately.
+>
+> **`src/components/Rail.tsx` now has no consumer, and is kept on purpose** — documented in a
+> note at the top of the file. It was extracted *from* `MetricPicker`, which still carries
+> its own worse `.fhj-picker-scroll` duplicate; deleting the good implementation and leaving
+> the duplicate would be backwards. Migrating MetricPicker onto it is the open task. Unlike
+> the dead `.fhj-rail` wizard block removed in 1.26.0, its styles are scoped to classes only
+> it emits, and `tests/rail.test.tsx` still asserts nothing else claims `.fhj-rail`.
+>
+> **Two stale selectors caught by the suite**, both worth noting as the shape of this kind of
+> change: `tests/foodBowelUi.test.tsx` scoped an assertion to `.fhj-scroller` to prove a
+> newly-saved food reaches the Again row, and the Again cases in `tests/rail.test.tsx`
+> asserted rail markup. Both now target `.fhj-again-list`.
+>
 > **2026-08-26 addendum 28 — 1.26: today's check-in has a name, a state, and a place in
 > History; and the "Again" row stops being dressed by a dead screen.**
 > Three changes, one of which is a bug that had been deforming the busiest row on the first

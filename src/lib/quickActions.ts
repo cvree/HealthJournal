@@ -135,7 +135,11 @@ export function rankIds(
 
 /* ---------- one-tap repeats ---------- */
 
-export type RepeatKind = "food" | "routine" | "photo" | "measurement" | "note";
+/* No "routine" here, and that absence is load-bearing — see repeatSuggestions.
+   The routine has its own checklist on the only screen this feeds, and a dose
+   offered in two places on one screen is a dose offered in one place too
+   many. */
+export type RepeatKind = "food" | "photo" | "measurement" | "note";
 
 export interface RepeatItem {
   /** Stable id for the stats map: `${kind}:${refId}`. */
@@ -152,7 +156,6 @@ export interface RepeatItem {
 export interface RepeatSource {
   today: string;
   foods?: { id: string; name: string; serving?: string; useCount?: number; lastUsedAt?: string; favorite?: boolean }[];
-  routineItems?: { id: string; name: string; dose?: string; kind?: string; archived?: boolean; useCount?: number; lastUsedAt?: string }[];
   /** Photo questions, with the last date each was photographed. */
   photoFields?: { k: string; label: string; lastAt?: string }[];
   /** Number questions, with the last value recorded and when. */
@@ -173,11 +176,29 @@ const iso10 = (s: string | undefined): string | undefined =>
 /**
  * The things worth offering as one tap, ranked together.
  *
- * Foods and routine items carry their own counts, so they are ranked on those
- * rather than on the action-stats map — the map records "the food tile was
- * used", which is a different fact from "this particular breakfast was". A
- * favourite gets a deliberate thumb on the scale, because marking one is an
- * explicit "I will want this again" and outranks arithmetic.
+ * Foods carry their own counts, so they are ranked on those rather than on the
+ * action-stats map — the map records "the food tile was used", which is a
+ * different fact from "this particular breakfast was". A favourite gets a
+ * deliberate thumb on the scale, because marking one is an explicit "I will
+ * want this again" and outranks arithmetic.
+ *
+ * **The routine is deliberately not among the things this offers**, and that is
+ * the rule the whole row turns on rather than a detail of it.
+ *
+ * Ranking by frequency puts the most-logged things at the front, and the
+ * most-logged things anybody has are the doses they take every day. So this
+ * used to open with the same three medications that the Routine checklist —
+ * which is on the same screen, a couple of inches below, and every active
+ * routine item is on it — was already showing, with a better control on them:
+ * a progress count, an "All" button, and a way to adjust the dose. Everything
+ * this row offers that has *no* other home on Today, the weight and the sleep
+ * and the photo and the note, was ranked behind that duplication and pushed off
+ * the edge of the screen by it.
+ *
+ * There is no configuration where that is not true — the Routine card renders
+ * on Today whenever there is a routine at all, and an item with no logs behind
+ * it never reaches this ranking — so it is enforced here, once, rather than
+ * left to a caller to remember.
  */
 export function repeatSuggestions(src: RepeatSource): RepeatItem[] {
   const { today } = src;
@@ -190,17 +211,6 @@ export function repeatSuggestions(src: RepeatSource): RepeatItem[] {
       id: `food:${f.id}`, kind: "food", refId: f.id,
       label: f.name, sub: f.serving || "", icon: "food",
       score: scoreOf({ n: n + (f.favorite ? 3 : 0), at: iso10(f.lastUsedAt) }, today),
-    });
-  }
-
-  for (const r of src.routineItems || []) {
-    if (r.archived) continue;
-    const n = r.useCount || 0;
-    if (!n) continue;
-    out.push({
-      id: `routine:${r.id}`, kind: "routine", refId: r.id,
-      label: r.name, sub: r.dose || "one dose", icon: "pill",
-      score: scoreOf({ n, at: iso10(r.lastUsedAt) }, today),
     });
   }
 

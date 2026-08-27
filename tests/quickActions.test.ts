@@ -95,10 +95,6 @@ describe("one-tap repeats", () => {
       { id: "f2", name: "Steak", serving: "200 g", useCount: 3, lastUsedAt: `${ago(30)}T18:00:00Z` },
       { id: "f3", name: "Never logged", serving: "1", useCount: 0 },
     ],
-    routineItems: [
-      { id: "r1", name: "CeraVe", dose: "2 pumps", useCount: 20, lastUsedAt: `${TODAY}T07:00:00Z` },
-      { id: "r2", name: "Old course", useCount: 40, lastUsedAt: `${ago(200)}T07:00:00Z`, archived: true },
-    ],
     photoFields: [{ k: "p_neck", label: "Neck", lastAt: ago(9) }],
     numberFields: [{ k: "weight", label: "Weight", unit: "lb", lastValue: 178, lastAt: ago(2) }],
     hasEverNoted: true,
@@ -109,17 +105,34 @@ describe("one-tap repeats", () => {
     const out = repeatSuggestions(src());
     const kinds = out.map((r) => r.kind);
     expect(kinds).toContain("food");
-    expect(kinds).toContain("routine");
     expect(kinds).toContain("photo");
     expect(kinds).toContain("measurement");
     expect(kinds).toContain("note");
-    expect(out[0].label).toMatch(/Oats|CeraVe/);
+    expect(out[0].label).toBe("Oats");
+  });
+
+  /* The rule the whole row turns on. Ranking by frequency puts the most-logged
+     things first, and the most-logged things anybody has are the doses they
+     take daily — so this used to open with the same medications the Routine
+     checklist shows a couple of inches below on the same screen, and pushed
+     everything with no other home on Today off the edge of it. There is no
+     `routineItems` input any more, and no ranked item may claim to be one. */
+  it("never offers a dose — the routine has its own checklist on that screen", () => {
+    const out = repeatSuggestions({
+      ...src(),
+      /* Passed anyway, the way a caller that had not read the change would. */
+      routineItems: [
+        { id: "r1", name: "CeraVe", dose: "2 pumps", useCount: 200, lastUsedAt: `${TODAY}T07:00:00Z` },
+      ],
+    } as Parameters<typeof repeatSuggestions>[0]);
+    expect(out.some((r) => r.label === "CeraVe")).toBe(false);
+    expect(out.map((r) => r.kind)).not.toContain("routine");
+    expect(out.some((r) => r.id.startsWith("routine:"))).toBe(false);
   });
 
   it("never offers something that has never been done", () => {
     const out = repeatSuggestions(src());
     expect(out.some((r) => r.label === "Never logged")).toBe(false);
-    expect(out.some((r) => r.label === "Old course")).toBe(false); // archived
   });
 
   it("drops the offers already answered today", () => {
