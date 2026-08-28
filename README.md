@@ -51,6 +51,35 @@ change them.
 
 ## What it does
 
+**How often it asks is yours.** Every screen in this app used to assume one thing without ever
+saying it: that the check-in is daily. For plenty of people it is. For plenty of others it is
+exactly why their journal has eleven days in it — they were asked every morning for something that
+moves over months, complied for a fortnight, missed a day, watched a streak reset to zero, and
+stopped. Settings now asks the question plainly, with nine answers: every day, weekdays, every
+other day, three or two times a week, once a week, every two weeks, once a month, or only when you
+open it.
+
+And the app *means the answer*. The unit is the **period**, not the day: "once a week" means the
+week owes one check-in, so doing it on Saturday is worth exactly as much as doing it on Monday.
+The streak counts weeks. The ring on Today counts what today asked for. The reminder does not fire
+on an evening when nothing is owed. And on the six days a week a weekly journal has nothing to
+ask, the card at the top of Today says so — *this week is in, next from the 31st* — because
+otherwise choosing a slower cadence buys nothing but the same guilt on a longer timer.
+
+**And each question can ask less often than the journal does.** The pain score is a daily
+question; the weight is a weekly one; the tape measure round your waist is monthly, and being
+asked for it every morning is how a thirty-question setup becomes one nobody fills in. Any
+question can be set to weekly, fortnightly or monthly in Edit Setup. It then disappears from the
+check-in for the rest of its period and comes back when the next one opens — it is never disabled,
+never leaves your charts or exports, and Detailed Log still has it if you want to answer it early.
+
+**Time off is a thing you can say.** Every long-running journal dies in the fortnight somebody
+spent in hospital or on a beach, because coming back to a broken streak and a wall of gaps feels
+like starting over. Pause it — for a week, a fortnight, a month, or until you say — and nothing is
+due, nothing is missed, and the streak steps over it rather than resetting. An appointment pack
+from a weekly journal says "22 of 24 weeks kept" rather than "31 of 168 days", because the gaps
+between are the schedule and a document a clinician reads has to be able to say so.
+
 **Reminders, plural.** A check-in belongs at the end of the day; meals belong at meal times,
 because the point of tracking food is logging it while you eat. Add as many named times as suit
 your day, export them all as one calendar file, and the ones whose job is already done stay quiet.

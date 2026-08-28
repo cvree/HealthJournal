@@ -11,6 +11,7 @@ import type { LabResult } from "../lib/labs";
 import type { SunProfile, SunSession } from "../lib/sun";
 import type { AutomationSettings } from "../lib/automation";
 import type { Ritual, RitualReview, RitualRun } from "../lib/rituals";
+import type { Cadence } from "../lib/cadence";
 
 /* ---------- questions ---------- */
 
@@ -176,6 +177,14 @@ export interface TrackingSetup {
       expressed a view and each falls back to its own default. See
       lib/automation for the contract every one of them runs under. */
   automations?: AutomationSettings;
+  /** How often this journal asks. Absent means every day, which is what every
+      journal was before the choice existed. See src/lib/cadence.ts — the
+      period, not the day, is the unit everything downstream counts in. */
+  cadence?: Cadence;
+  /** Questions that ask less often than the journal does, keyed by question.
+      A weekly weight on a daily journal; a monthly tape measure. Absent, or a
+      key absent from it, means "every time the journal asks". */
+  fieldCadence?: Record<string, Cadence>;
   /** ISO timestamp of the last restorable backup the user downloaded. */
   lastBackupAt?: string;
   createdAt?: string;
@@ -561,6 +570,7 @@ export type { HealthEpisode };
 /* Same reasoning for the five shapes 1.21 added: each lives next to the
    arithmetic that reads it, and is re-exported here so `types/models` stays
    the one import for the data contract. */
+export type { Cadence, CadencePause, CadenceUnit } from "../lib/cadence";
 export type { ContextConsent, DayContext };
 export type { Experiment };
 export type { LabResult };

@@ -99,6 +99,19 @@ import {
 import {
   checkinStatus, checkinLine, checkinVerb, checkinPips,
 } from "./lib/checkin";
+/* ---------- how often this journal asks ----------
+
+   Every number on every screen used to assume "every day". The period model
+   in ./lib/cadence is what lets somebody say "once a week" and have the ring,
+   the streak, the queue and the reminder all mean it. This file's job is to
+   read the choice off the profile once (`readCadence`, `loggedDates`) and hand
+   the same two values to everything that counts. */
+import {
+  CADENCE_PRESETS, DEFAULT_CADENCE, FIELD_CADENCE_PRESETS,
+  adherence, cadenceHint, cadenceLabel, cadenceStreak, dueKeys, dueNow,
+  fieldNextLine, nextAsk, periodLabel, periodStatus, presetById,
+  presetIdOf, sanitizeCadence, sanitizeFieldCadences, standing, streakNoun, withDays,
+} from "./lib/cadence";
 import {
   noteUse, rankIds, repeatSuggestions, sanitizeActionStats,
 } from "./lib/quickActions";
@@ -192,7 +205,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Health Journal";
-export const APP_VERSION = "1.26.1";
+export const APP_VERSION = "1.27.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -1253,13 +1266,33 @@ function entriesFor(db) {
 function entryOn(entries, date) {
   return entries.find((e) => e.date === date) || null;
 }
-function calcStreak(entries) {
-  // Entries auto-created by a data import (e.auto) don't count toward the streak.
-  const set = new Set(entries.filter((e) => !e.auto).map((e) => e.date));
-  let d = todayStr(), s = 0;
-  if (!set.has(d)) d = addDays(d, -1);
-  while (set.has(d)) { s++; d = addDays(d, -1); }
-  return s;
+/* Days this journal has something real on. Entries auto-created by a data
+   import (e.auto) are not among them — they never counted toward a streak and
+   they never satisfy a period either. One set, computed once, read by every
+   cadence question the app asks. */
+function loggedDates(entries) {
+  return new Set(entries.filter((e) => !e.auto).map((e) => e.date));
+}
+
+/* How often this journal asks, read back safely. Absent means every day, which
+   is what every journal was before the choice existed — so an install that has
+   never seen this screen behaves exactly as it always did. */
+function readCadence(profile) {
+  return sanitizeCadence(profile?.cadence);
+}
+function readFieldCadences(profile) {
+  return sanitizeFieldCadences(profile?.fieldCadence);
+}
+
+/* The streak, counted in whatever unit this journal actually runs in.
+   A weekly journaler used to see "no streak yet" forever, because the counter
+   was counting consecutive *dates* against a schedule they had explicitly
+   turned off. It counts periods now: see cadenceStreak, which also steps over
+   a paused stretch rather than resetting on it. Called with no cadence it is
+   the old daily arithmetic, unchanged. */
+function calcStreak(entries, cadence) {
+  const c = cadence || DEFAULT_CADENCE;
+  return cadenceStreak(c, loggedDates(entries), todayStr());
 }
 function avgWindow(entries, key, days, endOffset = 0) {
   const end = addDays(todayStr(), -endOffset);
@@ -1412,6 +1445,12 @@ function Icon({ name, size = 20, color = "currentColor" }) {
     drink: <g><path {...p} d="M6 4h12l-1.4 15.2a2 2 0 0 1-2 1.8H9.4a2 2 0 0 1-2-1.8z" /><path {...p} d="M6.6 10h10.8" /></g>,
     camera: <g><path {...p} d="M4 8h3l1.4-2h7.2L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle {...p} cx="12" cy="13.5" r="3.4" /></g>,
     clock: <g><circle {...p} cx="12" cy="12" r="8.5" /><path {...p} d="M12 7.2V12l3.2 2" /></g>,
+    /* Time off, on purpose — the one state in this app that means "the app
+       wants nothing from you and that is correct". */
+    pause: <path {...p} d="M9.5 5.5v13M14.5 5.5v13" />,
+    /* A period rather than a point: the shape the cadence controls are drawn
+       with, and the only icon here that is about a stretch of days. */
+    repeat: <g><path {...p} d="M4 8.5h13.5a2.5 2.5 0 0 1 2.5 2.5v1" /><path {...p} d="M7 5.5l-3 3 3 3" /><path {...p} d="M20 15.5H6.5A2.5 2.5 0 0 1 4 13v-1" /><path {...p} d="M17 18.5l3-3-3-3" /></g>,
     note: <path {...p} d="M6 3h8l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M8.5 13h7M8.5 16.5h4.5" />,
     edit: <path {...p} d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17zM13.5 6.5l3 3" />,
     minus: <path {...p} d="M5 12h14" />,
@@ -2931,7 +2970,29 @@ function NothingLogged({ tpl, keyField, onSet, onBack }) {
 }
 
 function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabel = "Finish Quick Log" }) {
-  const fields = useMemo(() => tpl.fields.filter((f) => f.quick !== false && f.type !== "photo" && !f.dependsOn), [tpl]);
+  /* Quick Log *is* the check-in, so it asks what the check-in is asking for
+     and nothing else. A question on its own slower schedule — a weekly weight,
+     a monthly tape measure — is skipped here once its period is satisfied,
+     which is the whole reason a thirty-question setup can survive being asked
+     for daily. It is never *hidden*: Detailed Log still lists everything, so
+     answering something out of turn is always one tab away. */
+  const fieldCadences = useMemo(() => sanitizeFieldCadences(profile?.fieldCadence), [profile]);
+  const due = useMemo(
+    () => dueKeys(tpl.fields, fieldCadences, entries, date),
+    [tpl.fields, fieldCadences, entries, date]
+  );
+  const fields = useMemo(
+    () => tpl.fields.filter((f) =>
+      f.quick !== false && f.type !== "photo" && !f.dependsOn &&
+      (f.k === tpl.keyMetric || due.has(f.k))),
+    [tpl, due]
+  );
+  const quiet = useMemo(
+    () => tpl.fields.filter((f) =>
+      f.quick !== false && f.type !== "photo" && !f.dependsOn &&
+      f.k !== tpl.keyMetric && !due.has(f.k)).length,
+    [tpl, due]
+  );
   const chunks = useMemo(() => {
     const out = [];
     for (let i = 0; i < fields.length; i += QUICK_BATCH_SIZE) out.push(fields.slice(i, i + QUICK_BATCH_SIZE));
@@ -2939,6 +3000,7 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
   }, [fields]);
   const entry = entryOn(entries, date);
   const answers = entry?.answers || {};
+  const cadence = useMemo(() => readCadence(profile), [profile]);
   const [page, setPage] = useState(0); // 0..chunks.length-1 = batches, chunks.length = review
   const [notes, setNotes] = useState(entry?.notes || "");
   const [notesOpen, setNotesOpen] = useState(!!(entry?.notes));
@@ -2952,7 +3014,12 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
     return (
       <Card className="mt-2">
         <div className="text-sm" style={{ color: C.sub }}>
-          No quick questions are enabled for this setup yet. Add some in Edit Setup, or use Detailed Log.
+          {quiet > 0
+            /* Not an empty setup — a setup that is up to date. Saying "no
+               questions are enabled" here would be the app reporting a fault
+               where there is only a schedule being kept. */
+            ? `Every question is already answered for its own stretch — ${quiet} ${quiet === 1 ? "question is" : "questions are"} asked less often than daily. Detailed Log has all of them if you want to answer one early.`
+            : "No quick questions are enabled for this setup yet. Add some in Edit Setup, or use Detailed Log."}
         </div>
       </Card>
     );
@@ -3022,11 +3089,17 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
             onBack={() => { feedback("nav"); setCelebrating(false); setPage(0); }} />
         );
       }
-      return <FinishCelebration streak={calcStreak(entries)} tint={tpl.color} onDone={onDone} />;
+      return <FinishCelebration streak={calcStreak(entries, cadence)} noun={streakNoun(cadence, 1)} tint={tpl.color} onDone={onDone} />;
     }
     return (
       <div className="mt-2">
         <div className="text-sm font-semibold mb-2">Review before saving</div>
+        {quiet > 0 && (
+          <p className="text-[11.5px] leading-relaxed mb-2" style={{ color: C.subtle }}>
+            {quiet} {quiet === 1 ? "question isn't" : "questions aren't"} being asked today — {quiet === 1 ? "it's" : "they're"} on
+            a slower schedule and already answered for it. Detailed Log has everything.
+          </p>
+        )}
         <Card className="!p-0" style={{ padding: 0 }}>
           {fields.map((f, i) => {
             const v = answers[f.k];
@@ -3074,7 +3147,7 @@ function GuidedQuickLog({ profile, tpl, entries, date, onPatch, onDone, doneLabe
             get the save chime either. */}
         <button onClick={() => {
           const wrote = entryValueCount(entryOn(entries, date)) > 0;
-          const s = calcStreak(entries);
+          const s = calcStreak(entries, cadence);
           feedback(!wrote ? "tap" : s > 0 && s % 7 === 0 ? "milestone" : "save");
           setCelebrating(true);
         }} className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
@@ -3132,6 +3205,14 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
   const entry = entryOn(entries, date);
   const answers = entry?.answers || {};
   const fields = tpl.fields.filter((f) => f.detailed !== false && !f.dependsOn);
+  /* Which questions run on their own slower schedule, and which of those this
+     day is actually asking for. The long form never *hides* anything — that is
+     its whole job — so this is only ever a caption. */
+  const logCadences = useMemo(() => sanitizeFieldCadences(profile?.fieldCadence), [profile]);
+  const logDue = useMemo(
+    () => dueKeys(tpl.fields, logCadences, entries, date),
+    [tpl.fields, logCadences, entries, date]
+  );
   const isToday = date === todayStr();
   const done = mode === "quick" ? entry?.quickLogCompleted : entry?.detailedLogCompleted;
   /* Quick Add's Photo tile says "Progress shot" and now means it: it opens the
@@ -3282,6 +3363,22 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
                             <React.Fragment key={f.k}>
                               <FieldInput field={f} value={answers[f.k]} ghost={ghosts[f.k]}
                                 onChange={(v) => set(f.k, v)} tint={tpl.color} />
+                              {/* A question on its own slower schedule is
+                                  absent from Quick Log once its period is
+                                  satisfied, and *present here, always*. This
+                                  line is the difference between the two
+                                  reading as one deliberate design and as a
+                                  bug: it says why the question stopped
+                                  appearing, and it appears next to the input
+                                  that will answer it early anyway. */}
+                              {logCadences[f.k] && (
+                                <p className="text-[11px] -mt-1 mb-3" style={{ color: C.subtle }}>
+                                  Asked {cadenceLabel(logCadences[f.k]).toLowerCase()}.{" "}
+                                  {!logDue.has(f.k)
+                                    ? `Already in for this stretch. ${fieldNextLine(logCadences[f.k], date) || ""}`
+                                    : "Due now."}
+                                </p>
+                              )}
                               {(() => {
                                 const deps = depsFor(tpl, f.k);
                                 if (!deps.length) return null;
@@ -4937,7 +5034,8 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
   }, [entries, derived, metricSource, derivedDates]);
 
   const today = entryOn(entries, t0);
-  const streak = calcStreak(entries);
+  const cadence = useMemo(() => readCadence(profile), [profile]);
+  const streak = calcStreak(entries, cadence);
   const insights = useMemo(() => computeInsights(tpl, entries), [tpl, entries]);
   const recent = [...entries].reverse().slice(0, 5);
   const photoFields = useMemo(() => tpl.fields.filter((f) => f.type === "photo"), [tpl]);
@@ -5081,7 +5179,7 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
         <div className="flex items-start justify-between gap-3">
           <div className="fhj-eyebrow min-w-0 leading-snug pt-0.5">Today · {metricField.label}</div>
           <Badge tone={streak > 0 ? "accent" : "neutral"}>
-            {streak > 0 ? `${streak}-day streak` : "no streak yet"}
+            {streak > 0 ? `${streak}-${streakNoun(cadence, 1)} streak` : "no streak yet"}
           </Badge>
         </div>
         {/* Until today is logged there is no today number, and a 3.25rem em-dash
@@ -5948,10 +6046,11 @@ function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen, ctx
    It is a button, and it goes where you would expect: into today's check-in.
    Which means the answer to "what haven't I done today" and the way to do it
    are the same object. */
-function HistoryTodayCard({ status, tint, keyField, value, date, viewer, onOpen }) {
+function HistoryTodayCard({ status, tint, keyField, value, date, stand, viewer, onOpen }) {
   const line = checkinLine(status);
+  const settled = !!stand?.quiet && !status.complete && status.untouched;
   const body = (
-    <Card className={"fhj-today-card" + (status.complete ? " is-complete" : "")}>
+    <Card className={"fhj-today-card" + (status.complete || settled ? " is-complete" : "")}>
       <div className="fhj-today-card-top">
         <div className="min-w-0">
           <div className="fhj-eyebrow">Today</div>
@@ -5967,17 +6066,26 @@ function HistoryTodayCard({ status, tint, keyField, value, date, viewer, onOpen 
               <span className="fhj-today-score-label">{keyField.label}</span>
             </div>
           )}
-          <p className="text-[12px] mt-1.5" style={{ color: C.sub }}>{line}</p>
+          <CadenceStrip stand={stand} />
+          <p className="text-[12px] mt-1.5" style={{ color: C.sub }}>
+            {settled ? "Nothing is due — open it anyway if you like." : line}
+          </p>
         </div>
-        <CheckinRing status={status} tint={tint} size={58} stroke={5} />
+        <CheckinRing status={status} tint={tint} settled={settled} size={58} stroke={5} />
       </div>
 
-      <CheckinPips status={status} tint={tint} />
-      <CheckinParts status={status} />
+      {/* Both go with the pips. A breakdown reading "Questions 0/27" under the
+          sentence "nothing is due" is two claims about the same day that cannot
+          both be the point. */}
+      {!settled && <CheckinPips status={status} tint={tint} />}
+      {!settled && <CheckinParts status={status} />}
 
       {!viewer && (
         <div className="fhj-today-card-go">
-          {checkinVerb(status)}
+          {/* "Start today's check-in" under the words "nothing is due" is a
+              prompt for work nobody owes. The door is the same door; only what
+              it is called changes. */}
+          {settled ? "Open today's check-in" : checkinVerb(status)}
           <Icon name="right" size={13} color="currentColor" />
         </div>
       )}
@@ -5994,6 +6102,63 @@ function HistoryTodayCard({ status, tint, keyField, value, date, viewer, onOpen 
   );
 }
 
+/* The days this period still has room for.
+
+   The other half of the period model, and the half people ask for out loud.
+   "Once a week, any day" is a generous promise right up until Thursday, when
+   somebody remembers they meant to do it on Monday and has no obvious way back
+   to Monday. The calendar has one, three taps away, and three taps away is
+   where good intentions go to die.
+
+   So on a journal that is not a daily one, and only while its period is still
+   open and still short, the days it has room for are offered as a row. Days
+   that have already passed and have nothing on them, in order, each one a tap
+   from the log for that day.
+
+   Two things it deliberately is not. It is not a list of days you *missed* —
+   there is no red on it, no "3 missed", and it disappears entirely the moment
+   the period has what it asked for, which on a weekly journal is most of the
+   time. And it never offers tomorrow: filling in a day that has not happened
+   yet is the one thing a journal must not make easy. */
+const CATCH_UP_MAX = 7;
+
+function CatchUpRow({ cadence, logged, today, openLog }) {
+  const st = useMemo(() => periodStatus(cadence, logged, today, today), [cadence, logged, today]);
+  if (cadence.manual || (cadence.unit === "day" && cadence.n === 1)) return null;
+  if (st.paused || st.complete || st.open.length <= 1) return null;
+  /* Today has the card above it and does not need a chip too. */
+  const all = st.open.filter((d) => d !== today);
+  if (!all.length) return null;
+  /* A monthly period three weeks in has twenty-odd open days, and twenty-odd
+     chips is not an offer, it is a wall — and a wall drawn in the one place
+     the app has just finished saying nothing is owed. The nearest few are the
+     ones anybody can still remember well enough to write down honestly;
+     everything further back is what the calendar underneath is for. */
+  const days = all.slice(-CATCH_UP_MAX);
+  return (
+    <div className="mt-3">
+      <div className="fhj-eyebrow mb-1.5">
+        {periodLabel(cadence, today, today)} still has room
+      </div>
+      <div className="flex gap-1.5 flex-wrap">
+        {days.map((d) => (
+          <button key={d} type="button"
+            onClick={() => { feedback("nav"); openLog(d); }}
+            className="fhj-chip"
+            aria-label={`Log ${fmtNice(d)}`}>
+            {fmtShort(d)}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+        {st.left === 1 ? "One check-in" : `${st.left} check-ins`} still to go, and any of these days
+        counts for {periodLabel(cadence, today, today).toLowerCase()}.
+        {all.length > days.length && " Anything further back is on the calendar."}
+      </p>
+    </div>
+  );
+}
+
 function HistoryScreen({
   profile, entries, food = [], bowel = [], routine = [], routineItems = [],
   openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, goSun, goLabs,
@@ -6005,9 +6170,18 @@ function HistoryScreen({
   const todayEntry = entryOn(entries, today);
   /* The same numbers the card on Today draws, from the same module. See
      HistoryTodayCard, and lib/checkin.ts for what a ring here may claim. */
+  const cadence = useMemo(() => readCadence(profile), [profile]);
+  const fieldCadences = useMemo(() => readFieldCadences(profile), [profile]);
+  const logged = useMemo(() => loggedDates(entries), [entries]);
+  const due = useMemo(
+    () => dueKeys(tpl.fields, fieldCadences, entries, today),
+    [tpl.fields, fieldCadences, entries, today]
+  );
+  const stand = useMemo(() => standing(cadence, logged, today), [cadence, logged, today]);
   const todayStatus = useMemo(() => checkinStatus({
     fields: tpl.fields,
     primaryKey: tpl.keyMetric,
+    due,
     answers: todayEntry?.answers,
     score: typeof todayEntry?.answers?.[tpl.keyMetric] === "number"
       ? todayEntry.answers[tpl.keyMetric] : null,
@@ -6016,7 +6190,7 @@ function HistoryScreen({
     hasPhotoFields: tpl.fields.some((f) => f.type === "photo"),
     routine: routineProgress(routineItems || [], routine || [], today),
     meals: food.filter((f) => f.date === today).length,
-  }), [tpl, todayEntry, routineItems, routine, food, today]);
+  }), [tpl, due, todayEntry, routineItems, routine, food, today]);
   /* When a finding is illuminating a set of days, History shows those days
      rather than the last fortnight. That is the whole cross-feature promise:
      tapping "8 of your 10 hardest days were above 29°C" and arriving on the
@@ -6073,10 +6247,13 @@ function HistoryScreen({
 
       {/* The day being lived, before the days already lived. See
           HistoryTodayCard. */}
-      <HistoryTodayCard status={todayStatus} tint={tpl.color} keyField={keyField}
+      <HistoryTodayCard status={todayStatus} tint={tpl.color} keyField={keyField} stand={stand}
         value={typeof todayEntry?.answers?.[tpl.keyMetric] === "number"
           ? todayEntry.answers[tpl.keyMetric] : null}
         date={today} viewer={viewer} onOpen={openLog} />
+      {!viewer && (
+        <CatchUpRow cadence={cadence} logged={logged} today={today} openLog={openLog} />
+      )}
 
       {traceRows.length > 4 && (
         <div className="fhj-hist-trace mt-4">
@@ -6481,6 +6658,15 @@ function AppointmentPackCard({ db, setDb, goPack }) {
 
   const entries = entriesFor(db);
   const logged = entries.filter((e) => e.date >= range.start && e.date <= range.end).length;
+  /* How the journal ran against its own plan over the same range. Absent on a
+     daily journal, where "days logged" is already the honest reading. Never a
+     score, and never shown as one — see the note on `adherence`. */
+  const cadence = readCadence(db.profile);
+  const cover = useMemo(() => {
+    if (cadence.manual || (cadence.unit === "day" && cadence.n === 1)) return null;
+    const a = adherence(cadence, loggedDates(entries), range.start, range.end);
+    return a.periods > 0 ? a : null;
+  }, [db.profile, entries, range.start, range.end]); // eslint-disable-line
   const flares = (db.episodes || []).filter((ep) => {
     const last = ep.end || t0;
     return !(ep.start > range.end || last < range.start);
@@ -6550,6 +6736,18 @@ function AppointmentPackCard({ db, setDb, goPack }) {
         <b style={{ color: C.ink }}>{coverageLabel(logged, range.days)}</b> logged
         {flares ? ` · ${flares} flare${flares === 1 ? "" : "s"}` : ""}
       </div>
+      {/* On a journal that is not a daily one, "17 of 90 days" reads as a
+          person who mostly did not bother. It is the wrong denominator: they
+          were asked for thirteen check-ins and made thirteen. The gaps in the
+          rows are the schedule, not a lapse, and a document a clinician is
+          going to read has to be able to say so. */}
+      {cover && (
+        <div className="text-[11.5px] mt-1" style={{ color: C.subtle }}>
+          This is a {cadenceLabel(cadence).toLowerCase()} journal — {cover.kept} of {cover.periods}{" "}
+          {streakNoun(cadence, cover.periods)} kept
+          {cover.paused ? `, ${cover.paused} paused` : ""}. The gaps between are the schedule.
+        </div>
+      )}
 
       <button onClick={() => { feedback("save"); goPack(range); }}
         className="fhj-btn fhj-btn-primary fhj-btn-block mt-3">
@@ -7946,6 +8144,228 @@ const DEFAULT_REMINDER = { enabled: false, time: DEFAULT_REMINDER_TIME, notify: 
    The calendar file is listed first on purpose — it is the only one of the two
    delivery routes that still works with the browser closed, and pretending
    otherwise would set people up to quietly stop logging. */
+/* ============================================================
+   HOW OFTEN THIS JOURNAL ASKS
+   ============================================================
+
+   The single most consequential setting in the app, and until now it did not
+   exist: the check-in was daily, for everybody, forever.
+
+   For plenty of people daily is right and it is still the default. For plenty
+   of others it is precisely why their journal has eleven days in it. Somebody
+   tracking a supplement they want six months of evidence about does not need
+   to be asked every morning; asked anyway, they comply for a fortnight, miss a
+   day, watch a streak reset, and stop. The app told them they had failed at
+   something they were never trying to do.
+
+   So this card asks the question plainly and then means the answer everywhere:
+   the ring on Today, the streak, the queue of questions, the reminder, and the
+   sentence at the top of the check-in all read the same cadence. See
+   lib/cadence for the arithmetic, and in particular for why the *period* is
+   the unit — "once a week" means the week owes one check-in, not that Monday
+   does.
+
+   Two things share the card because they are the same decision at two scales:
+   how often the journal asks, and how long it is allowed to be quiet. */
+
+/** The seven-dot week strip. Optional on a weekly cadence and absent
+    everywhere else — naming days is a preference about *nudges*, never a rule
+    about which days count. */
+function WeekdayStrip({ days, onChange, disabled }) {
+  const letters = ["S", "M", "T", "W", "T", "F", "S"];
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const toggle = (d) => {
+    feedback("select");
+    onChange(days.includes(d) ? days.filter((x) => x !== d) : [...days, d]);
+  };
+  return (
+    <div className="flex gap-1.5" role="group" aria-label="Days to be nudged on">
+      {letters.map((l, d) => {
+        const on = days.includes(d);
+        return (
+          <button key={d} type="button" disabled={disabled}
+            onClick={() => toggle(d)} aria-pressed={on} aria-label={names[d]}
+            className="flex-1 rounded-lg text-[13px] font-bold"
+            style={{
+              /* A thumb, not a cursor. Seven targets across a phone leaves
+                 about 44px each, and that is the floor rather than the aim. */
+              minHeight: 46,
+              background: on ? C.accent : "transparent",
+              color: on ? C.onAccent : C.sub,
+              border: `1px solid ${on ? C.accent : C.lineStrong}`,
+              opacity: disabled ? 0.45 : 1,
+            }}>
+            {l}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CadenceCard({ profile, entries, onSave }) {
+  const cadence = useMemo(() => readCadence(profile), [profile]);
+  const logged = useMemo(() => loggedDates(entries), [entries]);
+  const today = todayStr();
+  const stand = useMemo(() => standing(cadence, logged, today), [cadence, logged, today]);
+  const chosen = presetIdOf(cadence);
+  const [pausing, setPausing] = useState(false);
+
+  /* Where the anchor comes from. "Every other day" and "every two weeks" have
+     to count from somewhere, and the only defensible somewhere is the day the
+     person chose the cadence — a grid that shifted every time the app was
+     opened would put the same journal on a different schedule each week. */
+  const commit = (next) => {
+    feedback("select");
+    const anchor = cadence.anchor || today;
+    const keep = cadence.pause ? { pause: cadence.pause } : {};
+    onSave(sanitizeCadence({ ...next, anchor, ...keep }));
+  };
+
+  const pick = (preset) => commit(preset.cadence);
+  const setDays = (days) => commit(withDays(cadence, days));
+
+  const pauseFor = (days) => {
+    feedback("save");
+    setPausing(false);
+    onSave(sanitizeCadence({
+      ...cadence,
+      pause: { from: today, to: days ? addDays(today, days - 1) : undefined },
+    }));
+  };
+  const resume = () => {
+    feedback("toggleOff");
+    const { pause, ...rest } = cadence;
+    onSave(sanitizeCadence(rest));
+  };
+
+  const weekly = !cadence.manual && cadence.unit === "week" && cadence.n === 1;
+  const next = nextAsk(cadence, today);
+
+  return (
+    <Card className="mt-3">
+      <div className="fhj-eyebrow mb-1">How often to ask</div>
+      <p className="text-sm leading-relaxed mb-2" style={{ color: C.sub }}>
+        The ring on Today, the streak, the questions you're offered and when a reminder is worth
+        firing all count in whatever you choose here.
+      </p>
+      <p className="text-[11.5px] leading-relaxed mb-3" style={{ color: C.subtle }}>
+        A slower journal is not a worse one, and nothing you have already logged is touched.
+      </p>
+
+      {/* Where you stand right now, in the app's own words — the same sentence
+          the check-in card shows, so the setting and the screen agree. */}
+      <div className="rounded-xl px-3 py-2.5 mb-3 flex items-center gap-2.5"
+        style={{
+          background: stand.settled ? C.goodSoft : C.faint,
+          border: `1px solid ${stand.settled ? C.good : C.line}`,
+        }}>
+        <Icon name={stand.paused ? "pause" : stand.settled ? "check" : "repeat"} size={15}
+          color={stand.settled ? C.good : C.sub} />
+        <div className="min-w-0 text-[12px] leading-snug" style={{ color: C.sub }}>
+          <b style={{ color: C.ink }}>{cadenceLabel(cadence)}</b>
+          {stand.line ? ` — ${stand.line}` : ` — ${cadenceHint(cadence)}`}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {CADENCE_PRESETS.map((preset) => {
+          const on = chosen === preset.id;
+          return (
+            <button key={preset.id} type="button" role="radio" aria-checked={on}
+              onClick={() => pick(preset)}
+              className="w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3"
+              style={{
+                minHeight: 52,
+                background: on ? C.accentSoft : "transparent",
+                border: `1px solid ${on ? C.accentLine : C.line}`,
+              }}>
+              <span className="w-[22px] h-[22px] rounded-full flex items-center justify-center shrink-0"
+                style={on ? { background: C.accent } : { border: `1.5px solid ${C.lineStrong}` }}>
+                {on && <Icon name="check" size={13} color={C.onAccent} />}
+              </span>
+              <span className="min-w-0">
+                <span className="text-sm font-medium block">{preset.label}</span>
+                <span className="text-[11px] block leading-snug" style={{ color: C.subtle }}>
+                  {preset.hint}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Particular days, for the people who have them. Deliberately under the
+          list rather than in it: it is a refinement of a weekly cadence, not a
+          tenth choice, and it never changes which days *count*. */}
+      {weekly && (
+        <div className="mt-3.5">
+          <div className="fhj-eyebrow mb-2">Particular days (optional)</div>
+          <WeekdayStrip days={cadence.days} onChange={setDays} />
+          <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+            {cadence.days.length
+              ? `Nudged on ${cadenceLabel(cadence).toLowerCase()}. A check-in on any other day still counts for the week — this only says when to ask.`
+              : "None picked — any day of the week counts, and you'll hear about it when the week is running out."}
+          </p>
+        </div>
+      )}
+
+      {next && !cadence.manual && (
+        <p className="text-[11px] mt-3" style={{ color: C.subtle }}>
+          Next asked on {fmtNice(next)}.
+        </p>
+      )}
+
+      {/* ---------- pausing ----------
+
+          The feature that keeps a two-year journal alive. Every long-running
+          tracker dies in the fortnight somebody spent in hospital or on a
+          beach, because coming back to a broken streak and a wall of gaps
+          feels like starting over. Time off is a thing you can say out loud
+          here, and the arithmetic steps over it rather than counting it. */}
+      <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+        {cadence.pause ? (
+          <div className="flex items-center gap-2.5">
+            <Icon name="pause" size={15} color={C.sub} />
+            <div className="flex-1 min-w-0 text-[12px]" style={{ color: C.sub }}>
+              {cadence.pause.to
+                ? `Paused until ${fmtNice(cadence.pause.to)}. Nothing is due, and the streak is holding.`
+                : "Paused. Nothing is due, and the streak is holding."}
+            </div>
+            <Button size="sm" variant="secondary" className="shrink-0" onClick={resume}>Resume</Button>
+          </div>
+        ) : pausing ? (
+          <div>
+            <div className="fhj-eyebrow mb-2">Pause for</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {[["A week", 7], ["Two weeks", 14], ["A month", 30], ["Until I say", 0]].map(([label, days]) => (
+                <Button key={label} size="sm" variant="secondary" onClick={() => pauseFor(days)}>
+                  {label}
+                </Button>
+              ))}
+              <Button size="sm" variant="ghost" onClick={() => { feedback("nav"); setPausing(false); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => { feedback("tap"); setPausing(true); }}
+            className="flex items-center gap-2 text-[12px] font-semibold"
+            style={{ color: C.accentText }}>
+            <Icon name="pause" size={14} color="currentColor" />
+            Pause the journal for a while
+          </button>
+        )}
+        <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+          A holiday, a hospital stay, a fortnight where this is the last thing that matters.
+          Nothing is due while it runs, the streak steps over it rather than resetting, and you
+          can still log anything you like.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 function ReminderCard({ profile, onSave }) {
   const reminders = sortReminders(readReminders(profile));
   const [perm, setPerm] = useState(() => notificationPermission());
@@ -9001,6 +9421,9 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, go
   const setReminders = (reminders) => setDb((prev) => ({
     ...prev, profile: { ...prev.profile, reminders, updatedAt: new Date().toISOString() },
   }));
+  const setCadence = (cadence) => setDb((prev) => ({
+    ...prev, profile: { ...prev.profile, cadence, updatedAt: new Date().toISOString() },
+  }));
   const setGoals = (goals) => setDb((prev) => ({
     ...prev, profile: { ...prev.profile, goals, updatedAt: new Date().toISOString() },
   }));
@@ -9013,6 +9436,7 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, go
         </Button>
       </Card>
 
+      <CadenceCard profile={db.profile} entries={entriesFor(db)} onSave={setCadence} />
       <AppearanceCard />
       <ReminderCard profile={db.profile} onSave={setReminders} />
       <GoalsCard goals={db.profile.goals} onSave={setGoals} />
@@ -9741,6 +10165,12 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
   const [overrides, setOverrides] = useState(profile.fieldOverrides || {});
   const [cameraTimer, setCameraTimer] = useState(profile.cameraTimer ?? 3);
   const [keyMetric, setKeyMetric] = useState(profile.keyMetric || null);
+  /* Questions that ask less often than the journal does. Kept as its own slice
+     rather than folded into `fieldOverrides`, because an override changes what
+     a question *is* and this changes when it is *asked* — and because every
+     surface that reads a cadence has to be able to read them all at once. */
+  const [fieldCadence, setFieldCadence] = useState(() => sanitizeFieldCadences(profile.fieldCadence));
+  const [cadenceOpen, setCadenceOpen] = useState(null); // which question's picker is open
   const mounted = useRef(false);
 
   useEffect(() => {
@@ -9750,9 +10180,10 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
     onSave({
       name: name.trim(), modules: Array.from(modules), disabledFields: Array.from(disabledFields),
       customQuestions, fieldOrder: order, fieldOverrides: overrides, cameraTimer, keyMetric,
+      fieldCadence,
       birthYear: validAge ? new Date().getFullYear() - Math.round(n) : undefined,
     });
-  }, [name, age, modules, disabledFields, customQuestions, order, overrides, cameraTimer, keyMetric]); // eslint-disable-line
+  }, [name, age, modules, disabledFields, customQuestions, order, overrides, cameraTimer, keyMetric, fieldCadence]); // eslint-disable-line
 
   const toggleModule = (k) => {
     if (modules.has(k)) {
@@ -10170,8 +10601,71 @@ function EditSetupScreen({ profile, entries = [], onSave, goBack }) {
                       Photo settings
                     </button>
                   )}
+                  {/* How often *this* question is asked. The key metric is
+                      exempt: it is the one-tap question the whole of Today is
+                      built around, and a version of this app where it goes
+                      quiet for three weeks is a different app. */}
+                  {f.k !== (keyMetric || activeKeyMetric) && (() => {
+                    const own = fieldCadence[f.k];
+                    const set = !!own;
+                    return (
+                      <button onClick={() => { feedback("expand"); setCadenceOpen(cadenceOpen === f.k ? null : f.k); }}
+                        aria-expanded={cadenceOpen === f.k}
+                        aria-label={`${f.label}: asked ${set ? cadenceLabel(own).toLowerCase() : "every check-in"}`}
+                        className="px-2.5 py-1 rounded-full text-[11px] font-semibold inline-flex items-center gap-1"
+                        style={set
+                          ? { background: C.accentSoft, color: C.accentText, border: `1px solid ${C.accentLine}` }
+                          : { background: "transparent", color: C.subtle, border: `1px dashed ${C.lineStrong}` }}>
+                        <Icon name="repeat" size={11} color="currentColor" />
+                        {set ? cadenceLabel(own) : "Every check-in"}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
+              {cadenceOpen === f.k && (
+                <div className="px-2.5 pb-2.5" style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
+                  <div className="fhj-eyebrow mb-2">How often to ask “{f.label}”</div>
+                  <div className="flex flex-col gap-1.5">
+                    {FIELD_CADENCE_PRESETS.map((preset) => {
+                      const own = fieldCadence[f.k];
+                      const on = preset.id === "every" ? !own : !!own && presetIdOf(own, FIELD_CADENCE_PRESETS) === preset.id;
+                      return (
+                        <button key={preset.id} type="button" role="radio" aria-checked={on}
+                          onClick={() => {
+                            feedback("select");
+                            setFieldCadence((prev) => {
+                              const next = { ...prev };
+                              if (preset.id === "every") delete next[f.k];
+                              else next[f.k] = sanitizeCadence({ ...preset.cadence, anchor: todayStr() });
+                              return next;
+                            });
+                          }}
+                          className="w-full px-2.5 py-2 rounded-lg text-left flex items-center gap-2.5"
+                          style={{
+                            minHeight: 44,
+                            background: on ? C.accentSoft : "transparent",
+                            border: `1px solid ${on ? C.accentLine : C.line}`,
+                          }}>
+                          <span className="w-[18px] h-[18px] rounded-full flex items-center justify-center shrink-0"
+                            style={on ? { background: C.accent } : { border: `1.5px solid ${C.lineStrong}` }}>
+                            {on && <Icon name="check" size={11} color={C.onAccent} />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="text-[12.5px] font-medium block">{preset.label}</span>
+                            <span className="text-[10.5px] block leading-snug" style={{ color: C.subtle }}>{preset.hint}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                    A quieter question is not a disabled one: it keeps every answer it already has,
+                    stays on your charts and in your exports, and you can still answer it any day
+                    you like from the survey. This only decides when you are <i>asked</i>.
+                  </p>
+                </div>
+              )}
               {f.type === "photo" && photoOpen === f.k && (
                 <div className="px-2.5 pb-2.5 flex flex-col gap-2" style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
                   <div className="flex gap-2">
@@ -10639,6 +11133,7 @@ function buildReport(db, range) {
   const inRange = entries.filter((e) => e.date >= range.start && e.date <= range.end);
   const days = loggedDaysIn(entries, range.start, range.end);
   const prefs = profile.reportPrefs;
+  const cadence = readCadence(profile);
   const prev = priorRange(range);
   const cards = [];
 
@@ -10652,7 +11147,11 @@ function buildReport(db, range) {
   const keyField = getField(tpl, tpl.keyMetric);
 
   if (cardIncluded(prefs, "streak")) {
-    cards.push({ type: "streak", current: calcStreak(entries), longest: longestRunInRange(entries, range.start, range.end) });
+    cards.push({
+      type: "streak", current: calcStreak(entries, cadence),
+      noun: streakNoun(cadence, 2),
+      longest: longestRunInRange(entries, range.start, range.end),
+    });
   }
 
   if (cardIncluded(prefs, "bestWorst") && keyField) {
@@ -10967,7 +11466,7 @@ function ReportCards({ cards, tint }) {
                 </div>
                 <div className="flex-1">
                   <div className="font-display text-4xl leading-none"><CountUp value={card.current} /></div>
-                  <div className="text-xs mt-1" style={{ color: C.sub }}>current streak</div>
+                  <div className="text-xs mt-1" style={{ color: C.sub }}>current streak{card.noun && card.noun !== "days" ? ` (${card.noun})` : ""}</div>
                 </div>
               </div>
             </ReportCardShell>
@@ -11849,7 +12348,10 @@ function EmptyState({ icon = "trends", title, text, actionLabel, onAction }) {  
 }
 
 /* Finish celebration — the review screen's success state, not a modal. */
-function FinishCelebration({ streak, tint, onDone }) {
+/* `noun` is what the streak is a streak *of*. It used to be the word "day",
+   hard-coded, which stopped being true the moment somebody could choose to
+   keep a weekly journal. */
+function FinishCelebration({ streak, noun = "day", tint, onDone }) {
   const [shown, setShown] = useState(0);
   const rootRef = useRef(null);
   useEffect(() => { animateFinish(rootRef.current); }, []);
@@ -11897,7 +12399,7 @@ function FinishCelebration({ streak, tint, onDone }) {
         <AmbientGlow tint={tint} opacity={0.28} />
         <div className="text-[10px] font-semibold uppercase tracking-wider mb-2 relative" style={{ color: C.sub }}>Saved for today</div>
         <div className="font-display text-6xl leading-none" style={{ color: tint }}>{shown}</div>
-        <div className="text-sm mt-1" style={{ color: C.sub }}>day streak</div>
+        <div className="text-sm mt-1" style={{ color: C.sub }}>{`${noun} streak`}</div>
         <div className="text-sm font-medium mt-3">{line}</div>
         <div className="text-[11px] mt-2" style={{ color: C.sub }}>Saved on this device only.</div>
       </Card>
@@ -15251,7 +15753,7 @@ function ImportInvite({ aiReady, onImport, onSetup, onDismiss }) {
 /** The one-line answer to "how is today going", and the doorway to the screen
     that answers it properly. Deliberately a summary and not a chart: this
     screen is for doing, not for reading. */
-function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
+function GlanceCard({ tpl, keyField, entry, food, streak, cadence = DEFAULT_CADENCE, onOpen }) {
   const v = entry?.answers?.[tpl.keyMetric];
   const totals = dayTotals(food, todayStr());
 
@@ -15266,7 +15768,7 @@ function GlanceCard({ tpl, keyField, entry, food, streak, onOpen }) {
     totals.calories != null
       ? { label: "eaten", value: `${formatNutrient("calories", totals.calories)} kcal` }
       : null,
-    streak > 0 ? { label: "streak", value: `${streak} ${streak === 1 ? "day" : "days"}` } : null,
+    streak > 0 ? { label: "streak", value: `${streak} ${streakNoun(cadence, streak)}` } : null,
   ].filter(Boolean);
 
   return (
@@ -15828,7 +16330,12 @@ function NextQuestion({ tpl, field, value, ghost, progress, onSet, onAdvance, on
 
 /** How far round the day is. The middle carries the count, so the ring can be
     read at a glance and the exact number at a look. */
-function CheckinRing({ status, tint, size = 52, stroke = 5 }) {
+/* `settled` is the state where the period has what it asked for and today is
+   not being counted against anything. The middle shows a dash rather than a
+   zero, because a 0 under the words "nothing is due" is the card arguing with
+   itself — and a tick would be worse, since today's questions are genuinely
+   unanswered and claiming otherwise is the one thing this ring may never do. */
+function CheckinRing({ status, tint, settled = false, size = 52, stroke = 5 }) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const on = circ * status.ratio;
@@ -15849,7 +16356,7 @@ function CheckinRing({ status, tint, size = 52, stroke = 5 }) {
       <span className="fhj-ring-mid" style={{ color: status.done ? C.ink : C.subtle }}>
         {status.complete
           ? <Icon name="check" size={Math.round(size * 0.36)} color={tint} />
-          : status.done}
+          : settled ? "—" : status.done}
       </span>
     </span>
   );
@@ -15904,20 +16411,53 @@ function CheckinParts({ status }) {
   );
 }
 
+/* Where the period stands, over the door.
+
+   One line, and it only appears when the journal is not a daily one — see
+   `standing` in lib/cadence for why. On a weekly journal it is the most
+   important sentence on the screen for six days out of seven, because what it
+   says on those days is *nothing is owed*, and that is the entire thing
+   somebody bought when they chose a slower cadence. A journal that keeps
+   showing an unfinished ring to somebody who is exactly on schedule has not
+   given them a frequency setting; it has given them the same guilt on a
+   longer timer. */
+function CadenceStrip({ stand }) {
+  if (!stand || !stand.line) return null;
+  return (
+    <span className={"fhj-cadence-strip" + (stand.settled ? " is-settled" : "")}>
+      <span className="fhj-cadence-chip">
+        <Icon name={stand.paused ? "pause" : stand.settled ? "check" : "clock"} size={11} color="currentColor" />
+        {stand.label}
+      </span>
+      <span className="fhj-cadence-line">{stand.line}</span>
+    </span>
+  );
+}
+
 /** The door, on Today. Sits at the foot of the pulse card, where the old link
     was, at about six times its weight. */
-function TodayCheckinCard({ status, tint, onOpen }) {
+function TodayCheckinCard({ status, tint, stand, onOpen }) {
   const line = checkinLine(status);
+  /* When the period is settled the card stops asking. It still opens — a
+     journal you cannot write in because you are ahead of schedule would be
+     absurd — but it says what it is rather than what is left.
+
+     `quiet` rather than `settled`: on a daily journal "settled" only means the
+     day is on the record, which the ring already says better. See Standing. */
+  const settled = !!stand?.quiet && !status.complete && status.untouched;
   return (
     <button type="button"
       onClick={() => { feedback("nav"); onOpen(); }}
-      aria-label={`Today's check-in — ${line}`}
-      className={"fhj-checkin fhj-pop" + (status.complete ? " is-complete" : "")}>
-      <CheckinRing status={status} tint={tint} size={48} />
+      aria-label={`Today's check-in — ${stand?.line || line}`}
+      className={"fhj-checkin fhj-pop" + (status.complete || settled ? " is-complete" : "")}>
+      <CheckinRing status={status} tint={tint} settled={settled} size={48} />
       <span className="fhj-checkin-body">
         <span className="fhj-checkin-title">Today's check-in</span>
-        <CheckinPips status={status} tint={tint} />
-        <span className="fhj-checkin-line">{line}</span>
+        <CadenceStrip stand={stand} />
+        {!settled && <CheckinPips status={status} tint={tint} />}
+        <span className="fhj-checkin-line">
+          {settled ? "Nothing is due — open it anyway if you like." : line}
+        </span>
       </span>
       <span className="fhj-checkin-go" aria-hidden="true">
         <Icon name="right" size={15} color="currentColor" />
@@ -15928,6 +16468,7 @@ function TodayCheckinCard({ status, tint, onOpen }) {
 
 function DailyPulse({
   profile, tpl, keyField, entries, entry, date, viewer,
+  cadence = DEFAULT_CADENCE, fieldCadences = {},
   routineItems, routine, photoFields, onPatch, onOpenLog, onOpenPhotos, onOpenRoutine,
 }) {
   const answers = entry?.answers || {};
@@ -15963,11 +16504,35 @@ function DailyPulse({
     return answerHabits(tpl.fields, entries.filter((e) => e.date >= from && e.date <= date));
   }, [tpl.fields, entries, date]);
 
+  /* ---------- what today is actually asking for ----------
+
+     A question can carry its own frequency now (lib/cadence), so "the enabled
+     template" and "today's questions" are no longer the same list. A weekly
+     weight answered on Monday is not something Tuesday is short of, and both
+     the queue and the ring below it read the *same* set — a screen that asks
+     for something its own progress ring is not counting is a screen arguing
+     with itself. The pulse itself is never filtered out: it is the question
+     this card is. */
+  const due = useMemo(
+    () => dueKeys(tpl.fields, fieldCadences, entries, date),
+    [tpl.fields, fieldCadences, entries, date]
+  );
+  const askFields = useMemo(
+    () => tpl.fields.filter((f) => f.k === keyField.k || due.has(f.k)),
+    [tpl.fields, due, keyField.k]
+  );
+  /* Where the period stands, for the strip over the door below. On a daily
+     journal this produces no line at all and the card is exactly what it was. */
+  const stand = useMemo(
+    () => standing(cadence, loggedDates(entries), date),
+    [cadence, entries, date]
+  );
+
   const pulseCtx = useMemo(() => ({
     primaryKey: keyField.k,
     score: value,
     dir: keyField.dir,
-    fields: tpl.fields,
+    fields: askFields,
     priority: tpl.chartMetrics,
     answers,
     usual: habits,
@@ -15976,7 +16541,7 @@ function DailyPulse({
     photoToday: photoInfo.photoToday,
     daysSincePhoto: photoInfo.daysSincePhoto,
     routineDue,
-  }), [keyField, value, tpl, answers, habits, entry, photoFields, photoInfo, routineDue]);
+  }), [keyField, value, tpl, askFields, answers, habits, entry, photoFields, photoInfo, routineDue]);
 
   /* The chips no longer offer questions: the card above them asks those one at
      a time, and the same question in two places is one place too many. What is
@@ -16005,13 +16570,14 @@ function DailyPulse({
   const status = useMemo(() => checkinStatus({
     fields: tpl.fields,
     primaryKey: keyField.k,
+    due,
     answers,
     score: value,
     notes: entry?.notes,
     photos: entry?.photos,
     hasPhotoFields: photoFields.length > 0,
     routine: routineProgress(routineItems || [], routine || [], date),
-  }), [tpl.fields, keyField.k, answers, value, entry, photoFields, routineItems, routine, date]);
+  }), [tpl.fields, keyField.k, due, answers, value, entry, photoFields, routineItems, routine, date]);
   const asking = (cursor && tpl.fields.find((f) => f.k === cursor)) || queue[0] || null;
   const ghosts = useMemo(
     () => recentAnswers(tpl.fields.filter((f) => f.type === "number"), entries, date),
@@ -16141,7 +16707,7 @@ function DailyPulse({
 
       {/* The way into the rest of it. Not a footnote — see the note above
           TodayCheckinCard. */}
-      {!viewer && <TodayCheckinCard status={status} tint={tpl.color} onOpen={onOpenLog} />}
+      {!viewer && <TodayCheckinCard status={status} tint={tpl.color} stand={stand} onOpen={onOpenLog} />}
     </Card>
   );
 }
@@ -16266,7 +16832,12 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     : null;
   const keyField = getField(tpl, tpl.keyMetric);
   const today = entryOn(entries, todayStr());
-  const streak = calcStreak(entries);
+  /* How often this journal asks, and what it has actually got. Everything on
+     this screen that used to assume "every day" reads these two. */
+  const cadence = useMemo(() => readCadence(profile), [profile]);
+  const fieldCadences = useMemo(() => readFieldCadences(profile), [profile]);
+  const logged = useMemo(() => loggedDates(entries), [entries]);
+  const streak = calcStreak(entries, cadence);
   const photoFields = useMemo(() => tpl.fields.filter((f) => f.type === "photo"), [tpl]);
 
   /* Which log sheet is open, if any. `null` = closed; an object carries the
@@ -16504,6 +17075,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
         <DailyPulse
           profile={profile} tpl={tpl} keyField={keyField} entries={entries} entry={today}
           date={todayStr()} viewer={viewer}
+          cadence={cadence} fieldCadences={fieldCadences}
           routineItems={routineItems} routine={routine} photoFields={photoFields}
           onPatch={onPatch}
           onOpenLog={() => openLog(todayStr())}
@@ -16615,7 +17187,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
       )}
 
       <GlanceCard tpl={tpl} keyField={keyField} entry={today} food={food}
-        streak={streak} onOpen={goInsights} />
+        streak={streak} cadence={cadence} onOpen={goInsights} />
 
       {/* ---------- the day around the day ----------
           Weather, sun and whatever experiment somebody pinned. All three are
@@ -17158,6 +17730,15 @@ function firstRunProfile(choice) {
   const tileExtras = hasPhotos ? new Set([...extras, "photos"]) : extras;
 
   profile.quickAdd = firstRunQuickAdd(profile, tileExtras);
+  /* How often it should ask. Anchored to today, because "every other day" has
+     to count from somewhere and the day somebody set the journal up is the only
+     defensible somewhere. A daily journal stores nothing at all — the absence
+     is the default, and a profile that never expressed a view should read as
+     one that never expressed a view. */
+  const picked = presetById(choice.cadence || "daily");
+  if (picked && picked.id !== "daily") {
+    profile.cadence = sanitizeCadence({ ...picked.cadence, anchor: todayStr() });
+  }
   if (choice.reminder) {
     profile.reminders = [newReminder({
       label: "Daily check-in", time: choice.reminder, kind: "checkin", enabled: true,
@@ -17352,6 +17933,21 @@ function migrateDb(data) {
      unlike the position watch itself, which is a per-device capability and is
      re-checked against `activeCoords` every time a session starts. */
   d.profile.automations = sanitizeAutomationSettings(d.profile.automations);
+  /* How often this journal asks, and which questions ask less often than that.
+     Both are decisions about the journal rather than about one phone, so they
+     travel in a backup and a sync like the automations above. A daily journal
+     stores neither: absence is the default, and writing `{unit:"day",n:1}` onto
+     every profile in existence would be a migration that says nothing. */
+  if (d.profile.cadence !== undefined) {
+    const c = sanitizeCadence(d.profile.cadence);
+    if (!c.manual && c.unit === "day" && c.n === 1 && !c.pause) delete d.profile.cadence;
+    else d.profile.cadence = c;
+  }
+  if (d.profile.fieldCadence !== undefined) {
+    const fc = sanitizeFieldCadences(d.profile.fieldCadence);
+    if (Object.keys(fc).length) d.profile.fieldCadence = fc;
+    else delete d.profile.fieldCadence;
+  }
   if (d.profile.goals) d.profile.goals = sanitizeGoals(d.profile.goals);
   /* Same reasoning as the food logs: this arrives from a backup file as often
      as from the editor, and an unknown tile id would render as a gap. */
@@ -17420,7 +18016,16 @@ function alreadyDone(db, reminder) {
     const p = routineProgress(db.routineItems || [], db.routine || [], today);
     return p.total > 0 && p.done + p.skipped >= p.total;
   }
-  const entry = entryOn(entriesFor(db), today);
+  /* A check-in reminder now has to ask the journal's own schedule first. On a
+     weekly journal, six evenings out of seven there is nothing to nudge about
+     — the week's check-in is in, or the day simply is not one of the days —
+     and a notification on those evenings is the app ignoring the setting its
+     owner just changed. Same for a pause: the whole point of saying "I'm away
+     for a fortnight" is that the phone stops asking. */
+  const entries = entriesFor(db);
+  const cadence = readCadence(db.profile);
+  if (!dueNow(cadence, loggedDates(entries), today)) return true;
+  const entry = entryOn(entries, today);
   return !!entry?.quickLogCompleted || !!entry?.detailedLogCompleted;
 }
 
@@ -17765,7 +18370,7 @@ export default function App({ viewer = false }) {
           : trend.status === "worsening" ? "Worsening"
           : trend.status === "stable" ? "Steady" : "";
         syncWidgetSnapshot({
-          streak: calcStreak(entries),
+          streak: calcStreak(entries, readCadence(db.profile)),
           todayLogged: !!today?.quickLogCompleted || !!today?.detailedLogCompleted,
           metricLabel: keyField ? keyField.label : "Log today",
           metricValue: typeof keyToday === "number" ? String(keyToday) : "—",
@@ -17937,6 +18542,10 @@ export default function App({ viewer = false }) {
            to be a thing somebody can change their mind into. */
         birthYear: draft.birthYear,
         customQuestions: draft.customQuestions, fieldOrder: draft.fieldOrder, fieldOverrides: draft.fieldOverrides,
+        /* Which questions ask less often than the journal. An empty map is a
+           real answer — somebody clearing the last one back to "every check-in"
+           has to be able to — so it is written through rather than defaulted. */
+        fieldCadence: draft.fieldCadence,
         keyMetric: draft.keyMetric ?? prev.profile.keyMetric,
         cameraTimer: draft.cameraTimer ?? prev.profile.cameraTimer ?? 3,
         updatedAt: new Date().toISOString(),

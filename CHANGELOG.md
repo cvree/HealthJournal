@@ -1,5 +1,137 @@
 # Changelog
 
+## 1.27.0
+
+How often it asks.
+
+Every screen in this app rested on one assumption it never said out loud: that
+the check-in is daily. The ring counted today. The streak counted consecutive
+dates. The queue offered every question in the setup, today. The reminder fired
+at eight, today.
+
+For a lot of people that is right, and it is still the default. For a lot of
+other people it is the reason their journal has eleven days in it.
+
+Somebody tracking a supplement they want six months of evidence about does not
+need to be asked every morning. Asked anyway, they comply for a fortnight, miss
+a day, watch a streak counter reset to zero, and stop — and what the app has
+just done is tell them they failed at something they were never trying to do.
+
+### Nine answers, and the app means all of them
+
+Settings asks the question plainly: **every day**, **weekdays**, **every other
+day**, **three times a week**, **twice a week**, **once a week**, **every two
+weeks**, **once a month**, or **only when I open it**. First run asks a shorter
+version of the same question, before anybody has been asked anything, so a
+person who already knows they want a weekly journal never spends a week finding
+out the app assumed otherwise.
+
+The choice then reaches everything. The ring on Today counts what today asked
+for. The streak counts *weeks*, so a weekly journaler stops seeing "no streak
+yet" forever. The queue of questions is drawn from the same set the ring is
+counting. A reminder does not fire on an evening when nothing is owed. An
+appointment pack from a weekly journal says *22 of 24 weeks kept* rather than
+*31 of 168 days*, because the gaps between are the schedule and a document a
+clinician is going to read has to be able to say so.
+
+### The period is the unit, not the day
+
+This is the decision the whole thing rests on, and the one that is easy to get
+wrong. The naive version of "once a week" picks a weekday and asks on it: your
+check-in is Monday, and missing Monday means missing the week. That is a worse
+deal than daily, not a gentler one — it takes the one chance you had and puts
+it on the day you were busiest.
+
+So **the week owes one check-in**. Monday, Saturday night, it is the same week
+and the same kept promise. Named weekdays still exist for the people who want
+Mon/Wed/Fri, but they say where the *nudges* land; they never make a Tuesday
+check-in count for nothing.
+
+### The best thing a slower journal does is go quiet
+
+Six days out of seven, a weekly journal that has had its week should look like
+a journal with nothing owed — not like a journal being ignored. So the check-in
+card says it: **Once a week · This week is in. Next from the 31st.** The pips
+go away, the breakdown goes away, the ring shows a dash rather than a zero, and
+the door still opens, now called *Open today's check-in* rather than *Start*
+one.
+
+Without that, choosing "once a week" buys nothing but the daily guilt on a
+longer timer.
+
+### And each question can ask less often than the journal does
+
+The pain score is a daily question. The weight is a weekly one. The tape
+measure round the waist is monthly, and asking for it every morning is how a
+thirty-question setup becomes a fifteen-question setup nobody fills in.
+
+Any question can now carry its own schedule — weekly, twice a week,
+fortnightly, monthly — set from the same row in Edit Setup that controls where
+it appears. It then drops out of the check-in for the rest of its period and
+comes back when the next one opens.
+
+The rule between the two schedules is one line: **a question is asked when the
+journal is asking and its own period has not been answered yet.** Not "on
+Mondays" — in *this week*, whichever day the check-in happens on.
+
+A quieter question is emphatically not a disabled one. Before this, the only
+way to stop being asked for a monthly measurement every day was to switch the
+question off, which also took it out of the charts and the export: you deleted
+the answer to stop the question. Now it keeps every answer it has, stays on
+every chart and in every export, carries a line in Detailed Log saying when it
+is next asked, and can be answered early any day you like.
+
+### Time off, said out loud
+
+Every long-running tracker dies in the same fortnight: the one somebody spent
+in hospital, or on a beach, or in a stretch where the journal was the last
+thing that mattered. They come back to a broken streak and a wall of gaps, and
+it feels like starting over.
+
+The journal can be paused — a week, a fortnight, a month, or until you say.
+Nothing is due while it runs, nothing counts as missed, the streak steps over
+it rather than resetting, and you can still log anything you like.
+
+### The days a period still has room for
+
+"Any day of the week" is a generous promise right up until Thursday, when you
+remember you meant to do it on Monday. History now offers the days the current
+period still has room for, as a row of chips under today's card — days that
+have already passed with nothing on them, each one tap from that day's log.
+
+Never today, which has the card above it. Never tomorrow, because filling in a
+day that has not happened is the one thing a journal must not make easy. Never
+more than the nearest seven, because twenty chips is a wall rather than an
+offer. And gone entirely the moment the period has what it asked for, which on
+a weekly journal is most of the time.
+
+### Nothing here scores anybody
+
+A cadence is a plan somebody made, and the new module's only job is to hold the
+app to it — never to hold the person to it. There is no compliance percentage
+shown to anyone, no red, no "3 missed". The one figure that counts periods
+kept exists so a printed pack can explain its own gaps, and it appears nowhere
+else.
+
+Everything already logged is untouched by any of it, in both directions: a
+journal that goes weekly keeps its daily history, and one that goes back to
+daily keeps its weekly history.
+
+### Under it
+
+New module `src/lib/cadence.ts`, fully typed and pure — the period grid,
+`dueNow`, `standing`, `cadenceStreak`, `adherence`, per-question `fieldDue` /
+`dueKeys`, the preset lists, and `sanitizeCadence`, which degrades a malformed
+cadence toward asking *more* often rather than less. `lib/checkin` takes a
+`due` set so the ring's denominator is today's questions rather than the whole
+template. Both cadences travel in a backup and a sync, and a daily journal
+stores nothing at all — absence is the default, so every existing install
+behaves exactly as it did.
+
+Tests: 1727 across 68 suites (was 1655/66), including a new `cadence` suite for
+the arithmetic and a `cadenceUi` suite for the promise that the choice actually
+reaches the screens.
+
 ## 1.26.1
 
 The "Again" row was fixed at the wrong layer.

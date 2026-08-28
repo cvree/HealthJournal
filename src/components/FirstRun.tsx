@@ -179,6 +179,9 @@ export interface FirstRunChoice {
   spots: FirstRunSpot[];
   /** "HH:MM" for a daily nudge, or null for none. */
   reminder: string | null;
+  /** How often the check-in should ask, as a preset id from lib/cadence.
+      "daily" unless somebody says otherwise — see the note by CADENCES. */
+  cadence: string;
 }
 
 type Props = {
@@ -293,6 +296,21 @@ const inLens = (type: string, lens: Lens): boolean =>
 const AGE_MIN = 5;
 const AGE_MAX = 100;
 const AGE_DEFAULT = 32;
+
+/* How often to ask, asked before anybody has been asked anything.
+
+   The four that cover almost everybody, in the order they get slower. It is a
+   short list on purpose: the full nine live in Settings, and a nine-way choice
+   made by somebody who has not yet used the app once is a choice made on no
+   information. The one that matters here is the last one — somebody who
+   already knows they want a weekly journal should never have to spend a week
+   finding out the app assumed otherwise. */
+const CADENCES: [string, string, string][] = [
+  ["daily", "Every day", "the usual"],
+  ["alternate", "Every other day", "half as often"],
+  ["thrice", "3× a week", "any three days"],
+  ["weekly", "Once a week", "any one day"],
+];
 
 const REMINDERS: [string | null, string, string][] = [
   ["08:00", "Morning", "8:00 am"],
@@ -667,6 +685,7 @@ export default function FirstRun({
   /* Act five. */
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [reminder, setReminder] = useState<string | null>("20:00");
+  const [cadence, setCadence] = useState("daily");
 
   const heroRef = useRef<HTMLDivElement>(null);
   const actRef = useRef<HTMLDivElement>(null);
@@ -1042,6 +1061,7 @@ export default function FirstRun({
       progressAngles: wantsProgress ? angles : [],
       spots: wantsSpots ? spots : [],
       reminder,
+      cadence,
     });
   };
 
@@ -1690,6 +1710,33 @@ export default function FirstRun({
             <p className="fhj-fr-hint">
               Rearranged whenever you like, and they learn: the ones you press most move to the
               front on their own.
+            </p>
+          </div>
+
+          {/* How often it should ask, before it has asked anything.
+
+              This sits above the reminder deliberately: the reminder is about
+              *when in the day*, and this is about whether the day is even one
+              of the days. Getting them the other way round is how somebody
+              ends up choosing an evening nudge for a journal they only meant
+              to keep on Sundays. */}
+          <div className="fhj-fr-nudge" data-act-block>
+            <div className="fhj-fr-eyebrow">How often should it ask?</div>
+            <div className="fhj-fr-nudge-row" role="group" aria-label="How often to check in">
+              {CADENCES.map(([id, label, sub]) => (
+                <button key={id} type="button" aria-pressed={cadence === id}
+                  onClick={() => { feedback("select"); setCadence(id); }}
+                  className={"fhj-fr-nudge-btn" + (cadence === id ? " is-on" : "")}>
+                  <b>{label}</b>
+                  <span>{sub}</span>
+                </button>
+              ))}
+            </div>
+            <p className="fhj-fr-hint">
+              A slower journal is not a worse one — a year of one number a week beats a fortnight
+              of forty a day. On anything but every day, the app goes quiet once the week has what
+              it asked for, and nothing counts as missed. Changeable any time, and there are more
+              choices in Settings.
             </p>
           </div>
 

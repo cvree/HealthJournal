@@ -201,3 +201,37 @@ describe("the marks", () => {
     expect(checkinPips(s)).toEqual([]);
   });
 });
+
+describe("what the day asked for, once a question can ask less often", () => {
+  /* The failure this guards against arrives through the front door: a weekly
+     weight already answered on Monday, counted as missing on Tuesday, putting
+     a permanent "10 of 11" on a journal that is completely up to date. */
+  const some = new Set(["itch", "sleep"]);
+
+  it("counts only the questions today is asking for", () => {
+    const s = checkinStatus(src({ due: some }));
+    /* itch, sleep, and the pulse itself — never the two that went quiet. */
+    expect(part(s, "questions").total).toBe(3);
+  });
+
+  it("always asks the pulse, whatever the schedule says", () => {
+    const s = checkinStatus(src({ due: new Set<string>() }));
+    expect(part(s, "questions").total).toBe(1);
+    expect(s.total).toBe(1);
+  });
+
+  it("can be finished by answering only what was asked", () => {
+    const s = checkinStatus(src({
+      due: some,
+      score: 4,
+      answers: { itch: 3, sleep: 7 },
+    }));
+    expect(s.complete).toBe(true);
+    expect(s.left).toBe(0);
+  });
+
+  it("is the whole template when nothing narrows it — every journal, before", () => {
+    expect(checkinStatus(src({ due: null })).total)
+      .toBe(checkinStatus(src()).total);
+  });
+});

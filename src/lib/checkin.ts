@@ -42,7 +42,22 @@
 
    That distinction is the whole reason this is a module rather than four lines
    in a component: it is a promise about what a progress ring in a medical
-   journal is allowed to mean, and it is enforced in one place. */
+   journal is allowed to mean, and it is enforced in one place.
+
+   ---
+
+   **And the day only asks for what the day asks for.**
+
+   Once a question can carry its own frequency (see lib/cadence), "the whole
+   enabled template" stops being the same thing as "what today asked for". A
+   weekly weight already answered on Monday is not a question Tuesday is short
+   of, and counting it would put a permanent `10 of 11` on a journal that is
+   completely up to date — the exact failure this module exists to prevent,
+   arriving through the front door.
+
+   So callers pass `due`: the set of question keys the day is actually asking
+   for. Absent, everything is due, which is what a daily journal has always
+   been and what every existing install still is. */
 
 import { isAskable, type PulseField } from "./pulse";
 
@@ -80,6 +95,12 @@ export interface CheckinSource {
   routine?: { done: number; skipped: number; total: number } | null;
   /** How many meals are on today's diary. Shown, never counted. */
   meals?: number;
+  /** The question keys today is asking for — see `dueKeys` in lib/cadence.
+      Absent means all of them, which is what a daily journal is. A question
+      already answered inside its own period is neither asked nor counted, so
+      the fraction stays a statement about *today* rather than about the
+      template. */
+  due?: ReadonlySet<string> | null;
 }
 
 export interface CheckinStatus {
@@ -113,7 +134,11 @@ const filled = (v: unknown): boolean => {
     itself — it is the first question of the same daily review, and a count
     that ignored it would be the app failing to notice the tap it just took. */
 function questionCounts(src: CheckinSource): { done: number; total: number } {
-  const askable = src.fields.filter(isAskable);
+  /* The pulse is always asked. It is the one question this whole screen is
+     built around, and a cadence that quietly retired it would leave Today with
+     a scale on it that counts for nothing. */
+  const asked = (k: string) => !src.due || k === src.primaryKey || src.due.has(k);
+  const askable = src.fields.filter((f) => isAskable(f) && asked(f.k));
   const hasPrimary = askable.some((f) => f.k === src.primaryKey);
   const answers = src.answers || {};
   let done = askable.filter((f) =>

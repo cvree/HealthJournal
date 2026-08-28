@@ -6453,6 +6453,58 @@ button.fhj-section:disabled {
   color: var(--fhj-sub, #b9bac2);
 }
 
+/* ---------- the cadence strip ----------
+
+   One line over the door, and only on a journal that is not a daily one. It
+   carries the frequency as a chip and where the period stands as a sentence.
+
+   The settled state is the one worth looking at: on a weekly journal, six days
+   out of seven this is the app saying *nothing is owed*, and it has to read as
+   a finished thing rather than as an unfinished one drawn quietly. So it takes
+   the same green the finished check-in takes, and the pips underneath it go
+   away entirely — a row of empty marks under "this week is in" would be the
+   card contradicting itself in the space of two lines. */
+
+.fhj-cadence-strip {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+  margin-top: 0.375rem;
+}
+
+.fhj-cadence-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-cadence-line {
+  min-width: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--fhj-subtle, #adafb8);
+}
+
+.fhj-cadence-strip.is-settled .fhj-cadence-chip {
+  color: var(--fhj-good, #7fbe9e);
+  border-color: color-mix(in srgb, var(--fhj-good, #7fbe9e) 40%, transparent);
+  background: color-mix(in srgb, var(--fhj-good, #7fbe9e) 12%, transparent);
+}
+.fhj-cadence-strip.is-settled .fhj-cadence-line {
+  color: var(--fhj-sub, #b9bac2);
+}
+
 .fhj-checkin-go {
   flex: none;
   display: inline-flex;
