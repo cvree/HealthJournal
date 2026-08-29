@@ -215,7 +215,7 @@ export interface PassphraseVerdict {
 
 const COMMON = [
   "password", "passphrase", "12345678", "qwertyui", "letmein",
-  "health", "bellwether", "bellwether", "iloveyou", "welcome1", "abc12345",
+  "health", "healthjournal", "bellwether", "iloveyou", "welcome1", "abc12345",
 ];
 
 export function ratePassphrase(input: string): PassphraseVerdict {

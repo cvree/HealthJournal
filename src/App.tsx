@@ -8015,12 +8015,16 @@ function markBackedUp(setDb) {
 
 /* Pure: is this JSON one of ours, and what's inside? Accepts both full
    backups and the older data-only exports (which have no photos array).
-   The app has been called "Family Bellwether" and then "Bellwether"
+   The app has been called "Family Health Journal", then "Health Journal",
    before settling on Bellwether. Files written under any of those names have to
    keep opening, so every string this app has ever stamped into a backup is
-   recognised forever. Renaming the app again means appending to this list, not
-   editing it. */
-const BACKUP_APP_IDS = ["Family Bellwether", "Bellwether", "Bellwether"];
+   recognised forever.
+
+   These are historical constants, not brand copy. A rename is an *append* here;
+   find-and-replacing the old names out of this list orphans every backup a user
+   already has on disk, which is silent and unrecoverable. backupCompat.test.ts
+   exists to fail when that happens. */
+const BACKUP_APP_IDS = ["Family Health Journal", "Health Journal", "Bellwether"];
 function validateBackup(obj) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { ok: false, error: "Not a valid backup file." };
   if (!BACKUP_APP_IDS.includes(obj.app)) return { ok: false, error: `This file isn't a ${APP_NAME} backup.` };

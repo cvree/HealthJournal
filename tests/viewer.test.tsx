@@ -37,7 +37,7 @@ beforeEach(() => cleanup());
 const sampleDb = () => I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
 const dataBackup = () => {
   const db = sampleDb();
-  return { app: "Family Bellwether", exportedAt: new Date().toISOString(),
+  return { app: "Family Health Journal", exportedAt: new Date().toISOString(),
     profile: db.profile, entries: db.entries, reports: db.reports || [] };
 };
 
@@ -101,8 +101,9 @@ describe("web viewer", () => {
   it("still opens backups written under the app's former name", async () => {
     installMemStorage();
     render(React.createElement(App, { viewer: true }));
-    // The fixture in this suite carries app: "Family Bellwether" — the
-    // pre-rename magic string. Journals exported years ago have to keep opening.
+    // The fixture in this suite carries app: "Family Health Journal" — the
+    // oldest magic string this app ever wrote. Journals exported years ago have
+    // to keep opening, through every rename since.
     await openFile(JSON.stringify(dataBackup()));
     await waitFor(() => expect(screen.getAllByText(/Read-only/i).length).toBeGreaterThan(0));
   });
