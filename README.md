@@ -1043,7 +1043,7 @@ health-journal/
 ├── supabase/schema.sql         # sync tables, RLS policies, conflict rule
 ├── public/                     # icons, og-image.png, robots.txt
 ├── ios/                        # Capacitor wrapper + WidgetKit starter
-├── docs/                       # APP_STATE, product plan, automation, widget setup
+├── docs/                       # APP_STATE, product plan, automation, widget setup, shipping
 └── tests/                      # 1,616 tests across 65 suites
 ```
 
@@ -1138,6 +1138,14 @@ handful of keyframes, which is what the effect was always worth.
 (`ios/HealthJournalWidget/`) for a real Home Screen widget showing today's streak and key
 metric — data reaches it via an on-device App Group, no network involved. Finishing it needs a
 Mac and Xcode; see **[docs/WIDGET_SETUP.md](docs/WIDGET_SETUP.md)**.
+
+Getting it onto other people's phones is a different question from building it, and it splits
+in two. **[docs/SHIPPING.md](docs/SHIPPING.md)** covers the decisions — which distribution path
+suits family and friends versus a public listing, whether an entity has to come first, and what
+"legally covered" does and does not mean for a health app that gives no advice.
+**[docs/APP_STORE.md](docs/APP_STORE.md)** is the mechanical half: the listing copy, the App
+Privacy questionnaire answered field by field, and the review notes. `npm run check:store`
+runs the submission preflight.
 
 ## Licence
 
