@@ -1,4 +1,4 @@
-/* The Health Journal voice.
+/* The Bellwether voice.
 
    The old feedback layer was six sine beeps at fixed pitches — the sound of a
    microwave, on a screen where someone is recording how much pain they were in

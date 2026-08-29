@@ -37,7 +37,7 @@ beforeEach(() => cleanup());
 const sampleDb = () => I.migrateDb({ ...I.genSampleData(), ack: true, onboarded: true });
 const dataBackup = () => {
   const db = sampleDb();
-  return { app: "Family Health Journal", exportedAt: new Date().toISOString(),
+  return { app: "Family Bellwether", exportedAt: new Date().toISOString(),
     profile: db.profile, entries: db.entries, reports: db.reports || [] };
 };
 
@@ -95,13 +95,13 @@ describe("web viewer", () => {
     await openFile("{ not json at all");
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/couldn't be read/i));
     await openFile(JSON.stringify({ app: "Something Else" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/isn't a health journal backup/i));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/isn't a Bellwether backup/i));
   });
 
   it("still opens backups written under the app's former name", async () => {
     installMemStorage();
     render(React.createElement(App, { viewer: true }));
-    // The fixture in this suite carries app: "Family Health Journal" — the
+    // The fixture in this suite carries app: "Family Bellwether" — the
     // pre-rename magic string. Journals exported years ago have to keep opening.
     await openFile(JSON.stringify(dataBackup()));
     await waitFor(() => expect(screen.getAllByText(/Read-only/i).length).toBeGreaterThan(0));

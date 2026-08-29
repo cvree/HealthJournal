@@ -8,7 +8,7 @@ phone." Answered in the order the questions actually bite:
 3. [What this repo needed](#3-what-this-repo-needed) — the blockers, and which are now fixed
 4. [The submission itself](#4-the-submission)
 5. [What "legally covered" means](#5-the-legal-picture) for an app like this one
-6. [If "Health Journal" is taken](#6-if-health-journal-is-taken) — five alternatives
+6. [If "Bellwether" is taken](#6-if-bellwether-is-taken) — five alternatives
 
 The mechanical half of step 4 — the listing copy, the App Privacy answers, the
 review notes, ready to paste — lives in **[APP_STORE.md](./APP_STORE.md)**.
@@ -46,7 +46,7 @@ everyone.
 **Before you spend $99, though:** the PWA already works. `vite-plugin-pwa` is
 configured, the Pages workflow deploys it, and Safari's Add to Home Screen
 gets your family a real icon on their home screen today, offline, for nothing.
-What it does *not* get them is the lock-screen widget (`ios/HealthJournalWidget`
+What it does *not* get them is the lock-screen widget (`ios/BellwetherWidget`
 is a native target — Safari cannot run it) and it leaves the journal on
 Safari's storage terms rather than an app's. For a journal people are meant to
 keep for years, that second one is the real argument for going native.
@@ -191,11 +191,11 @@ and cannot be forgotten.
 
 ### Still yours to decide: the app name
 
-"Health Journal" is generic enough that App Store Connect will very likely
-refuse to reserve it. **[Five alternatives are in §6](#6-if-health-journal-is-taken)**,
+"Bellwether" is generic enough that App Store Connect will very likely
+refuse to reserve it. **[Five alternatives are in §6](#6-if-bellwether-is-taken)**,
 three of them checked against the store.
 
-The bundle ID (`com.cvree.healthjournal`) is separate and never shown to users —
+The bundle ID (`com.cvree.bellwether`) is separate and never shown to users —
 but it is permanent once submitted, so if the LLC is happening, use its domain
 now.
 
@@ -374,7 +374,7 @@ answer. Write custom terms when you start charging money.
 
 ---
 
-## 6. If "Health Journal" is taken
+## 6. If "Bellwether" is taken
 
 It almost certainly is. But the constraint is narrower than it looks: Apple
 requires the **exact 30-character name string** to be unique, not the words in
@@ -396,7 +396,7 @@ Five that survived, roughly in the order I would try them:
 The line that runs through everything and makes separate episodes one story.
 It is what the app is literally for: not "here are your numbers" but "here is
 what connects them." Sayable, spellable, one word, and it means something the
-moment you hear it. Store name: `Throughline: Health Journal`.
+moment you hear it. Store name: `Throughline: Bellwether`.
 
 **2. Bellwether** — *no App Store listing found in this category.*
 The bell-wearing sheep that leads the flock; in ordinary use, the early sign
@@ -408,13 +408,13 @@ harder to spell than Throughline. Store name: `Bellwether: Symptom Journal`.
 In musical notation, the short line you draw to hold a note that has fallen
 outside the staff — the mark that gives an out-of-range thing somewhere to sit.
 Quiet, unusual, and very unlikely to collide with anything. The metaphor needs a
-beat to land, which is a real cost. Store name: `Ledgerline: Health Journal`.
+beat to land, which is a real cost. Store name: `Ledgerline: Bellwether`.
 
 **4. Sundial** — *common word; expect neighbours, so lean on the subtitle.*
 The only one that reaches for something already in the product: this app tracks
 light and the solar arc, which none of its competitors do. A sundial is also the
 oldest instrument for noticing that today is not quite like yesterday. Warmest
-and most approachable of the five. Store name: `Sundial: Daily Health Journal`.
+and most approachable of the five. Store name: `Sundial: Daily Bellwether`.
 
 **5. Palimpsest** — *no App Store listing found at all.*
 A manuscript scraped clean and written over, where the earlier text still shows

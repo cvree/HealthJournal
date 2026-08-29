@@ -230,11 +230,11 @@ export interface ReminderICSOptions {
  * they are, not 8pm back home.
  */
 export function buildReminderICS(opts: ReminderICSOptions): string {
-  const { time, title = "Health Journal check-in", description, uid, now = new Date() } = opts;
+  const { time, title = "Bellwether check-in", description, uid, now = new Date() } = opts;
   if (!isValidTime(time)) throw new Error(`Invalid reminder time: ${time}`);
   const start = nextOccurrence(time, now)!;
   const end = new Date(start.getTime() + 5 * 60 * 1000);
-  const id = uid || `health-journal-${floatingStamp(start)}@localhost`;
+  const id = uid || `bellwether-${floatingStamp(start)}@localhost`;
   const body =
     description ||
     "Time for today's check-in. Everything you log stays on your device.";
@@ -242,7 +242,7 @@ export function buildReminderICS(opts: ReminderICSOptions): string {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Health Journal//Daily check-in//EN",
+    "PRODID:-//Bellwether//Daily check-in//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     ...icsEvent({ start, end, uid: id, title, body, now }),
@@ -287,8 +287,8 @@ export function buildRemindersICS(reminders: NamedReminder[], now: Date = new Da
       start, end,
       // Index-suffixed so two reminders at the same time can't collide on a
       // UID and silently overwrite each other on import.
-      uid: `health-journal-${r.id}-${i}@localhost`,
-      title: `Health Journal — ${r.label}`,
+      uid: `bellwether-${r.id}-${i}@localhost`,
+      title: `Bellwether — ${r.label}`,
       body: reminderMessage(r) + " Everything you log stays on your device.",
       now,
     }));
@@ -297,7 +297,7 @@ export function buildRemindersICS(reminders: NamedReminder[], now: Date = new Da
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Health Journal//Reminders//EN",
+    "PRODID:-//Bellwether//Reminders//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     ...events,
@@ -327,10 +327,10 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 export function showReminderNotification(body: string, icon?: string): boolean {
   if (notificationPermission() !== "granted") return false;
   try {
-    new (window as any).Notification("Health Journal", {
+    new (window as any).Notification("Bellwether", {
       body,
       icon,
-      tag: "health-journal-daily", // replaces yesterday's rather than stacking
+      tag: "bellwether-daily", // replaces yesterday's rather than stacking
       requireInteraction: false,
     });
     return true;

@@ -1,5 +1,5 @@
 {
-  "name": "health-journal",
+  "name": "bellwether",
   "private": true,
   "version": "1.27.0",
   "type": "module",
@@ -42,5 +42,5 @@
     "vite": "^5.4.0",
     "vitest": "^2.0.5"
   },
-  "description": "A private, local-first daily health journal. No account, no tracking, and nothing sent anywhere unless you switch it on."
+  "description": "Bellwether — a private, local-first symptom journal. No account, no tracking, and nothing sent anywhere unless you switch it on."
 }

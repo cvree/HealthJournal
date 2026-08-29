@@ -1,6 +1,6 @@
-# Health Journal
+# Bellwether
 
-A private daily health journal that lives on your device.
+A private symptom journal that lives on your device. The early sign, written down.
 
 You build a check-in around your own situation — skin, gut, migraine, POTS, fatigue, a diet
 experiment, whatever you're actually tracking — answer it in about a minute a day, and watch
@@ -680,7 +680,7 @@ history, enough to exercise the dashboard, charts, calendar, patterns, reports, 
 Everything is client-side, so "deploying" means serving a folder of static files.
 
 **GitHub Pages** is wired up. The `pages.yml` workflow builds and publishes on every push to
-`main`, and reads the real Pages base path, so a project site at `user.github.io/HealthJournal/`
+`main`, and reads the real Pages base path, so a project site at `user.github.io/bellwether/`
 works without editing anything.
 
 It needs **one manual switch, once**: go to **Settings → Pages** and set **Source** to
@@ -969,7 +969,7 @@ backup to a partner or clinician along with the viewer link.
 ## Project layout
 
 ```
-health-journal/
+bellwether/
 ├── index.html / viewer.html    # two entry points
 ├── vite.config.ts              # base-path-aware build, PWA, chunking
 ├── src/
@@ -1135,7 +1135,7 @@ handful of keyframes, which is what the effect was always worth.
 ## Native iOS app + Home Screen widget
 
 `ios/` holds a Capacitor-wrapped native project plus starter WidgetKit source
-(`ios/HealthJournalWidget/`) for a real Home Screen widget showing today's streak and key
+(`ios/BellwetherWidget/`) for a real Home Screen widget showing today's streak and key
 metric — data reaches it via an on-device App Group, no network involved. Finishing it needs a
 Mac and Xcode; see **[docs/WIDGET_SETUP.md](docs/WIDGET_SETUP.md)**.
 

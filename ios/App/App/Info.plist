@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Health Journal</string>
+        <string>Bellwether</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,12 +25,12 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>healthjournal</string>
+				<string>bellwether</string>
 			</array>
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Health Journal uses the camera only when you tap a photo shot yourself, to add a picture to your own journal entry. Photos stay on this device unless you turn on sync.</string>
+	<string>Bellwether uses the camera only when you tap a photo shot yourself, to add a picture to your own journal entry. Photos stay on this device unless you turn on sync.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

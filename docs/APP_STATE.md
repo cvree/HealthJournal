@@ -1,9 +1,9 @@
-# APP_STATE.md — Health Journal
+# APP_STATE.md — Bellwether
 
-> Renamed from "Family Health Journal" at 1.0; older sections below still use the old name.
+> Renamed from "Family Bellwether" at 1.0; older sections below still use the old name.
 
 > **2026-07-17 addendum — repo migration (supersedes stale sections below).**
-> The app now lives in a GitHub-ready Vite project (`health-journal/`), not a lone artifact file. `src/App.tsx` is the same single-file app (P2.5–P7 all shipped: reports, swipe prefs, photo compare, report history, durability, Fitbit import, onboarding) plus: Lenis smooth scroll, GSAP screen transitions/finish moment, opt-in Vanta backdrop, self-hosted Fraunces (zero external requests), IndexedDB `window.storage` polyfill (`src/lib/storage.ts` — real artifact storage still wins when present), PWA manifest + service worker (installable, offline). Tests: `tests/pure.test.ts` (8 pure-function tests via `__internals`) + `tests/render.test.tsx` (jsdom full-app smoke). `npm run check` = typecheck + test + build, all green. Source of truth: the repo. Remaining: incremental typing of App.tsx, on-device accessibility pass.
+> The app now lives in a GitHub-ready Vite project (`bellwether/`), not a lone artifact file. `src/App.tsx` is the same single-file app (P2.5–P7 all shipped: reports, swipe prefs, photo compare, report history, durability, Fitbit import, onboarding) plus: Lenis smooth scroll, GSAP screen transitions/finish moment, opt-in Vanta backdrop, self-hosted Fraunces (zero external requests), IndexedDB `window.storage` polyfill (`src/lib/storage.ts` — real artifact storage still wins when present), PWA manifest + service worker (installable, offline). Tests: `tests/pure.test.ts` (8 pure-function tests via `__internals`) + `tests/render.test.tsx` (jsdom full-app smoke). `npm run check` = typecheck + test + build, all green. Source of truth: the repo. Remaining: incremental typing of App.tsx, on-device accessibility pass.
 >
 > **2026-07-17 addendum 2 — typing & architecture hardening.** New typed core: `src/types/models.ts` (AppDatabase, TrackingSetup, SurveyQuestion, CustomQuestion, DailyEntry, AnswerValue, PhotoMetadata/PhotoEntryMeta, ReportModel, ReportCard, ReportRange, ExportRange/ExportTable, UserSettings, OnboardingState); `src/lib/questions.ts` (sanitizeCustomField — wired into computeProfileTemplate so malformed custom questions degrade safely on every surface; isVisibleOn); `src/lib/answers.ts` (isValidAnswer / coerceAnswer / readAnswer / writeAnswer); `src/lib/validate.ts` (validateDatabase, validateReportModel, causalLanguageAudit). Corrupted local data now shows `src/components/RecoveryScreen.tsx` (download raw file, explicit start-fresh) instead of silently resetting. `__internals` widened with export helpers. Tests: 35 across contract/exports/pure/render suites, all against Connor demo data. App.tsx keeps @ts-nocheck; the typed contract is enforced at runtime + in tests until modules migrate out.
 >
@@ -34,7 +34,7 @@
 > - **Deploy.** `.github/workflows/ci.yml` (npm run check) + `pages.yml` (GitHub Pages, uses `actions/configure-pages` base path). `vite.config.ts` reads `BASE_PATH` (normalised) → `base`, PWA `start_url`/`scope`/`navigateFallback`, plus a `transformIndexHtml` plugin filling `%BASE%`/`%SITE%` in og tags (Vite doesn't rebase `<meta content>`). `SITE_URL` opts into absolute preview URLs.
 > - **New typed modules + tests.** `src/lib/reminders.ts` (time validation, `nextOccurrence`, RFC 5545 `.ics` with `RRULE:FREQ=DAILY`, floating local time, folding/escaping, Notification wrappers), `src/lib/durability.ts` (`storageStatus`/`requestPersistentStorage`, `backupNudge`, `describeBackupAge`), `src/lib/deeplink.ts` (`?screen=` allowlist for PWA shortcuts). 22 new tests; 92 total across 9 suites.
 > - **App wiring.** Settings gains `ReminderCard` + `PrivacyCard`; `DataDurabilityCard` gains persistence status and backup age; `markBackedUp()` stamps `profile.lastBackupAt` on full backup and JSON export; dashboard shows a backup nudge (`TrendsScreen` now takes `goSettings`/`viewer`); App effects for reminder scheduling, `requestPersistentStorage`, and deep links.
-> - **Rename.** User-facing "Family Health Journal" → **Health Journal** (`APP_NAME`/`APP_VERSION` exported from App.tsx). `BACKUP_APP_IDS` accepts both strings forever; new backups write the new one. Removed the stale zip and `GITHUB_QUICKSTART.md`; README + CHANGELOG rewritten.
+> - **Rename.** User-facing "Family Bellwether" → **Bellwether** (`APP_NAME`/`APP_VERSION` exported from App.tsx). `BACKUP_APP_IDS` accepts both strings forever; new backups write the new one. Removed the stale zip and `GITHUB_QUICKSTART.md`; README + CHANGELOG rewritten.
 > - **A11y.** Skip link, `<main id="main">` landmark, `aria-current="page"` on the active tab, header title is an `<h1>`, wider `:focus-visible`, `prefers-contrast: more`.
 > - **Still open:** no licence declared (owner's call — package.json intentionally has no `license` field); `App.tsx` still `@ts-nocheck`; on-device a11y pass with a real screen reader not done.
 
@@ -1219,7 +1219,7 @@ _Last updated: 2026-07-07. This file is the single source of truth for resuming 
 
 ## 1. App Purpose & Target User
 
-**Family Health Journal** is a private, mobile-first, single-user health self-tracking web app (a Claude.ai React artifact). Despite the name, it is **not** a family/multi-profile app — one person builds one personal tracking setup by choosing question packs (and adding their own questions) that match their situation.
+**Family Bellwether** is a private, mobile-first, single-user health self-tracking web app (a Claude.ai React artifact). Despite the name, it is **not** a family/multi-profile app — one person builds one personal tracking setup by choosing question packs (and adding their own questions) that match their situation.
 
 Target user: someone managing a specific health concern (skin condition, diet experiment, chronic symptom pattern, etc.) who wants a **daily 1–2 minute check-in**, not a medical form. Example real-world configurations (not built-in profiles, just illustrations of what one person might pick):
 - **Connor**: Eczema/Skin + a few Carnivore/Diet questions
@@ -1277,7 +1277,7 @@ Every field carries: `k` (key), `label`, `type`, `dir` (sym/pos — which direct
 
 ## 6. Tech Stack
 
-- Single-file React artifact for Claude.ai (`family-health-journal.jsx`)
+- Single-file React artifact for Claude.ai (`family-bellwether.jsx`)
 - React hooks only (`useState`, `useEffect`, `useRef`, `useMemo`) — no Redux/routing library; `screen` state string drives navigation
 - **recharts** for line/bar charts
 - **SheetJS (xlsx)** for Excel export (`import * as XLSX from "xlsx"`)
@@ -1290,7 +1290,7 @@ Every field carries: `k` (key), `label`, `type`, `dir` (sym/pos — which direct
 
 Everything lives in **one file**:
 ```
-/mnt/user-data/outputs/family-health-journal.jsx   ← the entire app (~1,940 lines)
+/mnt/user-data/outputs/family-bellwether.jsx   ← the entire app (~1,940 lines)
 ```
 
 Rough internal organization (top to bottom):
@@ -1356,7 +1356,7 @@ Rough internal organization (top to bottom):
 
 1. Start a new Claude.ai chat (or continue in this Project if using Claude Projects).
 2. Save this file as `APP_STATE.md` in **Project knowledge** (or paste it as the first message if not using Projects).
-3. Also re-upload the current working file: **`family-health-journal.jsx`** — this document describes it but is not a substitute for the actual code.
+3. Also re-upload the current working file: **`family-bellwether.jsx`** — this document describes it but is not a substitute for the actual code.
 4. In your first message to the new chat, say something like:
-   > "This is the Family Health Journal project. See APP_STATE.md for full context. Here's the current file. [describe the next task]"
+   > "This is the Family Bellwether project. See APP_STATE.md for full context. Here's the current file. [describe the next task]"
 5. Point Claude to section 9 (bugs) and section 10 (recommended tasks) if you want it to pick up where this session left off without re-explaining.

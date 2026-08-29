@@ -166,14 +166,19 @@ word* need not be unique: three different apps ship as "Marginalia: …". A
 distinctive word plus a differentiating subtitle is the reliable pattern.
 
 ```
-Throughline: Health Journal
+Bellwether: Symptom Journal
 ```
 
 **Subtitle** (30 max)
 
 ```
-Private daily health tracking
+The early sign, written down
 ```
+
+A deliberate trade: the subtitle is indexed for search, so the keyword-stuffed
+version ("Private symptom & flare diary") would rank marginally better. The
+brand line is worth more than the margin, and the keywords field below does that
+job without costing the line that makes someone remember the app.
 
 **Promotional text** (170 max — editable without a new build)
 
@@ -186,9 +191,9 @@ unless you say so.
 **Description** (4000 max)
 
 ```
-A daily health journal that stays on your phone.
+A symptom journal that stays on your phone.
 
-Health Journal is for anyone tracking something over months rather than days —
+Bellwether is for anyone tracking something over months rather than days —
 a condition being worked out, a treatment being adjusted, a pattern nobody has
 named yet. It is built on one idea: you will not remember what week three
 looked like, so write it down while it is happening.
@@ -223,7 +228,7 @@ OPTIONAL, AND OFF UNTIL YOU SAY SO
   daily numbers for the window you chose — never your notes or photos — and
   shows you exactly what it is about to send.
 
-Health Journal is a personal tracking tool. It is not medical advice, and it
+Bellwether is a personal tracking tool. It is not medical advice, and it
 does not diagnose, treat, cure, or prevent any condition. For medical concerns,
 consult a qualified healthcare professional.
 ```
@@ -232,7 +237,7 @@ consult a qualified healthcare professional.
 do not repeat words already in your name or subtitle)
 
 ```
-symptom,diary,log,chronic,illness,flare,tracker,wellness,pattern,offline,notes,private
+diary,log,chronic,illness,flare,tracker,wellness,pattern,offline,notes,private,health,trigger
 ```
 
 **Category:** Primary *Health & Fitness*, secondary *Medical* — or leave the
@@ -281,6 +286,6 @@ corners, no device frames.
 ## After the first submission
 
 Two things become permanent once a build is accepted: the **bundle ID**
-(`com.cvree.healthjournal`) and the **SKU**. The display name can change later;
+(`com.cvree.bellwether`) and the **SKU**. The display name can change later;
 those cannot. If an LLC is likely, settle it before the first upload rather
 than after.

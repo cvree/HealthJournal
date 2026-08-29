@@ -74,7 +74,7 @@ describe("smart defaults", () => {
 describe("backup validation", () => {
   it("accepts its own backup shape and rejects garbage", () => {
     const db = sample();
-    const backup = { app: "Family Health Journal", exportedAt: new Date().toISOString(),
+    const backup = { app: "Family Bellwether", exportedAt: new Date().toISOString(),
       profile: db.profile, entries: db.entries, reports: db.reports || [] };
     const res = I.validateBackup(JSON.parse(JSON.stringify(backup)));
     expect(res.ok).toBe(true);

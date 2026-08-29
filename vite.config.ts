@@ -3,9 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-// The site has to work from a domain root (health-journal.app) *and* from a
-// project sub-path (user.github.io/HealthJournal/). Everything below derives
-// from one env var so a Pages deploy is `BASE_PATH=/HealthJournal/ npm run build`
+// The site has to work from a domain root (bellwether.app) *and* from a
+// project sub-path (user.github.io/bellwether/). Everything below derives
+// from one env var so a Pages deploy is `BASE_PATH=/bellwether/ npm run build`
 // and nothing else has to change. Always normalised to a leading+trailing slash.
 const base = (() => {
   const raw = process.env.BASE_PATH || "/";
@@ -13,7 +13,7 @@ const base = (() => {
   return withLead.endsWith("/") ? withLead : `${withLead}/`;
 })();
 
-// Optional absolute origin (e.g. https://health-journal.example). Only social
+// Optional absolute origin (e.g. https://bellwether.example). Only social
 // scrapers need it — everything the app itself loads is relative. When unset,
 // previews fall back to a root-relative image, which most scrapers resolve.
 const siteUrl = (process.env.SITE_URL || "").replace(/\/+$/, "");
@@ -22,7 +22,7 @@ const siteUrl = (process.env.SITE_URL || "").replace(/\/+$/, "");
 // the Open Graph tags carry a %BASE%/%SITE% placeholder that gets filled here.
 // Without this, link previews 404 on any sub-path deploy.
 const htmlPlaceholders = {
-  name: "health-journal:html-placeholders",
+  name: "bellwether:html-placeholders",
   transformIndexHtml(html: string) {
     return html.replace(/%SITE%/g, siteUrl).replace(/%BASE%/g, base);
   },
@@ -44,7 +44,7 @@ export default defineConfig({
         navigateFallback: `${base}index.html`,
         // Standalone pages that must serve themselves rather than boot the
         // journal. Anchored on the filename, not on `/`, because a Pages deploy
-        // lives under a sub-path (/HealthJournal/privacy.html) and a `^\/`
+        // lives under a sub-path (/bellwether/privacy.html) and a `^\/`
         // pattern silently stops matching there — which is how the viewer link
         // was already being swallowed by the app shell on Pages.
         //
@@ -54,11 +54,11 @@ export default defineConfig({
         navigateFallbackDenylist: [/viewer\.html/, /privacy\.html/, /support\.html/],
       },
       manifest: {
-        name: "Health Journal — private daily tracking",
-        short_name: "Health Journal",
-        description: "Private daily health tracking — stored on your device. Not medical advice.",
-        theme_color: "#F2F4F1",
-        background_color: "#F2F4F1",
+        name: "Bellwether — a private symptom journal",
+        short_name: "Bellwether",
+        description: "A private symptom journal, stored on your device. The early sign, written down. Not medical advice.",
+        theme_color: "#141519",
+        background_color: "#141519",
         display: "standalone",
         orientation: "portrait",
         categories: ["health", "lifestyle", "medical"],

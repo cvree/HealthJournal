@@ -110,7 +110,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     keyHint: "Starts with “sk-or-”.",
     steps: [
       ["Sign in", "with Google, GitHub, or an email address."],
-      ["Press “Create key”", "and give it any name you like — “Health Journal” works."],
+      ["Press “Create key”", "and give it any name you like — “Bellwether” works."],
       ["Copy the key", "shown once when it's created. You can't view it again afterwards."],
       ["Come back here", "and paste it on the next step."],
     ],
@@ -239,8 +239,8 @@ const authHeaders = (conn: Connection): Record<string, string> => {
   if (conn.provider === "openrouter") {
     // OpenRouter attributes browser traffic with these; they are optional but
     // keep the request from looking anonymous.
-    headers["HTTP-Referer"] = typeof location !== "undefined" ? location.origin : "https://health-journal.app";
-    headers["X-Title"] = "Health Journal";
+    headers["HTTP-Referer"] = typeof location !== "undefined" ? location.origin : "https://bellwether.app";
+    headers["X-Title"] = "Bellwether";
   }
   return headers;
 };

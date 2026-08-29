@@ -43,8 +43,8 @@ export async function clearWidgetSnapshot(): Promise<void> {
 }
 
 /**
- * Fires `onLog` when the app is opened via the widget's `healthjournal://log`
- * deep link (see .widgetURL in ios/HealthJournalWidget/HealthJournalWidget.swift
+ * Fires `onLog` when the app is opened via the widget's `bellwether://log`
+ * deep link (see .widgetURL in ios/BellwetherWidget/BellwetherWidget.swift
  * and the CFBundleURLTypes entry in ios/App/App/Info.plist). No-ops on web.
  * Returns a cleanup function.
  */

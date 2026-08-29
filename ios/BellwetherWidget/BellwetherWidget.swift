@@ -2,7 +2,7 @@ import WidgetKit
 import SwiftUI
 
 // Must match WidgetBridgePlugin.swift (App target) exactly.
-private let appGroupId = "group.com.cvree.healthjournal"
+private let appGroupId = "group.com.cvree.bellwether"
 private let snapshotKey = "hj_widget_snapshot"
 
 struct JournalSnapshot: Decodable {
@@ -52,14 +52,14 @@ struct JournalTimelineProvider: TimelineProvider {
     }
 }
 
-struct HealthJournalWidgetView: View {
+struct BellwetherWidgetView: View {
     @Environment(\.widgetFamily) var family
     let entry: JournalEntry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Health Journal")
+                Text("Bellwether")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
@@ -94,28 +94,28 @@ struct HealthJournalWidgetView: View {
                 .foregroundStyle(entry.snapshot.todayLogged ? .green : .accentColor)
         }
         .padding()
-        // Deep link back into the app; healthjournal:// must match capacitor.config.ts /
+        // Deep link back into the app; bellwether:// must match capacitor.config.ts /
         // the URL scheme registered in Info.plist. Route it to the Log screen in App.tsx.
-        .widgetURL(URL(string: "healthjournal://log"))
+        .widgetURL(URL(string: "bellwether://log"))
         .containerBackground(for: .widget) { Color(.systemBackground) }
     }
 }
 
-struct HealthJournalWidget: Widget {
-    let kind = "HealthJournalWidget"
+struct BellwetherWidget: Widget {
+    let kind = "BellwetherWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: JournalTimelineProvider()) { entry in
-            HealthJournalWidgetView(entry: entry)
+            BellwetherWidgetView(entry: entry)
         }
-        .configurationDisplayName("Health Journal")
+        .configurationDisplayName("Bellwether")
         .description("Your streak and today's key metric, at a glance.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
 
 #Preview(as: .systemSmall) {
-    HealthJournalWidget()
+    BellwetherWidget()
 } timeline: {
     JournalEntry(date: .now, snapshot: JournalSnapshot(
         streak: 12, todayLogged: false,

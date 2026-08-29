@@ -1,5 +1,5 @@
 /* Motion layer: Lenis (smooth scrolling) + GSAP (screen transitions and
-   reward moments). Health-journal register: calm, brief, never bouncy-chaotic.
+   reward moments). Bellwether register: calm, brief, never bouncy-chaotic.
 
    Every entry point is a no-op when the user prefers reduced motion, so the
    app's own CSS reduced-motion kill-switch and this file agree. */

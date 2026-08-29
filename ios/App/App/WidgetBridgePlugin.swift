@@ -8,12 +8,12 @@ import Capacitor
  * web side chooses to send - never the full journal.
  *
  * JS side: src/lib/widgetBridge.ts
- * Reader side: ios/HealthJournalWidget/HealthJournalWidget.swift
+ * Reader side: ios/BellwetherWidget/BellwetherWidget.swift
  *
  * Xcode setup (see WIDGET_SETUP.md):
  *  1. Add this file to the "App" target.
  *  2. Add the "App Groups" capability to the App target and create/select
- *     group.com.cvree.healthjournal (must match APP_GROUP_ID below and the
+ *     group.com.cvree.bellwether (must match APP_GROUP_ID below and the
  *     widget extension's own App Groups capability).
  */
 @objc(WidgetBridgePlugin)
@@ -26,7 +26,7 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     // Must match the App Group ID configured in both targets' entitlements.
-    static let appGroupId = "group.com.cvree.healthjournal"
+    static let appGroupId = "group.com.cvree.bellwether"
     static let snapshotKey = "hj_widget_snapshot"
 
     @objc func saveSnapshot(_ call: CAPPluginCall) {

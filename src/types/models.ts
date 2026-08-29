@@ -1,4 +1,4 @@
-/* Shared data model for Health Journal.
+/* Shared data model for Bellwether.
    These types describe the shapes that already exist at runtime in App.tsx —
    they are the contract, verified against live data by src/lib/validate.ts and
    the test suite. New code must import from here; App.tsx adopts them

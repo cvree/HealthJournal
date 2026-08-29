@@ -56,7 +56,7 @@ export const IV_BYTES = 12;
 
 /** The probe. Its contents are irrelevant and public; only the fact that it
     decrypts under the right key matters. */
-const VERIFIER_PLAINTEXT = "health-journal.sync.v1";
+const VERIFIER_PLAINTEXT = "bellwether.sync.v1";
 const VERIFIER_AAD = "verifier";
 
 function subtle(): SubtleCrypto {
@@ -215,7 +215,7 @@ export interface PassphraseVerdict {
 
 const COMMON = [
   "password", "passphrase", "12345678", "qwertyui", "letmein",
-  "health", "healthjournal", "iloveyou", "welcome1", "abc12345",
+  "health", "bellwether", "bellwether", "iloveyou", "welcome1", "abc12345",
 ];
 
 export function ratePassphrase(input: string): PassphraseVerdict {

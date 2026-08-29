@@ -60,11 +60,11 @@ describe("calendar export", () => {
   const now = new Date(2026, 0, 15, 9, 0, 0);
 
   it("produces a daily recurring floating-time event with an alarm", () => {
-    const ics = buildReminderICS({ time: "20:00", now, uid: "test@health-journal" });
+    const ics = buildReminderICS({ time: "20:00", now, uid: "test@bellwether" });
     expect(ics).toContain("BEGIN:VCALENDAR");
     expect(ics).toContain("END:VCALENDAR");
     expect(ics).toContain("RRULE:FREQ=DAILY");
-    expect(ics).toContain("UID:test@health-journal");
+    expect(ics).toContain("UID:test@bellwether");
     // Floating local time — no trailing Z — so 8pm stays 8pm across timezones.
     expect(ics).toContain("DTSTART:20260115T200000");
     expect(ics).not.toMatch(/DTSTART:[0-9T]+Z/);

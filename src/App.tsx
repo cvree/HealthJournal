@@ -194,7 +194,7 @@ import LabsScreen from "./components/LabsScreen";
 import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./components/DayContext";
 
 /* ============================================================
-   Health Journal
+   Bellwether
    Private, mobile-first, local-first health tracking. The journal lives on the
    device; the four things that can reach the network (sync, AI, daily weather,
    note import) are each off until switched on and each say what they send.
@@ -204,7 +204,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
 /* The name users see. Backup files still carry the original app string as
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
-export const APP_NAME = "Health Journal";
+export const APP_NAME = "Bellwether";
 export const APP_VERSION = "1.27.0";
 
 const DISCLAIMER =
@@ -6788,7 +6788,7 @@ function ExportScreen({ db, setDb, goPack }) {
     const { header, rows } = wideTable(profile, inRange, foodInRange, routineInRange);
     const csv = toCSV([header, ...rows]);
     download(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }),
-      `health-journal_${stamp}.csv`);
+      `bellwether_${stamp}.csv`);
   };
 
   const exportXLSX = () => {
@@ -6914,7 +6914,7 @@ function ExportScreen({ db, setDb, goPack }) {
 
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     download(new Blob([out], { type: "application/octet-stream" }),
-      `health-journal_${stamp}.xlsx`);
+      `bellwether_${stamp}.xlsx`);
   };
 
   const exportJSON = () => {
@@ -6930,7 +6930,7 @@ function ExportScreen({ db, setDb, goPack }) {
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
     };
     download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
-      `health-journal_backup_${stamp}.json`);
+      `bellwether_backup_${stamp}.json`);
     if (setDb) markBackedUp(setDb);
   };
 
@@ -8015,9 +8015,12 @@ function markBackedUp(setDb) {
 
 /* Pure: is this JSON one of ours, and what's inside? Accepts both full
    backups and the older data-only exports (which have no photos array).
-   The app used to be called "Family Health Journal"; files written under that
-   name have to keep opening, so both strings are recognised forever. */
-const BACKUP_APP_IDS = ["Family Health Journal", "Health Journal"];
+   The app has been called "Family Bellwether" and then "Bellwether"
+   before settling on Bellwether. Files written under any of those names have to
+   keep opening, so every string this app has ever stamped into a backup is
+   recognised forever. Renaming the app again means appending to this list, not
+   editing it. */
+const BACKUP_APP_IDS = ["Family Bellwether", "Bellwether", "Bellwether"];
 function validateBackup(obj) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { ok: false, error: "Not a valid backup file." };
   if (!BACKUP_APP_IDS.includes(obj.app)) return { ok: false, error: `This file isn't a ${APP_NAME} backup.` };
@@ -8385,7 +8388,7 @@ function ReminderCard({ profile, onSave }) {
   const addToCalendar = () => {
     try {
       const ics = buildRemindersICS(live);
-      download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "health-journal-reminders.ics");
+      download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "bellwether-reminders.ics");
       reportResult(setMsg, {
         ok: true,
         text: `Calendar file saved with ${live.length} reminder${live.length === 1 ? "" : "s"} — open it to add them to your phone.`,
@@ -8581,7 +8584,7 @@ function DataDurabilityCard({ db, setDb }) {
     try {
       const payload = await buildFullBackup(db);
       download(new Blob([JSON.stringify(payload)], { type: "application/json" }),
-        `health-journal_full-backup_${todayStr()}.json`);
+        `bellwether_full-backup_${todayStr()}.json`);
       markBackedUp(setDb);
       reportResult(setMsg, { ok: true, text: `Full backup saved — ${payload.entries.length} entries, ${payload.photos.length} photos.` });
     } catch (e) {
@@ -9211,7 +9214,7 @@ function SyncSetupFlow({ engine, onClose, onFinished }) {
           <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
             {summary && summary.after > summary.before
               ? `Your journals were merged — ${summary.before} ${summary.before === 1 ? "day was" : "days were"} already here and ${summary.after - summary.before} more came from your other device. Nothing was overwritten.`
-              : "Everything on this device is now on your other devices too. Open Health Journal anywhere and it'll be waiting."}
+              : "Everything on this device is now on your other devices too. Open Bellwether anywhere and it'll be waiting."}
           </p>
         </div>
       </>
@@ -9273,7 +9276,7 @@ function SyncServerPanel({ onSaved }) {
       summary={cfg ? `Configured (${cfg.source === "build" ? "built in" : "set on this device"})` : "Not configured"}
       className="mt-3">
       <p className="text-[11.5px] leading-relaxed mb-2.5" style={{ color: C.subtle }}>
-        Health Journal syncs through a Supabase project you control. Create one, run{" "}
+        Bellwether syncs through a Supabase project you control. Create one, run{" "}
         <code>supabase/schema.sql</code> from the repository in its SQL editor, then paste the
         project URL and its <em>public anon</em> key below. The anon key is designed to be public —
         every table is restricted to the signed-in owner. Never paste a service-role key anywhere.
@@ -9351,7 +9354,7 @@ function SyncCard({ engine, status, available, onRefreshConfig }) {
       {!available && !on && (
         <>
           <p className="text-[11.5px] leading-relaxed mt-3" style={{ color: C.subtle }}>
-            This copy of Health Journal doesn't have a sync server set up, so the journal is local
+            This copy of Bellwether doesn't have a sync server set up, so the journal is local
             only — which is the default and works completely. Everything else on this screen is
             unaffected.
           </p>
@@ -14700,7 +14703,7 @@ function RoutineScreen({ items = [], viewer, onSaveItem, onDeleteItem, goDiary }
       )}
 
       <p className="text-[11px] leading-relaxed mt-5" style={{ color: C.subtle }}>
-        This is a written record, not advice. Health Journal doesn't know what anything interacts
+        This is a written record, not advice. Bellwether doesn't know what anything interacts
         with, doesn't check doses, and won't tell you whether something is working — it keeps what
         you enter, on this device, and hands it back whole when you export it.
       </p>
@@ -18793,7 +18796,7 @@ export default function App({ viewer = false }) {
   }
   if (!viewer && lock && !unlocked) {
     return (
-      <LockScreen key="unlock-gate" mode="verify" title="Enter your PIN" subtitle="Health Journal is locked on this device."
+      <LockScreen key="unlock-gate" mode="verify" title="Enter your PIN" subtitle="Bellwether is locked on this device."
         tint={db?.profile ? getProfileTemplate(db.profile).color : undefined}
         onSubmit={handleUnlock} onForgot={handleForgotPin} />
     );
@@ -18873,7 +18876,7 @@ export default function App({ viewer = false }) {
   // Settings-driven PIN setup/change/disable flows — full-screen, same as unlock.
   if (!viewer && lockFlow === "setup") {
     return (
-      <LockScreen key="setup" mode="create" title="Choose a PIN" subtitle="You'll need this PIN to open Health Journal on this device."
+      <LockScreen key="setup" mode="create" title="Choose a PIN" subtitle="You'll need this PIN to open Bellwether on this device."
         tint={tpl.color} onSubmit={handleCreatePin} onCancel={() => setLockFlow(null)} />
     );
   }

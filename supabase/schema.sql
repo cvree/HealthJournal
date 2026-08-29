@@ -1,4 +1,4 @@
--- Health Journal — cross-device sync schema.
+-- Bellwether — cross-device sync schema.
 --
 -- Run this once against a fresh Supabase project (SQL Editor → New query →
 -- paste → Run). It is idempotent: running it again on an existing project

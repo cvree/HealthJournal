@@ -124,7 +124,7 @@ describe("passphrase quality", () => {
   });
 
   it("turns away the obvious ones however long they are", () => {
-    expect(ratePassphrase("mypasswordforhealthjournal").ok).toBe(false);
+    expect(ratePassphrase("mypasswordforbellwether").ok).toBe(false);
   });
 
   it("accepts a few unrelated words and rates them well", () => {

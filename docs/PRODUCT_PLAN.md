@@ -1,4 +1,4 @@
-# Health Journal - P3-P8 Product Plan
+# Bellwether - P3-P8 Product Plan
 
 ## 0. Sequencing
 
