@@ -29,6 +29,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Health Journal uses the camera only when you tap a photo shot yourself, to add a picture to your own journal entry. Photos stay on this device unless you turn on sync.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

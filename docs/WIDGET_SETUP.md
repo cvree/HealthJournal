@@ -66,4 +66,13 @@ Edit three places together, since the snapshot shape is duplicated across the JS
 
 ## Publishing to the App Store (optional)
 
-Only needed if you want it installable without a Mac/Xcode nearby, or want to share it. Requires the paid Developer Program. Rough shape: App Store Connect → create app record (bundle ID from step 4) → Xcode *Product → Archive* → Distribute App → App Store Connect → fill in the listing (screenshots, description) and the App Privacy questionnaire (straightforward here — no data collection, no tracking, no network calls) → submit for review.
+Only needed if you want it installable without a Mac/Xcode nearby, or want to share it. Requires the paid Developer Program. Rough shape: App Store Connect → create app record (bundle ID from step 4) → Xcode *Product → Archive* → Distribute App → App Store Connect → fill in the listing (screenshots, description) and the App Privacy questionnaire → submit for review.
+
+The privacy questionnaire is not a formality and it is no longer a row of
+zeroes: sync sends an email address and encrypted blobs to Supabase, and the
+optional AI analysis sends daily numeric answers to whichever provider the user
+brought a key for. Both are off until switched on, which is a good answer to
+give — but it has to be *given*. **[docs/SHIPPING.md](./SHIPPING.md)** walks the
+whole submission, including how to answer that form, which distribution path
+suits sharing with family and friends, and what the entity and liability
+questions actually turn on.
