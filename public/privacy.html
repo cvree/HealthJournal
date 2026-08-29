@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy — Health Journal</title>
+<meta name="theme-color" content="#141519" />
+<meta name="robots" content="index, follow" />
+<style>
+  :root {
+    --bg: #F4F1EB; --card: #FFFFFF; --ink: #23252B; --sub: #5A5E68;
+    --line: #DFDAD0; --accent: #3D6098; --flag-bg: #FBF0D8; --flag-line: #D9BE7A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141519; --card: #1A1C21; --ink: #ECEBE7; --sub: #ADAFB8;
+      --line: #31343D; --accent: #8FB0E3; --flag-bg: #2A2416; --flag-line: #6B5A2E;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 ui-serif, Georgia, "Times New Roman", serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .25rem; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 1.1rem; margin: 2.75rem 0 .75rem; letter-spacing: .04em;
+    text-transform: uppercase; font-family: ui-sans-serif, system-ui, sans-serif;
+    color: var(--sub); font-weight: 600;
+  }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 .5rem; }
+  p, li { color: var(--ink); }
+  .lede { color: var(--sub); font-size: 1.05rem; margin: 0 0 2rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin: .4rem 0; }
+  a { color: var(--accent); }
+  code {
+    font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 4px; padding: .1em .35em;
+  }
+  .box {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0;
+  }
+  .box p:first-child { margin-top: 0; } .box p:last-child { margin-bottom: 0; }
+  .flag {
+    background: var(--flag-bg); border: 1px solid var(--flag-line);
+    border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 2.5rem;
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: .92rem;
+  }
+  .meta {
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: .85rem;
+    color: var(--sub); margin: 0 0 2.5rem;
+  }
+  footer {
+    margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: .85rem; color: var(--sub);
+  }
+</style>
+</head>
+<body>
+<main>
+
+<div class="flag">
+  <strong>Before you publish:</strong> replace <code>PUBLISHER_NAME</code>,
+  <code>CONTACT_EMAIL</code> and <code>EFFECTIVE_DATE</code> throughout this file,
+  then delete this box. <code>npm run check:store</code> fails while any of them
+  remain.
+</div>
+
+<h1>Privacy Policy</h1>
+<p class="lede">Health Journal is a private daily health journal. This policy describes
+what it stores, what can leave your device, and what never does.</p>
+<p class="meta">Effective EFFECTIVE_DATE · Published by PUBLISHER_NAME</p>
+
+<h2>The short version</h2>
+<div class="box">
+  <p>Your journal is stored on your device and nowhere else, unless you turn on a
+  feature that sends it somewhere. There are two such features, both off until you
+  switch them on, and both explained below.</p>
+  <p>There is no account required to use the app. There are no analytics, no
+  advertising, no third-party trackers, and nothing is ever sold or shared with data
+  brokers. We cannot read your journal.</p>
+</div>
+
+<h2>What is stored on your device</h2>
+<p>Everything you enter — daily answers, notes, meals, symptoms, measurements,
+photos, settings, and any custom questions you create — is stored locally in the
+app's own storage on your device. Nothing in this list is transmitted anywhere as
+a condition of using the app.</p>
+<p>If you set a PIN, it is held separately from the journal itself and is never
+transmitted.</p>
+
+<h2>What can leave your device, and only if you ask</h2>
+
+<h3>1. Cross-device sync (off by default)</h3>
+<p>If you turn on sync, your journal is copied to a hosted database so your other
+devices can read it. Before anything is uploaded, each record's contents are
+encrypted on your device with AES-256-GCM, using a key derived from a passphrase
+you choose (PBKDF2-SHA256). That passphrase is never transmitted, and neither is
+the key.</p>
+<p>What the server therefore holds for each record is: the kind of record, its
+identifier, a timestamp, a device identifier, a deleted flag, and an opaque
+encrypted blob. A complete copy of the database is a list of dates and
+unreadable ciphertext. We cannot decrypt it, and neither can the hosting
+provider.</p>
+<p>Sync does require an account, so an email address is stored to identify you and
+to let you sign in. That email is used for authentication only. Sync is hosted on
+Supabase, which processes this data on our behalf.</p>
+<p>An important limitation, stated plainly: because the app is also delivered over
+the web, whoever controls the host controls the code that handles your passphrase.
+This is strong encryption, not a mathematical guarantee against the publisher. No
+claim of "zero-knowledge" is made.</p>
+
+<h3>2. AI-assisted pattern analysis (off by default, your own key)</h3>
+<p>The app can ask an AI provider to describe possible patterns in your logs. This
+feature ships with no key and makes no requests until you supply an API key for a
+provider you choose — currently Google AI Studio, OpenRouter, or any
+OpenAI-compatible endpoint you configure.</p>
+<p>When you run an analysis, what is sent is limited to daily numeric and boolean
+answers plus the labels of the fields you asked about, for the window you selected.
+Free-text notes, photos, your name, and device information are not included. The
+app shows you a plain-language summary of exactly what is about to be sent before
+it sends it.</p>
+<p>Your API key is stored under its own key on your device, deliberately outside the
+journal, so that it cannot travel inside a backup or an export. It is never logged
+and never transmitted anywhere except to the provider you chose.</p>
+<p>Data you send this way is handled under <em>that provider's</em> privacy policy and
+terms, not this one. You are their customer, using your own credential.</p>
+
+<h3>3. Exports and reports you create</h3>
+<p>When you export a file or generate an appointment report, that file goes wherever
+you send it. Once it leaves the app it is outside our control and outside this
+policy.</p>
+
+<h2>Camera and photos</h2>
+<p>The app uses the camera only when you actively choose to take a photo for a
+journal entry. Photos are stored with the rest of your journal on your device, and
+follow the same rules as everything else: they are included in encrypted sync if
+you turn sync on, and they are never included in AI analysis.</p>
+
+<h2>What this app never does</h2>
+<ul>
+  <li>No advertising, and no use of your health data for marketing.</li>
+  <li>No analytics or usage telemetry of any kind.</li>
+  <li>No third-party trackers, no advertising identifiers, no cross-app or
+      cross-site tracking.</li>
+  <li>No sale of personal information, and no sharing with data brokers.</li>
+  <li>No use of your data to train any AI model.</li>
+</ul>
+
+<h2>Children</h2>
+<p>Health Journal is not directed to children under 13, and we do not knowingly
+collect personal information from children under 13.</p>
+
+<h2>Your choices and your rights</h2>
+<ul>
+  <li><strong>See it:</strong> your journal is visible in the app, and can be
+      exported in full at any time.</li>
+  <li><strong>Delete it:</strong> deleting the app removes the local journal from
+      your device. If you used sync, you can delete synced data and your account
+      from the app's sync settings.</li>
+  <li><strong>Withdraw consent:</strong> both sync and AI analysis can be turned off
+      at any time, and turning them off stops all further transmission.</li>
+  <li><strong>Ask us:</strong> for anything else, write to CONTACT_EMAIL.</li>
+</ul>
+<p>Because the journal lives on your device rather than on our servers, most requests
+about your data are things you can carry out yourself, immediately, without asking
+anyone's permission.</p>
+
+<h2>Consumer health data</h2>
+<p>This section applies to residents of jurisdictions with specific consumer health
+data laws, including Washington State's My Health My Data Act and Nevada SB 370.</p>
+<ul>
+  <li><strong>What consumer health data is collected:</strong> none by default. If
+      you enable sync, health-related records are stored in encrypted form that the
+      publisher cannot read, along with your email address. If you enable AI
+      analysis, daily numeric answers are transmitted to the provider you chose.</li>
+  <li><strong>Why:</strong> solely to provide the feature you turned on.</li>
+  <li><strong>Sources:</strong> you. Nothing is acquired from third parties.</li>
+  <li><strong>Who it is shared with:</strong> Supabase, as the hosting processor for
+      encrypted sync; and, for AI analysis only, the AI provider whose key you
+      supplied. No one else.</li>
+  <li><strong>Sale:</strong> consumer health data is not sold, and never has been.</li>
+  <li><strong>How to exercise your rights:</strong> to access, delete, or withdraw
+      consent, use the app's settings, or write to CONTACT_EMAIL. You may appeal a
+      refused request by replying to our response.</li>
+</ul>
+
+<h2>Security</h2>
+<p>Synced records are encrypted on your device before transmission, and transmitted
+over TLS. No system is perfectly secure, and the honest summary is above: the design
+minimises what exists to be breached rather than promising that a breach is
+impossible.</p>
+
+<h2>Changes to this policy</h2>
+<p>If this policy changes, the effective date above changes with it. Changes that
+materially expand what leaves your device will be surfaced in the app itself, not
+only here.</p>
+
+<h2>Not medical advice</h2>
+<p>Health Journal is a personal tracking tool. It is not medical advice, and it does
+not diagnose, treat, cure, or prevent any condition. It is not a medical device, and
+no claim of HIPAA compliance is made or implied. For medical concerns, consult a
+qualified healthcare professional.</p>
+
+<h2>Contact</h2>
+<p>PUBLISHER_NAME — <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a></p>
+
+<footer>
+  <p><a href="./">Health Journal</a> · <a href="./support.html">Support</a></p>
+</footer>
+
+</main>
+</body>
+</html>

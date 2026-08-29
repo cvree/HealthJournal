@@ -1,15 +1,20 @@
 # Shipping this to real iPhones
 
 Everything between "it builds in the Simulator" and "my sister has it on her
-phone." Four questions, answered in the order they actually bite:
+phone." Answered in the order the questions actually bite:
 
 1. [Who do you want to reach?](#1-pick-a-distribution-path) — decides how much of the rest applies
 2. [LLC or not?](#2-the-entity-question) — decides *when* you enrol with Apple
-3. [What is actually unfinished here?](#3-what-this-repo-still-needs) — the blockers, with line numbers
+3. [What this repo needed](#3-what-this-repo-needed) — the blockers, and which are now fixed
 4. [The submission itself](#4-the-submission)
+5. [What "legally covered" means](#5-the-legal-picture) for an app like this one
+6. [If "Health Journal" is taken](#6-if-health-journal-is-taken) — five alternatives
 
-Plus [what "legally covered" does and does not mean](#5-the-legal-picture) for
-an app like this one.
+The mechanical half of step 4 — the listing copy, the App Privacy answers, the
+review notes, ready to paste — lives in **[APP_STORE.md](./APP_STORE.md)**.
+
+> None of this is legal advice. The entity and liability sections are a map of
+> the questions, not answers to them.
 
 > None of this is legal advice. The entity and liability sections are a map of
 > the questions, not answers to them.
@@ -132,65 +137,115 @@ accepted Apple's beta terms, who are not going to sue you.
 
 ---
 
-## 3. What this repo still needs
+## 3. What this repo needed
 
-Found while reading the project. The first two will actually stop you.
+Found while reading the project. **All of the mechanical ones are now fixed** —
+kept here because the reasons matter, and because `npm run check:store` will
+re-fail on any of them if they regress.
 
-### Blocker: the camera has no usage description
+### Fixed: the camera had no usage description
 
 `src/App.tsx:2264` calls `getUserMedia` for the in-app camera. iOS kills any
 app that touches the camera without `NSCameraUsageDescription` in `Info.plist`,
-and App Review rejects the binary before that. The key has been added — check
-that the wording still matches what the feature does before you submit, because
-review reads it.
+and App Review rejects the binary before that. Added — check the wording still
+matches what the feature does before you submit, because review reads it.
 
 The file picker path (`src/App.tsx:1218`) does *not* need a photo-library key —
 `WKWebView` routes `<input type="file">` through the out-of-process picker,
 which grants access per-file without a permission prompt.
 
-### Blocker: the deployment target is too low for your own camera
+### Fixed: there was no privacy manifest
+
+The one that would have bounced the upload without a human ever looking at it.
+Since May 2024 Apple requires a `PrivacyInfo.xcprivacy` in any target that uses
+a "required reason" API, and `WidgetBridgePlugin.swift` reads and writes
+`UserDefaults` in the shared App Group. Missing, that upload returns
+**ITMS-91053**.
+
+Added at `ios/App/App/PrivacyInfo.xcprivacy`, declaring the `UserDefaults`
+reason (CA92.1) and the two data types the app can transmit when its optional
+features are on. Wiring it into the Xcode project mattered as much as writing
+it: a manifest that is not in the Resources build phase never enters the
+bundle, and fails exactly as if it did not exist.
+
+Capacitor ships manifests for its own pods, so only the app target needed one.
+**The widget target will need its own** when you create it in Xcode — it reads
+`UserDefaults` too.
+
+### Fixed: the deployment target was too low for your own camera
 
 `IPHONEOS_DEPLOYMENT_TARGET = 14.0`, but `getUserMedia` inside `WKWebView` only
-works from **iOS 14.3**. On 14.0–14.2 the camera silently fails. Raise it — 15.0
-or 16.0 is a reasonable floor now and costs you approximately no real users.
+works from **iOS 14.3** — so on 14.0–14.2 the camera silently failed. Raised to
+15.0 in both the project and the Podfile.
 
-### The app name is almost certainly taken
+### Fixed: version numbers had drifted
+
+`MARKETING_VERSION` sat at `1.0` while `package.json` had reached `1.27.0`, and
+the build number was a hand-maintained `1`. Since every upload needs a build
+number strictly greater than the last, a remembered counter fails the first
+evening you archive twice.
+
+`npm run version:ios` now derives both: the marketing version from
+`package.json`, and the build number from the commit count, which is monotonic
+and cannot be forgotten.
+
+### Still yours to decide: the app name
 
 "Health Journal" is generic enough that App Store Connect will very likely
-refuse to reserve it. Have two or three alternates ready before you sit down to
-create the app record; the display name in `capacitor.config.ts`, `Info.plist`,
-and the PWA manifest should follow whatever you land on. The bundle ID
-(`com.cvree.healthjournal`) is separate and never shown to users — but it is
-also permanent once submitted, so if the LLC is happening, use its domain now.
+refuse to reserve it. **[Five alternatives are in §6](#6-if-health-journal-is-taken)**,
+three of them checked against the store.
 
-### The App Privacy answers in `docs/WIDGET_SETUP.md` are out of date
+The bundle ID (`com.cvree.healthjournal`) is separate and never shown to users —
+but it is permanent once submitted, so if the LLC is happening, use its domain
+now.
 
-That doc says the privacy questionnaire is "straightforward here — no data
-collection, no tracking, no network calls." That was true once. It is not true
-now: optional sync sends an email address to Supabase for auth plus encrypted
-record blobs, and optional AI sends daily numeric answers to Google or
-OpenRouter under the user's own key. Both are off by default and both are the
-user's choice, which is a good position — but "no network calls" is the wrong
-answer on a form Apple treats as a binding disclosure. Answer it from §4.
+### Fixed: the App Privacy answers in `docs/WIDGET_SETUP.md` were out of date
 
-### There is no LICENSE and no privacy policy
+That doc said the privacy questionnaire was "straightforward here — no data
+collection, no tracking, no network calls." True once. Not true after optional
+sync and the BYO-key AI analysis landed, and the wrong answer to give on a form
+Apple treats as a binding disclosure. Corrected, and pointed at the worked
+answers in [APP_STORE.md](./APP_STORE.md).
+
+### Fixed: there was no privacy policy and no support page
+
+App Store Connect will not let you submit without **both** a privacy policy URL
+and a support URL. Both now exist as `public/privacy.html` and
+`public/support.html`, deploy with the existing Pages workflow, and are written
+from the code rather than from a template — the sync section describes what
+`supabase/schema.sql` actually stores, and the AI section describes what
+`buildAnalysisInput` actually sends.
+
+They also carry a Washington My Health My Data-shaped consumer health data
+section, which is the state law most likely to reach an app like this one.
+
+One subtlety worth knowing: the PWA service worker was configured to fall back
+to the app shell for any navigation, which would have served the *journal* to a
+reviewer clicking your privacy URL. Both pages are now in the fallback denylist.
+The existing `viewer.html` entry had the same bug in a quieter form — it was
+anchored on `/`, which stops matching under a Pages sub-path deploy — so all
+three are now anchored on the filename.
+
+Each page has three placeholders (`PUBLISHER_NAME`, `CONTACT_EMAIL`,
+`EFFECTIVE_DATE`) and a yellow box telling you to fill them in.
+`npm run check:store` fails while any of them survive.
+
+### Still yours to decide: the licence
 
 The README notes the licence is undeclared, which means default copyright — all
-rights reserved — on a public repo. Fine as a deliberate choice; worth making
-deliberately. Separately, **App Store Connect will not let you submit without a
-privacy policy URL**, so one has to exist somewhere. GitHub Pages is already
-deploying; `public/privacy.html` costs you nothing and gives you the URL.
-
-### Version numbers have drifted
-
-`MARKETING_VERSION = 1.0` and `CURRENT_PROJECT_VERSION = 1` in the Xcode
-project, against `1.27.0` in `package.json`. Not a blocker, but every upload
-needs a build number strictly higher than the last one you sent, so pick a
-scheme now rather than during your first rejected upload.
+rights reserved — on a public repo. That is a perfectly reasonable position for
+a product you intend to sell or control. It is worth holding *deliberately*
+rather than by omission, because the repo is public and the current answer is
+the one a reader assumes rather than the one you chose.
 
 ---
 
 ## 4. The submission
+
+> The paste-ready half of this — listing copy, the App Privacy questionnaire
+> answered field by field, export compliance, review notes, screenshot specs —
+> is in **[APP_STORE.md](./APP_STORE.md)**. What follows is the order to do
+> things in.
 
 ### Before the Mac
 
@@ -313,6 +368,73 @@ answer. Write custom terms when you start charging money.
 
 - Family and friends on TestFlight: **no LLC, no custom terms.** Enrol as an
   individual, keep the disclaimers, ship this month.
-- Public listing: **form the LLC first**, enrol as an organization, write a
-  privacy policy, keep Apple's EULA, and price out E&O insurance.
+- Public listing: **form the LLC first**, enrol as an organization, keep Apple's
+  EULA, and price out E&O insurance.
 - Either way, "beta" protects you from nothing. The refusal to diagnose does.
+
+---
+
+## 6. If "Health Journal" is taken
+
+It almost certainly is. But the constraint is narrower than it looks: Apple
+requires the **exact 30-character name string** to be unique, not the words in
+it. Three unrelated apps currently ship as "Marginalia: …", and several as
+"Daymark: …". So the pattern that reliably works is a distinctive base word plus
+a differentiating subtitle — you are not hunting for an unclaimed word in the
+English language.
+
+That said, the journalling category is genuinely picked over. Searching the
+store for the obvious candidates turned up **Daybook**, **Cairn Journal**,
+**Longhand**, **Marginalia**, **Commonplace** and **Daymark** all taken, several
+by apps in this exact category. Cairn Journal in particular is a 2025
+health-and-mood journal — close enough that it is worth avoiding on more than
+trademark grounds.
+
+Five that survived, roughly in the order I would try them:
+
+**1. Throughline** — *no App Store listing found in this category.*
+The line that runs through everything and makes separate episodes one story.
+It is what the app is literally for: not "here are your numbers" but "here is
+what connects them." Sayable, spellable, one word, and it means something the
+moment you hear it. Store name: `Throughline: Health Journal`.
+
+**2. Bellwether** — *no App Store listing found in this category.*
+The bell-wearing sheep that leads the flock; in ordinary use, the early sign
+that tells you what is coming. That is exactly the job of a symptom log — you
+track the small thing in week one so you recognise it in week nine. Slightly
+harder to spell than Throughline. Store name: `Bellwether: Symptom Journal`.
+
+**3. Ledgerline** — *not found; almost certainly clear.*
+In musical notation, the short line you draw to hold a note that has fallen
+outside the staff — the mark that gives an out-of-range thing somewhere to sit.
+Quiet, unusual, and very unlikely to collide with anything. The metaphor needs a
+beat to land, which is a real cost. Store name: `Ledgerline: Health Journal`.
+
+**4. Sundial** — *common word; expect neighbours, so lean on the subtitle.*
+The only one that reaches for something already in the product: this app tracks
+light and the solar arc, which none of its competitors do. A sundial is also the
+oldest instrument for noticing that today is not quite like yesterday. Warmest
+and most approachable of the five. Store name: `Sundial: Daily Health Journal`.
+
+**5. Palimpsest** — *no App Store listing found at all.*
+A manuscript scraped clean and written over, where the earlier text still shows
+through. It is the most accurate description of a long health record I can think
+of, and it is unquestionably free. It is also hard to spell, hard to say out
+loud, and hopeless in search — a name to choose with your eyes open, for its
+beauty rather than its reach.
+
+Runners-up if none of those survive contact: **Tideline**, **Lodestar**,
+**Almanac**.
+
+### Before you commit to one
+
+- **These are availability guesses, not clearance.** I searched the App Store;
+  I did not search a trademark register. The real tests are a USPTO/TESS search
+  for your class and actually reserving the name in App Store Connect, which is
+  free and is the only answer that binds.
+- **Reserve it early.** The name is held as soon as you create the app record,
+  long before you have a build to upload.
+- **Then change it in four places:** `capacitor.config.ts` (`appName`),
+  `ios/App/App/Info.plist` (`CFBundleDisplayName`), the PWA manifest in
+  `vite.config.ts`, and the two static pages. The bundle ID does not have to
+  match and should not be churned.

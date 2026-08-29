@@ -42,7 +42,16 @@ export default defineConfig({
         // The journal is the app shell; a hard-refresh on any path should still
         // boot it offline rather than showing the browser's dinosaur.
         navigateFallback: `${base}index.html`,
-        navigateFallbackDenylist: [/^\/viewer\.html/],
+        // Standalone pages that must serve themselves rather than boot the
+        // journal. Anchored on the filename, not on `/`, because a Pages deploy
+        // lives under a sub-path (/HealthJournal/privacy.html) and a `^\/`
+        // pattern silently stops matching there — which is how the viewer link
+        // was already being swallowed by the app shell on Pages.
+        //
+        // privacy.html and support.html are the two URLs App Store Connect
+        // requires, and a reviewer opening one and getting the app instead is a
+        // rejection, so they do not get to depend on precache ordering.
+        navigateFallbackDenylist: [/viewer\.html/, /privacy\.html/, /support\.html/],
       },
       manifest: {
         name: "Health Journal — private daily tracking",

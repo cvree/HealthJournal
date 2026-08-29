@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Support — Health Journal</title>
+<meta name="theme-color" content="#141519" />
+<meta name="robots" content="index, follow" />
+<style>
+  :root {
+    --bg: #F4F1EB; --card: #FFFFFF; --ink: #23252B; --sub: #5A5E68;
+    --line: #DFDAD0; --accent: #3D6098; --flag-bg: #FBF0D8; --flag-line: #D9BE7A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141519; --card: #1A1C21; --ink: #ECEBE7; --sub: #ADAFB8;
+      --line: #31343D; --accent: #8FB0E3; --flag-bg: #2A2416; --flag-line: #6B5A2E;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 ui-serif, Georgia, "Times New Roman", serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .25rem; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 1.1rem; margin: 2.75rem 0 .75rem; letter-spacing: .04em;
+    text-transform: uppercase; font-family: ui-sans-serif, system-ui, sans-serif;
+    color: var(--sub); font-weight: 600;
+  }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 .5rem; }
+  p, li { color: var(--ink); }
+  .lede { color: var(--sub); font-size: 1.05rem; margin: 0 0 2rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin: .4rem 0; }
+  a { color: var(--accent); }
+  code {
+    font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 4px; padding: .1em .35em;
+  }
+  .box {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0;
+  }
+  .box p:first-child { margin-top: 0; } .box p:last-child { margin-bottom: 0; }
+  .flag {
+    background: var(--flag-bg); border: 1px solid var(--flag-line);
+    border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 2.5rem;
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: .92rem;
+  }
+  .meta {
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: .85rem;
+    color: var(--sub); margin: 0 0 2.5rem;
+  }
+  footer {
+    margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: .85rem; color: var(--sub);
+  }
+</style>
+</head>
+<body>
+<main>
+
+<div class="flag">
+  <strong>Before you publish:</strong> replace <code>CONTACT_EMAIL</code> below,
+  then delete this box. <code>npm run check:store</code> fails while it remains.
+</div>
+
+<h1>Support</h1>
+<p class="lede">Health Journal is a private daily health journal. No account, nothing
+sent anywhere unless you switch it on.</p>
+
+<h2>Getting help</h2>
+<div class="box">
+  <p>Email <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a> with what happened and what
+  you expected instead. If it involves something on screen, a screenshot saves a round
+  trip. Please don't include your journal contents — they won't help, and we would
+  rather not have them.</p>
+</div>
+
+<h2>Common questions</h2>
+
+<h3>Where is my data?</h3>
+<p>On your device, in the app's own storage. Not on a server, unless you turned on
+sync. Deleting the app deletes the journal with it, so export first if you want to
+keep it.</p>
+
+<h3>How do I get my journal out?</h3>
+<p>Settings → export. You get your full journal as a file you control. This works
+whether or not sync is on, and it is the recommended way to keep a backup.</p>
+
+<h3>Do I need an account?</h3>
+<p>No. The app works fully with no account at all. An account exists only to make
+sync possible across devices, and only if you want that.</p>
+
+<h3>What does sync actually upload?</h3>
+<p>Encrypted records, and an email address to sign in with. Your entries are
+encrypted on your device with a passphrase you choose, before anything is uploaded.
+That passphrase is never transmitted — which also means that if you lose it, nobody
+can recover your synced data for you. Keep it somewhere safe.</p>
+
+<h3>Is the AI feature reading my journal?</h3>
+<p>Only if you set it up with your own API key, and only the daily numbers for the
+window you asked about — no notes, no photos, no name. The app shows you exactly what
+it is about to send before it sends it. Leave it off and no request is ever made.</p>
+
+<h3>Why won't it diagnose anything?</h3>
+<p>Because it is a tracking tool, not a clinician, and a tool that guesses at
+conditions would be a worse one. It shows you what you recorded and what tends to
+occur together. What that means is a conversation to have with whoever is treating
+you — the appointment report exists to make that conversation easier.</p>
+
+<h3>I found a bug.</h3>
+<p>Please report it to the address above. Include your iOS version and, if you can,
+the steps that reproduce it.</p>
+
+<h2>Not medical advice</h2>
+<p>Health Journal is a personal tracking tool. It is not medical advice, and it does
+not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms,
+medication changes, restrictive diets, or major health changes, consult a qualified
+healthcare professional.</p>
+
+<footer>
+  <p><a href="./">Health Journal</a> · <a href="./privacy.html">Privacy Policy</a></p>
+</footer>
+
+</main>
+</body>
+</html>

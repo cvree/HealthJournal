@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Apple's privacy manifest for the App target. Required since May 2024: an
+  upload without one, for a target that touches a "required reason" API, comes
+  back as ITMS-91053 before a human reviewer ever sees the build.
+
+  Two things live here, and they are answering different questions.
+
+  NSPrivacyAccessedAPITypes is about APIs, not data. WidgetBridgePlugin.swift
+  and the widget both read and write UserDefaults in the shared App Group to
+  hand today's snapshot to the lock screen. That is category CA92.1 — the app's
+  own container, its own group, nothing about the device or another app.
+
+  NSPrivacyCollectedDataTypes is about data leaving the device, and is
+  deliberately declared for the app *with every optional switch turned on*,
+  because that is the version of the app some users will run:
+
+    - Email address — only if the user turns on sync, and only because Supabase
+      needs an identity to attach rows to.
+    - Health data — only if the user turns on sync (as AES-256-GCM ciphertext
+      this project cannot read) or points the optional analysis feature at an
+      AI provider using their own API key.
+
+  Both are declared linked-to-identity and app-functionality, and neither is
+  used for tracking, advertising, or profiling — the NSPrivacyTracking false
+  below is the whole product's position, not a formality. If the App Privacy
+  answers in App Store Connect ever disagree with this file, this file is the
+  one that was written next to the code, and the questionnaire is wrong.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeHealth</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
