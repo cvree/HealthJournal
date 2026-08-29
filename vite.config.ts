@@ -86,6 +86,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Raises the Testing Library async budget; see tests/setupTestEnv.ts for
+    // why testTimeout below does not cover it.
+    setupFiles: ["tests/setupTestEnv.ts"],
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     // Several suites mount the full App (React + recharts + xlsx) in jsdom;
     // under CPU contention on small/CI runners the default 5s waitFor budget
