@@ -31,12 +31,21 @@
         rather than named, the questions can be sorted by how they are
         answered (a 1–10, a yes or no, a number, a few words), and the whole
         check-in can be previewed exactly as it will look tomorrow morning.
-        Everything is already answered — this is somebody adjusting a thing
-        that works, never filling in a form.
-     5. **What is worth a photograph.** Not "do you want photos" — *of what*.
-        Body areas on a map, flare-ups, progress shots, meals, the label on
-        the tub. The contact sheet fills in as they pick, and every frame on
-        it is a shot the camera button will offer them.
+        It arrives **short** — the quick set, not the balanced one — and beside
+        the list there is a guided pass that puts one group of questions on the
+        screen at a time and asks about it. A check-in somebody chose question
+        by question is a check-in they answer in week six; one that arrived
+        pre-filled with thirty rows is one they abandon in week two.
+     5. **What is worth a photograph.** Not "do you want photos" — *of what*,
+        and **nothing is ticked for them**. Body areas on a map, flare-ups,
+        progress shots, meals, the label on the tub: every one of them is a
+        picture of somebody's own body or plate, and an app that quietly
+        decided which of those it would be pointing a camera at has taken a
+        decision that was never its to take. So this screen suggests, marks
+        what it suggests and why, and then waits. The guided pass here holds up
+        one subject at a time and asks outright. The contact sheet fills in as
+        they answer, and every frame on it is a shot the camera button will
+        offer them.
      6. **What else it should keep.** Meals, doses, flares, a nudge in the
         evening. Every choice here lights up a one-tap button on their
         dashboard, and the row of buttons assembles under their thumb as they
@@ -48,12 +57,24 @@
         downward into the days they have not lived yet, and the streak counts
         to one.
 
-   Two rules hold the middle acts together, and they are the reason this can
+   Four rules hold the middle acts together, and they are the reason this can
    be five steps without feeling like five steps:
 
    - **Nothing is ever demanded.** Every screen after the first arrives already
      answered with a sensible default, so Continue is always live and a person
-     who wants to be through in thirty seconds still can be.
+     who wants to be through in thirty seconds still can be. "Already answered"
+     includes *no photographs and a four-question check-in* — both are real
+     answers, and the CTA says so out loud rather than going grey.
+   - **The default is the small one.** Where a screen has to guess, it guesses
+     short. Nobody ever quit a journal because the first week asked too little,
+     and every one of these screens can be reopened from Settings with more on
+     the table than first run ever showed.
+   - **Anything worth choosing can be walked through.** The two screens with
+     more than a handful of options — the questions, and the photographs —
+     each carry a guided pass beside the list: one group, or one subject, on
+     the screen at a time, with what it costs, what it is for, and a plain way
+     to say no. It is optional, it is never the only way through, and it is
+     the difference between a survey somebody was handed and one they built.
    - **Every choice shows its consequence immediately.** Switching a question
      off changes the "about 25 seconds a day" line under it. Typing a name
      changes the greeting quoted underneath it. Choosing a photo subject puts
@@ -140,7 +161,14 @@ export interface FirstRunPhotoSubject {
   /** `spots` opens the body map beneath it; `progress` opens the front / side
       / back chips; anything else is one plain shot. */
   kind?: "spots" | "progress" | "photo";
-  /** Modules this is pre-ticked for. Everything is always *offered*. */
+  /** What this subject is *for*, in one sentence — what it turns out to be
+      worth having six weeks later. Shown on the guided pass, where somebody is
+      being asked to say yes or no to this one thing and deserves more than a
+      label to say it about. */
+  why?: string;
+  /** Modules this subject is suggested for. Suggested is all it is: nothing
+      here arrives ticked, because every one of these is a photograph of
+      somebody's own body, and choosing to take it is theirs. */
   suggest?: string[];
   /** How the frame is drawn on the contact sheet. */
   frame?: "tall" | "square";
@@ -258,6 +286,34 @@ const TYPE_HINT: Record<string, string> = {
   text: "a few words", time: "a time", date: "a date",
 };
 
+type Depth = "light" | "balanced" | "full";
+
+/* ---------- how much to ask, and why it starts small ----------
+
+   Three presets, and the one everybody lands on is the short one.
+
+   That is a deliberate reversal. The balanced set is the better *journal* —
+   more questions, more for the patterns to chew on — and it was the default
+   here for exactly that reason. What it is not is the better *first week*.
+   Somebody who has just installed this has a rash or a gut or a headache and
+   no idea yet what they will still be willing to answer on the morning they
+   feel worst, and the honest answer to "how much should I track" is always
+   "less than you think, for longer than you think".
+
+   So the flow opens on Quick — four or five questions, half a minute — and
+   says out loud that it is the starting point rather than the small option.
+   Everything else is one tap away, on this screen and forever after in
+   Settings, and adding a question in week three is a thing people do. Deleting
+   twenty in week three is a thing nobody does; they just stop opening the app. */
+const DEPTHS: [Depth, string, string][] = [
+  ["light", "Quick",
+    "The few you'd still answer on your worst morning. Start here — a short check-in kept for a year beats a long one kept for nine days."],
+  ["balanced", "Balanced",
+    "Everything the packs you picked treat as everyday. More to answer each morning, and more for the patterns to work with later."],
+  ["full", "Thorough",
+    "Every question your packs brought, switched on. For somebody chasing one specific thing, or with an appointment coming."],
+];
+
 const CUSTOM_TYPES: [string, string, string][] = [
   ["scale", "1–10", "A severity or a rating"],
   ["toggle", "Yes / no", "Did it happen or not"],
@@ -282,6 +338,34 @@ const LENSES: [Lens, string][] = [
   ["toggle", "Yes / no"],
   ["other", "Numbers & words"],
 ];
+
+/** One frozen empty set, so "nothing picked yet" is a stable identity rather
+    than a new object on every render. */
+const EMPTY: ReadonlySet<string> = new Set<string>();
+
+/** What a group of questions is *shaped* like, in one line — because "Skin
+    today" tells somebody nothing about what saying yes to it costs them, and
+    "five questions, four of them a tap on a 1–10" tells them everything. */
+function shapeOf(qs: { type: string }[]): string {
+  const n = (t: string) => qs.filter((q) => q.type === t).length;
+  const scales = n("scale");
+  const yn = n("toggle");
+  const rest = qs.length - scales - yn;
+  const kinds: string[] = [];
+  if (scales) kinds.push(`${scales} rated 1–10`);
+  if (yn) kinds.push(`${yn} yes / no`);
+  if (rest) kinds.push(`${rest} number${rest === 1 ? "" : "s"} or a few words`);
+  if (qs.length === 1) {
+    const only = kinds[0]?.replace(/^\d+ /, "") || "one to answer";
+    return `One question here, ${only}.`;
+  }
+  const head = `${qs.length} questions here`;
+  if (!kinds.length) return `${head}.`;
+  /* "8 questions here — 8 rated 1–10" says the same number twice and reads
+     like a receipt. When they are all one kind, say so as one kind. */
+  if (kinds.length === 1) return `${head}, all ${kinds[0].replace(/^\d+ /, "")}.`;
+  return `${head} — ${kinds.join(", ")}.`;
+}
 
 const inLens = (type: string, lens: Lens): boolean =>
   lens === "all" ? true : lens === "other" ? type !== "scale" && type !== "toggle" : type === lens;
@@ -664,7 +748,7 @@ export default function FirstRun({
      lets changing a pack on the screen before this one re-derive the whole
      list instead of stranding a set of answers about questions that no longer
      exist. */
-  const [depth, setDepth] = useState<"light" | "balanced" | "full">("balanced");
+  const [depth, setDepth] = useState<Depth>("light");
   const [hand, setHand] = useState<Set<string> | null>(null);
   const [customs, setCustoms] = useState<FirstRunCustom[]>([]);
   const [writing, setWriting] = useState(false);
@@ -677,8 +761,23 @@ export default function FirstRun({
   const [lens, setLens] = useState<Lens>("all");
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  /* Act four: what is worth photographing. */
+  /* The guided pass over the questions. `walk` is which card is on screen —
+     one per section, then a review card at the end — and null is "not walking",
+     which is where somebody who would rather work the list starts and stays.
+     `walked` only changes what the screen says afterwards. */
+  const [walk, setWalk] = useState<number | null>(null);
+  const [walked, setWalked] = useState(false);
+
+  /* Act four: what is worth photographing. Nothing is pre-picked here — see
+     the note above the act — so untouched (`null`) falls back to *nothing*
+     rather than to the app's suggestions. The guided pass has its own cursor
+     and its own record of which subjects have actually been *answered*, so
+     stepping back through it shows a "no" as a no rather than as a question
+     nobody reached. */
   const [photoPicked, setPhotoPicked] = useState<Set<string> | null>(null);
+  const [photoWalk, setPhotoWalk] = useState<number | null>(null);
+  const [photoWalked, setPhotoWalked] = useState(false);
+  const [photoAnswered, setPhotoAnswered] = useState<Set<string>>(() => new Set());
   const [spots, setSpots] = useState<FirstRunSpot[]>([]);
   const [angles, setAngles] = useState<string[]>(["Front"]);
 
@@ -740,13 +839,32 @@ export default function FirstRun({
   const activeMetric = metricKey ?? defaultMetric;
 
   /** Which questions a depth preset means. The main number is in all three:
-      a journal with no number is not a journal. */
-  const presetKeys = (mode: "light" | "balanced" | "full"): Set<string> => {
+      a journal with no number is not a journal.
+
+      Quick is now where everybody starts, which raises the bar on what it is
+      allowed to contain. Four severity ratings is a check-in that can only
+      ever chart itself — every line on it moves together, and the first
+      question this app exists to answer ("what was different about the bad
+      weeks?") has nothing to answer it with. So when the pack's own everyday
+      order would hand somebody nothing but 1–10s, the last slot goes to the
+      first question that is answered another way: something they *did*, next
+      to something they *felt*. It costs a couple of seconds and it is the
+      difference between a journal and a graph of one line. */
+  const presetKeys = (mode: Depth): Set<string> => {
     if (mode === "full") return new Set(catalogue.map((q) => q.k));
     const out = new Set<string>();
     if (activeMetric) out.add(activeMetric);
     const quick = catalogue.filter((q) => q.quick && q.k !== activeMetric);
-    for (const q of mode === "light" ? quick.slice(0, 3) : quick) out.add(q.k);
+    if (mode === "light") {
+      const few = quick.slice(0, 3);
+      if (few.length && few.every((q) => q.type === "scale")) {
+        const context = quick.find((q) => q.type !== "scale");
+        if (context) few[few.length - 1] = context;
+      }
+      for (const q of few) out.add(q.k);
+    } else {
+      for (const q of quick) out.add(q.k);
+    }
     for (const c of customs) out.add(c.id);
     return out;
   };
@@ -806,9 +924,18 @@ export default function FirstRun({
 
   /* ---------- act four: what is worth a photograph ----------
 
-     Which subjects arrive ticked follows the packs, on the same rule the
-     extras use: the app is allowed an opinion, everything is still offered to
-     everybody, and the opinion is frozen the moment somebody touches one. */
+     What the packs *suggest*, which is as far as this goes. The extras act
+     pre-ticks its suggestions and is right to: a bowel log is a switch, and a
+     switch somebody leaves on costs them nothing. A photograph is not a
+     switch. Every subject here ends with a camera pointed at somebody's own
+     skin, plate or bathroom shelf, and an app that arrives having already
+     decided which of those it will be asking for has helped itself to a
+     decision that was never on offer.
+
+     So the suggestion is drawn — marked, and named as a suggestion — and then
+     nothing happens until somebody says yes. It is the one place in this flow
+     where the screen genuinely arrives blank, and the CTA underneath it treats
+     an empty answer as a finished one rather than as an unfilled form. */
   const suggestedSubjects = useMemo(() => {
     const out = new Set<string>();
     for (const sub of photoSubjects) {
@@ -820,7 +947,19 @@ export default function FirstRun({
     if (!BodyMap || !chosen.some((p) => p.photoKind === "skin")) out.delete("areas");
     return out;
   }, [photoSubjects, mods, chosen, BodyMap]);
-  const chosenSubjects = photoPicked ?? suggestedSubjects;
+  /* Not `?? suggestedSubjects`. Nothing is chosen until it is chosen. */
+  const chosenSubjects = photoPicked ?? EMPTY;
+
+  /* The order the guided pass holds them up in: what this person's own
+     conditions reach for first, everything else after, and the body map
+     dropped entirely where there is no map to drop a pin on. */
+  const walkSubjects = useMemo(() => {
+    const offered = photoSubjects.filter((sub) => !(sub.kind === "spots" && !BodyMap));
+    return [
+      ...offered.filter((sub) => suggestedSubjects.has(sub.id)),
+      ...offered.filter((sub) => !suggestedSubjects.has(sub.id)),
+    ];
+  }, [photoSubjects, suggestedSubjects, BodyMap]);
 
   const wantsSpots = useMemo(
     () => chosenSubjects.has("areas") && !!BodyMap,
@@ -915,11 +1054,13 @@ export default function FirstRun({
     return () => { document.body.style.overflow = prev; };
   }, [act]);
 
-  /* Each numbered act starts at its own top. Without this, arriving at a long
-     question list halfway down it reads as a broken screen. */
+  /* Each numbered act starts at its own top, and so does each card of a
+     guided pass — a card that arrives scrolled to its own middle is a card
+     whose question nobody read. Without this, arriving at a long question
+     list halfway down it reads as a broken screen. */
   useEffect(() => {
     if (act !== "hero") window.scrollTo?.(0, 0);
-  }, [act]);
+  }, [act, walk, photoWalk]);
 
   /* ---------- moving between acts ---------- */
 
@@ -972,10 +1113,49 @@ export default function FirstRun({
     });
   };
 
-  const setPreset = (mode: "light" | "balanced" | "full") => {
+  const setPreset = (mode: Depth) => {
     feedback("select");
     setDepth(mode);
     setHand(null);
+  };
+
+  /* ---------- the guided pass over the questions ----------
+
+     One section on the screen at a time, its shape said out loud, its rows
+     big enough to read on a phone held one-handed, and a running total of
+     what the whole check-in now costs. Six short decisions instead of one
+     long list — and, more to the point, six decisions somebody actually
+     made. The list upstairs is still there and still does everything this
+     does; what this adds is that nothing scrolls past unlooked-at. */
+  const walkCards = useMemo(() => sections.filter(([, qs]) => qs.length > 0), [sections]);
+  const walkAt = walk == null ? null : Math.min(walk, walkCards.length);
+
+  const startWalk = () => { feedback("nav"); setWalk(0); };
+
+  const leaveWalk = (finished: boolean) => {
+    feedback(finished ? "complete" : "tap");
+    if (finished) setWalked(true);
+    setWalk(null);
+  };
+
+  const walkTo = (i: number, back = false) => {
+    feedback(back ? "tap" : "nav");
+    setWalk(Math.max(0, Math.min(i, walkCards.length)));
+  };
+
+  /** Every question in one section, on or off together. A group somebody has
+      already decided about should cost one tap, not five. */
+  const setSection = (qs: FirstRunQuestion[], on: boolean) => {
+    feedback(on ? "select" : "erase");
+    setHand(() => {
+      const next = new Set(enabled);
+      for (const q of qs) {
+        if (q.k === activeMetric) continue;   // the daily number stays
+        if (on) next.add(q.k);
+        else next.delete(q.k);
+      }
+      return next;
+    });
   };
 
   const addCustom = () => {
@@ -994,12 +1174,45 @@ export default function FirstRun({
 
   const toggleSubject = (id: string) => {
     feedback("select");
+    setPhotoAnswered((prev) => new Set([...prev, id]));
     setPhotoPicked((prev) => {
-      const next = new Set(prev ?? suggestedSubjects);
+      const next = new Set(prev ?? EMPTY);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
+
+  /* ---------- the guided pass over the photographs ----------
+
+     Not a list of tickboxes with an opinion baked into it: one subject held
+     up at a time, what it is, what it turns out to be worth, and a Yes beside
+     a No. Both answers move on, both are recorded, and "no" is recorded as an
+     answer rather than as an absence — so somebody stepping back through the
+     deck sees the decision they made rather than a card that looks untouched. */
+  const startPhotoWalk = () => { feedback("nav"); setPhotoWalk(0); };
+
+  const leavePhotoWalk = (finished: boolean) => {
+    feedback(finished ? "complete" : "tap");
+    if (finished) setPhotoWalked(true);
+    setPhotoWalk(null);
+  };
+
+  const photoWalkTo = (i: number, back = false) => {
+    feedback(back ? "tap" : "nav");
+    setPhotoWalk(Math.max(0, Math.min(i, walkSubjects.length)));
+  };
+
+  const answerSubject = (id: string, yes: boolean, at: number) => {
+    feedback(yes ? "select" : "tap");
+    setPhotoAnswered((prev) => new Set([...prev, id]));
+    setPhotoPicked((prev) => {
+      const next = new Set(prev ?? EMPTY);
+      if (yes) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    setPhotoWalk(Math.min(at + 1, walkSubjects.length));
   };
 
   const toggleAngle = (a: string) => {
@@ -1276,11 +1489,43 @@ export default function FirstRun({
           )}
 
           {/* The consequence of the choice, immediately. Two packs is not an
-              abstraction once it says what it brings with it. */}
+              abstraction once it says what it brings with it — and neither is
+              "four more screens" until somebody has been told what is on them.
+
+              This is the orientation the flow never gave. A step rail names
+              four words; it does not say that the questions arrive short, that
+              nothing gets photographed unless it is asked for, or that every
+              one of these screens exists again in Settings tomorrow. Somebody
+              who knows all three arrives at the next screen deciding. Somebody
+              who does not arrives at it bracing. */}
           {mods.length > 0 && (
-            <p className="fhj-fr-hint" aria-live="polite">
-              {questionCount} questions to start from, and you choose which of them get asked.
-            </p>
+            <div className="fhj-fr-next" aria-live="polite">
+              <div className="fhj-fr-eyebrow">What happens next</div>
+              <ol className="fhj-fr-next-list">
+                <li>
+                  <b>Your questions.</b>{" "}
+                  {questionCount} came with what you just picked, and it starts with a short set
+                  switched on. You decide which of the rest get asked — the whole list at once, or
+                  one group at a time.
+                </li>
+                <li>
+                  <b>Your photographs.</b>{" "}
+                  What is worth a picture, and of what. Nothing here is chosen for you.
+                </li>
+                <li>
+                  <b>Everything else a day holds.</b>{" "}
+                  Meals, doses, flares, a nudge in the evening — and how often it should ask at all.
+                </li>
+                <li>
+                  <b>Your first entry.</b>{" "}
+                  A real one, written to your journal rather than a demo.
+                </li>
+              </ol>
+              <p className="fhj-fr-hint">
+                Two minutes, and nothing is permanent: every one of these screens exists again in
+                Settings, with more on the table than first run ever shows you.
+              </p>
+            </div>
           )}
         </div>
 
@@ -1291,6 +1536,162 @@ export default function FirstRun({
             {mods.length ? <Icon name="right" size={17} color={C.onAccent} /> : null}
           </button>
           <button type="button" className="fhj-fr-ghost" onClick={() => go("you", true)}>Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- act three, walked: one group of questions at a time ----------
+
+     The list on the screen behind this one is complete, honest and, for a lot
+     of people, unreadable: forty rows in six folds, arriving pre-answered, on
+     a phone. Scrolling it is not choosing, and a check-in nobody chose is a
+     check-in nobody defends at 7am on a bad morning.
+
+     So this is the same catalogue, dealt out one group at a time. Each card
+     says how big the group is and what answering it feels like, draws the
+     control beside every row, offers all-of-them and none-of-them as single
+     taps for the people who already know, and keeps the running cost of the
+     whole check-in under their thumb. It ends on the finished thing, drawn as
+     tomorrow morning will draw it.
+
+     Nothing here can be reached only from here. Leaving mid-way keeps every
+     answer already given — this is a way through the same screen, never a
+     mode with its own state to lose. */
+
+  if (act === "tune" && walkAt !== null) {
+    const total = walkCards.length;
+    const done = walkAt >= total;
+    const [sec, qs] = done ? ["", [] as FirstRunQuestion[]] : walkCards[walkAt];
+    const onCount = qs.filter((q) => enabled.has(q.k)).length;
+
+    const lead = onCount === 0
+      ? "None of these are on. Leaving it that way is a real answer — a question you resent being asked is one you end up answering badly."
+      : onCount === qs.length
+        ? "All of them are on. Each one is a few more seconds every morning, so drop anything you would only be guessing at."
+        : `${onCount} of the ${qs.length} are on. Tap any row to change your mind.`;
+
+    return (
+      <div className="fhj-fr" ref={actRef}>
+        <div className="fhj-fr-act">
+          <StepRail index={1} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>
+            {done ? "Step 2 of 5 · your check-in" : `Step 2 of 5 · group ${walkAt + 1} of ${total}`}
+          </div>
+
+          <div className="fhj-fr-walkbar" aria-hidden="true" data-act-block>
+            {walkCards.map(([name], i) => (
+              <span key={name}
+                className={"fhj-fr-walkbar-seg" + (i < walkAt ? " is-done" : i === walkAt ? " is-now" : "")} />
+            ))}
+            <span className={"fhj-fr-walkbar-seg" + (done ? " is-now" : "")} />
+          </div>
+
+          {done ? (
+            <>
+              <h1 className="fhj-fr-display is-small" data-act-block>This is your check-in.</h1>
+              <p className="fhj-fr-sub" data-act-block>
+                {first ? `${first}, every one of these is here because you said so. ` : "Every one of these is here because you said so. "}
+                Tomorrow morning, and every morning after it, this is the whole of what it asks —
+                and it is yours to change any time, from Settings or from here.
+              </p>
+
+              <div className="fhj-fr-pv" data-act-block>
+                <div className="fhj-fr-pv-head">
+                  <span className="fhj-fr-pv-date">{todayLabel()}</span>
+                  <span className="fhj-fr-pv-tag">Your check-in</span>
+                </div>
+                <div className="fhj-fr-pv-body">
+                  {enabledQs.map((q) => <PreviewField key={q.k} q={q} />)}
+                </div>
+                <div className="fhj-fr-pv-foot">
+                  <span>Then one button, and the day is on the record.</span>
+                  <b>{checkInTimeLabel(seconds)}</b>
+                </div>
+              </div>
+
+              <p className="fhj-fr-hint" data-act-block>
+                {enabledQs.length} question{enabledQs.length === 1 ? "" : "s"}, {checkInTimeLabel(seconds)} a day.
+                Nothing about this is permanent: questions can be added, dropped or written from
+                scratch whenever you like, and the days you have already logged keep their answers
+                either way.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="fhj-fr-display is-small" data-act-block>{sec}</h1>
+              <p className="fhj-fr-sub" data-act-block>
+                {shapeOf(qs)} {lead}
+              </p>
+
+              <div className="fhj-fr-walkqs" data-act-block>
+                {qs.map((q) => {
+                  const on = enabled.has(q.k);
+                  const isMetric = q.k === activeMetric;
+                  return (
+                    <button key={q.k} type="button" role="switch" aria-checked={on}
+                      disabled={isMetric} onClick={() => toggleQuestion(q)}
+                      className={"fhj-fr-wq" + (on ? " is-on" : "") + (isMetric ? " is-locked" : "")}>
+                      <span className="fhj-fr-wq-top">
+                        <span className="fhj-fr-wq-mark">
+                          {on ? <Icon name="check" size={12} color={C.onAccent} /> : null}
+                        </span>
+                        <span className="fhj-fr-wq-label">{q.label}</span>
+                        <MiniControl type={q.type} />
+                      </span>
+                      <span className="fhj-fr-wq-foot">
+                        <span className="fhj-fr-wq-state">
+                          {isMetric ? "Your daily number · always asked"
+                            : on ? "Asked every check-in" : "Not asked"}
+                        </span>
+                        <span className="fhj-fr-wq-type">{TYPE_HINT[q.type] || q.type}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="fhj-fr-walk-bulk" data-act-block>
+                <button type="button" className="fhj-fr-mini is-quiet"
+                  onClick={() => setSection(qs, true)}>
+                  Ask me all {qs.length === 2 ? "both" : qs.length}
+                </button>
+                <button type="button" className="fhj-fr-mini is-quiet"
+                  onClick={() => setSection(qs, false)}>
+                  None of these
+                </button>
+              </div>
+
+              <div className="fhj-fr-walk-tally" data-act-block aria-live="polite">
+                <span className="fhj-fr-walk-tally-num">{enabledQs.length}</span>
+                <span>
+                  question{enabledQs.length === 1 ? "" : "s"} in your check-in so far<br />
+                  <b>{checkInTimeLabel(seconds)} a day</b>
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* A way out of every card, not just the first one. Somebody who
+            changes their mind three groups in should not have to walk back
+            out the way they came, and nothing here is lost by leaving. */}
+        <div className="fhj-fr-foot">
+          <button type="button" className="fhj-fr-primary"
+            onClick={() => (done ? leaveWalk(true) : walkTo(walkAt + 1))}>
+            <span>{done ? "That's my check-in" : walkAt === total - 1 ? "See my check-in" : "Next group"}</span>
+            <Icon name="right" size={17} color={C.onAccent} />
+          </button>
+          <div className="fhj-fr-foot-row">
+            {walkAt > 0 && (
+              <button type="button" className="fhj-fr-ghost" onClick={() => walkTo(walkAt - 1, true)}>
+                Back
+              </button>
+            )}
+            <button type="button" className="fhj-fr-ghost" onClick={() => leaveWalk(false)}>
+              Show me the whole list
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1308,8 +1709,9 @@ export default function FirstRun({
           <p className="fhj-fr-sub" data-act-block>
             {first ? `${first}, this is your check-in — the same few questions, every day.` :
               "This is your check-in — the same few questions, every day."}{" "}
-            It's already set up. Switch anything off, add anything missing, or just keep going and
-            change it later.
+            It starts <b>short</b> on purpose: {catalogue.length} questions came with what you
+            picked, and {enabledQs.length} of them are switched on. Add whatever is missing —
+            here, or one group at a time.
           </p>
 
           {/* The cost of the thing being built, live. A journal is abandoned
@@ -1324,14 +1726,48 @@ export default function FirstRun({
               </span>
             </div>
             <div className="fhj-fr-depth" role="group" aria-label="How much to ask">
-              {([["light", "Quick"], ["balanced", "Balanced"], ["full", "Thorough"]] as const).map(([m, l]) => (
+              {DEPTHS.map(([m, l, why]) => (
                 <button key={m} type="button" aria-pressed={depth === m && !hand}
+                  aria-label={`${l} — ${why}`}
                   onClick={() => setPreset(m)}
                   className={"fhj-fr-depth-btn" + (depth === m && !hand ? " is-on" : "")}>
                   {l}
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* What the pill you are standing on actually means, in a sentence.
+              Three unlabelled sizes is a slider with no units: "Balanced"
+              tells nobody what they are agreeing to, and the person most
+              likely to pick the biggest one is the person least likely to
+              still be answering it in March. */}
+          <p className="fhj-fr-depth-note" data-act-block aria-live="polite">
+            {hand
+              ? <><b>Your own set.</b> You have picked these yourself — the presets above are one tap away if you would rather start over from one.</>
+              : <><b>{DEPTHS.find(([m]) => m === depth)![1]}.</b> {DEPTHS.find(([m]) => m === depth)![2]}</>}
+          </p>
+
+          {/* The guided pass. Offered before the list rather than after it,
+              because the person who needs it is the one about to be scrolled
+              past forty rows, and the person who does not need it has already
+              stopped reading this paragraph and gone to the list. */}
+          <div className="fhj-fr-invite" data-act-block>
+            <div className="fhj-fr-invite-body">
+              <span className="fhj-fr-eyebrow">
+                {walked ? "You have been through these" : `${catalogue.length} questions on the table`}
+              </span>
+              <b>{walked ? "Go through them again?" : "Choose them with me, one group at a time"}</b>
+              <span>
+                {walkCards.length} short screens — {walkCards.length === 1 ? "one group" : "one group each"},
+                what it costs you every morning, and a plain way to say no. About a minute, and you
+                can leave it at any point without losing an answer.
+              </span>
+            </div>
+            <button type="button" className="fhj-fr-invite-btn" onClick={startWalk}>
+              <span>{walked ? "Walk them again" : "Walk me through them"}</span>
+              <Icon name="right" size={15} color={C.onAccent} />
+            </button>
           </div>
 
           {/* The four ways a question can be answered, named the way an answer
@@ -1524,7 +1960,176 @@ export default function FirstRun({
 
      So the question is not whether but *of what*, and the answer draws itself
      into a contact sheet as it is given. Choosing nothing is a first-class
-     outcome — the CTA says so rather than going grey. */
+     outcome — the CTA says so rather than going grey.
+
+     And the guess is gone entirely. Nothing on this screen arrives ticked:
+     the suggestions are drawn as suggestions and every frame on the contact
+     sheet got there because somebody put it there. Two screens follow — the
+     guided pass, one subject at a time, and then the list itself. */
+
+  /* ---------- act four, walked: one subject at a time ----------
+
+     Eight things a camera can be pointed at is more than anybody can weigh in
+     one glance, and the cost of getting it wrong is asymmetric: a subject
+     nobody picks is a photograph never taken, and there is no way to go back
+     in six weeks and take it.
+
+     So each one gets its own screen — what it is, what it is worth having
+     later, whether people tracking what this person tracks tend to keep it —
+     and a Yes beside a No, both of which move on. No card can be reached
+     without being answered, and no answer is assumed. */
+
+  if (act === "photos" && photoWalk !== null) {
+    const total = walkSubjects.length;
+    const at = Math.min(photoWalk, total);
+    const done = at >= total;
+    const sub = done ? null : walkSubjects[at];
+    const suggested = sub ? suggestedSubjects.has(sub.id) : false;
+    const on = sub ? chosenSubjects.has(sub.id) : false;
+    const answered = sub ? photoAnswered.has(sub.id) : false;
+    const tracking = chosen.map((p) => p.label.toLowerCase());
+    const trackingWords = tracking.length > 1
+      ? `${tracking.slice(0, -1).join(", ")} and ${tracking[tracking.length - 1]}`
+      : tracking[0] || "what you track";
+
+    return (
+      <div className="fhj-fr" ref={actRef}>
+        <div className="fhj-fr-act">
+          <StepRail index={2} labels={RAIL} />
+          <div className="fhj-fr-step" data-act-block>
+            {done ? "Step 3 of 5 · your camera" : `Step 3 of 5 · ${at + 1} of ${total}`}
+          </div>
+
+          <div className="fhj-fr-walkbar" aria-hidden="true" data-act-block>
+            {walkSubjects.map((w, i) => (
+              <span key={w.id}
+                className={"fhj-fr-walkbar-seg" + (i < at ? " is-done" : i === at ? " is-now" : "")} />
+            ))}
+            <span className={"fhj-fr-walkbar-seg" + (done ? " is-now" : "")} />
+          </div>
+
+          {done || !sub ? (
+            <>
+              <h1 className="fhj-fr-display is-small" data-act-block>
+                {photosOn ? "This is your camera." : "No photographs, then."}
+              </h1>
+              <p className="fhj-fr-sub" data-act-block>
+                {photosOn
+                  ? "Every frame here is a shot the camera button will offer you, lined up against the last time you took it. Nothing is ever required to log a day."
+                  : "You went through all of them and kept none, which is a real answer — plenty of journals are numbers and notes. The camera can be switched on any time from Settings."}
+              </p>
+
+              <div className="fhj-fr-sheet" data-act-block>
+                <div className="fhj-fr-eyebrow">
+                  {photosOn ? `Your camera · ${shots.length} shot${shots.length === 1 ? "" : "s"}` : "Your camera"}
+                </div>
+                {photosOn ? (
+                  <div className="fhj-fr-sheet-row">
+                    {shots.slice(0, 8).map((sh) => (
+                      <span key={sh.key} className={"fhj-fr-frame is-" + sh.frame}>
+                        <span className="fhj-fr-frame-win" aria-hidden="true">
+                          <Icon name="camera" size={13} color={C.subtle} />
+                        </span>
+                        <span className="fhj-fr-frame-label">{sh.label}</span>
+                      </span>
+                    ))}
+                    {shots.length > 8 && <span className="fhj-fr-frame is-more">+{shots.length - 8}</span>}
+                  </div>
+                ) : (
+                  <p className="fhj-fr-hint">Nothing picked — and nothing is missing.</p>
+                )}
+              </div>
+
+              {(chosenSubjects.has("areas") || wantsProgress) && (
+                <p className="fhj-fr-hint" data-act-block>
+                  Two of these want one more detail —
+                  {chosenSubjects.has("areas") ? " which body areas" : ""}
+                  {chosenSubjects.has("areas") && wantsProgress ? ", and" : ""}
+                  {wantsProgress ? " which angles" : ""} — waiting for you on the screen this
+                  hands back to.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <h1 className="fhj-fr-display is-small" data-act-block>{sub.label}</h1>
+              <p className="fhj-fr-sub" data-act-block>{sub.blurb}.</p>
+
+              <div className="fhj-fr-pw-shot" data-act-block>
+                <span className={"fhj-fr-frame is-" + (sub.frame || "square")}>
+                  <span className="fhj-fr-frame-win" aria-hidden="true">
+                    <Icon name={sub.icon} size={18} color={C.subtle} />
+                  </span>
+                  <span className="fhj-fr-frame-label">Today</span>
+                </span>
+                <span className="fhj-fr-pw-then" aria-hidden="true">
+                  <Icon name="right" size={13} color={C.subtle} />
+                </span>
+                <span className={"fhj-fr-frame is-" + (sub.frame || "square")}>
+                  <span className="fhj-fr-frame-win" aria-hidden="true">
+                    <Icon name={sub.icon} size={18} color={C.subtle} />
+                  </span>
+                  <span className="fhj-fr-frame-label">Six weeks on</span>
+                </span>
+              </div>
+
+              {sub.why && (
+                <div className="fhj-fr-pw-why" data-act-block>
+                  <span className="fhj-fr-why-mark"><Icon name="spark" size={13} color={C.accentText} /></span>
+                  <span>{sub.why}</span>
+                </div>
+              )}
+
+              <p className="fhj-fr-hint" data-act-block>
+                {suggested
+                  ? `People tracking ${trackingWords} usually keep this one — which is a suggestion, not a decision. `
+                  : ""}
+                {sub.kind === "spots"
+                  ? "Say yes and you pick the exact areas off a body map, each keeping its own run of photos. "
+                  : sub.kind === "progress"
+                    ? "Say yes and you pick the angles — front on its own is plenty to start with. "
+                    : ""}
+                Photos stay on this device.
+              </p>
+
+              <div className="fhj-fr-pw-actions" data-act-block>
+                <button type="button" className="fhj-fr-pw-yes"
+                  aria-pressed={answered && on}
+                  onClick={() => answerSubject(sub.id, true, at)}>
+                  <Icon name="camera" size={15} color={C.onAccent} />
+                  <span>Yes — I'll photograph this</span>
+                </button>
+                <button type="button" className="fhj-fr-pw-no"
+                  aria-pressed={answered && !on}
+                  onClick={() => answerSubject(sub.id, false, at)}>
+                  Not this one
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="fhj-fr-foot">
+          {done && (
+            <button type="button" className="fhj-fr-primary" onClick={() => leavePhotoWalk(true)}>
+              <span>{photosOn ? "These are my shots" : "Continue without photos"}</span>
+              <Icon name="right" size={17} color={C.onAccent} />
+            </button>
+          )}
+          <div className="fhj-fr-foot-row">
+            {at > 0 && (
+              <button type="button" className="fhj-fr-ghost" onClick={() => photoWalkTo(at - 1, true)}>
+                Back
+              </button>
+            )}
+            <button type="button" className="fhj-fr-ghost" onClick={() => leavePhotoWalk(false)}>
+              Show me the whole list
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (act === "photos") {
     return (
@@ -1534,10 +2139,33 @@ export default function FirstRun({
           <div className="fhj-fr-step" data-act-block>Step 3 of 5</div>
           <h1 className="fhj-fr-display is-small" data-act-block>What's worth a photo?</h1>
           <p className="fhj-fr-sub" data-act-block>
-            You will not remember what week three looked like. The camera will. Pick what's worth
-            a picture — every one you choose becomes a shot the camera button offers, lined up
-            against the last time you took it.
+            You will not remember what week three looked like. The camera will. Nothing here is
+            picked for you — these are photographs of your own skin, plate and bathroom shelf, and
+            which of them get taken is yours to say. Every one you choose becomes a shot the camera
+            button offers, lined up against the last time you took it.
           </p>
+
+          {/* The same offer the questions act makes, for the same reason: this
+              is eight decisions, they are not interchangeable, and the list
+              below is the fast path rather than the only one. */}
+          <div className="fhj-fr-invite" data-act-block>
+            <div className="fhj-fr-invite-body">
+              <span className="fhj-fr-eyebrow">
+                {photoWalked
+                  ? `You went through all ${walkSubjects.length}`
+                  : `${walkSubjects.length} things people photograph`}
+              </span>
+              <b>{photoWalked ? "Go through them again?" : "Go through them one at a time"}</b>
+              <span>
+                What each one is, what it is worth six weeks later, and a yes beside a no. Under a
+                minute, and every answer lands here.
+              </span>
+            </div>
+            <button type="button" className="fhj-fr-invite-btn" onClick={startPhotoWalk}>
+              <span>{photoWalked ? "Walk them again" : "Walk me through them"}</span>
+              <Icon name="right" size={15} color={C.onAccent} />
+            </button>
+          </div>
 
           <div className="fhj-fr-subjects" data-act-block>
             {photoSubjects.map((sub) => {
@@ -1554,7 +2182,7 @@ export default function FirstRun({
                   <span className="fhj-fr-subject-body">
                     <span className="fhj-fr-subject-name">
                       {sub.label}
-                      {suggested && <span className="fhj-fr-extra-tag">for what you track</span>}
+                      {suggested && !on && <span className="fhj-fr-extra-tag">suggested for what you track</span>}
                     </span>
                     <span className="fhj-fr-subject-blurb">{sub.blurb}</span>
                   </span>
@@ -1639,8 +2267,10 @@ export default function FirstRun({
               </>
             ) : (
               <p className="fhj-fr-hint">
-                Nothing picked, and that's a real answer — plenty of journals are numbers and
-                notes. You can turn the camera on any time from Settings.
+                Nothing picked yet. Continuing with an empty sheet is a real answer — plenty of
+                journals are numbers and notes, and the camera can be switched on any time from
+                Settings — but it is worth thirty seconds first: tap anything above, or let it
+                walk you through them one at a time.
               </p>
             )}
           </div>

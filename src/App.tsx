@@ -205,7 +205,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Bellwether";
-export const APP_VERSION = "1.27.0";
+export const APP_VERSION = "1.28.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -17498,41 +17498,49 @@ const FIRST_RUN_PHOTO_SUBJECTS = [
   {
     id: "areas", label: "Specific body areas", icon: "camera", kind: "spots", frame: "square",
     blurb: "Pick them off a body map — each area keeps its own run of photos",
+    why: "Six weeks of the same elbow, shot the same way, is the one thing that settles whether it is actually getting better — memory is hopeless at it, and ten minutes in a consulting room is not long enough to argue it out.",
     suggest: ["eczema", "allergy", "autoimmune", "joint"],
   },
   {
     id: "flare", label: "Flare-ups, as they happen", icon: "spark", frame: "square",
     blurb: "One shot of whatever it looks like today, wherever it is",
+    why: "The flare you photograph on the bad night is the one you can still show somebody in March, once it has gone and nobody quite believes how bad it was.",
     suggest: ["eczema", "allergy", "autoimmune"],
   },
   {
     id: "progress", label: "Progress shots", icon: "target", kind: "progress", frame: "tall",
     blurb: "Same pose, weeks apart — front, side or back",
+    why: "Change this slow is invisible day to day and obvious across eight weeks. The photo is what makes it obvious.",
     suggest: ["carnivore", "thyroid"],
   },
   {
     id: "meal", label: "Meals", icon: "food", frame: "square",
     blurb: "The plate, before you forget what was in it",
+    why: "Nobody writes down what was actually in it. A picture of the plate is thirty seconds of typing you never have to do, and the thing you go back to when a week turns bad.",
     suggest: ["ibs", "allergy", "carnivore", "migraine"],
   },
   {
     id: "label", label: "Products & labels", icon: "tube", frame: "tall",
     blurb: "The tub, the box, the ingredient list you'll want to re-read later",
+    why: "The ingredient list you photographed in February is the one you can re-read the day you start reacting to something and want to know what changed.",
     suggest: ["eczema", "allergy"],
   },
   {
     id: "swelling", label: "Swelling", icon: "drop", frame: "square",
     blurb: "Hands, ankles, anywhere that changes size on a bad day",
+    why: "Swelling comes and goes faster than appointments arrive. A photo taken at its worst is the version a clinician never otherwise gets to see.",
     suggest: ["joint", "autoimmune", "pots"],
   },
   {
     id: "healing", label: "Wounds & healing", icon: "heart", frame: "square",
     blurb: "Anything closing up, week by week",
+    why: "Week by week, a wound closing is a straightforward thing to see and a hard thing to remember. This is the run of shots that shows it.",
     suggest: [],
   },
   {
     id: "anything", label: "Anything worth a picture", icon: "star", frame: "square",
     blurb: "A catch-all shot for the day — a rash, a bruise, a swollen eye",
+    why: "The catch-all, for the thing you did not plan for. A rash on a Tuesday, a bruise you cannot explain — photographed now, findable later.",
     suggest: ["migraine", "fatigue", "wellness", "pots", "thyroid", "ibs"],
   },
 ];

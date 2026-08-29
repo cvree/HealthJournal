@@ -99,12 +99,20 @@ type, and the header of an appointment pack fills in beside it. Skipping is a bu
 greyed-out apology, and the age is stored as the year you were born so it is still right in three
 years. Both are editable in Edit Setup afterwards.
 
-**What are you tracking?** The only question that cannot be defaulted.
+**What are you tracking?** The only question that cannot be defaulted — and once it is answered,
+the screen draws the four that follow it: your questions, your photographs, everything else a day
+holds, your first entry. Two minutes, and nothing permanent: every one of those screens exists
+again in Settings, with more on the table than first run ever shows you.
 
 **What should it ask you?** Your daily check-in, already set up from the packs you picked, with
-the honest cost of it printed above in the largest number on the screen — *14 questions, about 50
-seconds a day* — that changes as you switch one on or off. Quick, Balanced and Thorough are one
-tap each; sections fold; the daily number is locked on because a journal without one is not one.
+the honest cost of it printed above in the largest number on the screen — *4 questions, about 15
+seconds a day* — that changes as you switch one on or off. It **starts short**: everybody lands on
+Quick, because Balanced is the better journal and Quick is the better first week, and nobody ever
+quit a health journal for asking too little. Quick will not hand you four severity ratings either
+— four 1–10s all move together, so where a pack's everyday order would give you nothing but
+ratings, one slot goes to something you *did* rather than something you *felt*. Balanced and
+Thorough are one tap each and a line underneath says what the one you are on actually means;
+sections fold; the daily number is locked on because a journal without one is not one.
 Most people have never been asked to design a survey, so this act teaches rather than asks:
 **every question is drawn with the control it will actually use** — ten rungs, a Yes beside a No,
 a keypad, three lines of text — the whole thing can be sorted by *how* it is answered (1–10 /
@@ -112,12 +120,25 @@ yes-no / numbers & words, each with a live count), and **See it as it'll look** 
 check-in exactly as it will be answered tomorrow morning. *Ask me something of my own* takes a
 question in your own words as a 1–10, a yes/no, a number or a few words, drawn as you write it.
 
+**Or it walks you through them.** Beside the list — never instead of it — there is a guided pass
+that puts one group of questions on the screen at a time: how big the group is and what answering
+it feels like (*five questions here — three rated 1–10, two yes / no*), the control drawn beside
+every row, *ask me all of them* and *none of these* as single taps, and the running cost of the
+whole check-in under your thumb. It ends on your finished check-in drawn exactly as tomorrow
+morning will draw it. You can leave it from any card, and leaving keeps every answer you gave.
+
 **What's worth a photo?** Not a switch — a question about subjects. Specific body areas off a
 tappable map, flare-ups as they happen, progress shots (front, side, back), meals, products and
 labels, swelling, wounds and healing, or anything worth a picture. Each one becomes a real photo
 question with its own baseline, so every shot lines up against the last one *of the same thing*,
 and a contact sheet of labelled empty frames assembles as you pick. Wanting none of it is a
 first-class answer the screen says out loud.
+
+**Nothing here is ticked for you.** Every subject on this screen ends with a camera pointed at your
+own skin, plate or bathroom shelf, so the app suggests — marked *suggested for what you track* —
+and then waits. This screen has a guided pass too: one subject at a time, the same frame twice six
+weeks apart, what it turns out to be worth later, and a Yes beside a No. Both answers move on, and
+a no is remembered as a no.
 
 **What else should it keep?** Meds and creams, meals, flares, the bathroom, weight — and each one
 you tick draws itself into the row of one-tap buttons underneath, so the dashboard is assembled in

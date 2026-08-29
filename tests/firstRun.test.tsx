@@ -98,16 +98,24 @@ async function toPhotos(who?: Who) {
   await screen.findByText(/What's worth a photo\?/i);
 }
 
-/** …and on to what else the journal should keep. */
-async function toExtras(who?: Who) {
+/** A photo subject on the act-four list, by name. Nothing on that screen
+    arrives ticked any more, so every test that wants a camera has to ask for
+    one — which is the whole point of the change. */
+const subjectBtn = (re: RegExp) =>
+  screen.getAllByRole("button").find((b) => b.className.includes("fhj-fr-subject") && re.test(b.textContent || ""))!;
+
+/** …and on to what else the journal should keep, photographing whatever this
+    particular test wanted photographed (nothing, by default). */
+async function toExtras(who?: Who, photos: RegExp[] = []) {
   await toPhotos(who);
+  for (const re of photos) fireEvent.click(subjectBtn(re));
   tap(/^Continue/);
   await screen.findByText(/What else should it keep\?/i);
 }
 
 /** …and on to the entry itself. */
-async function toEntry(who?: Who) {
-  await toExtras(who);
+async function toEntry(who?: Who, photos: RegExp[] = []) {
+  await toExtras(who, photos);
   fireEvent.click(exact("Continue")!);
   await screen.findByText(/How is your skin today\?/i);
 }
@@ -251,14 +259,44 @@ describe("shaping the check-in", () => {
     await waitFor(() => expect(countOnScreen()).toBe(before - 1));
   });
 
-  it("offers a shorter and a longer version, without hiding the middle", async () => {
+  /* The default everybody meets. Balanced is the better journal and Quick is
+     the better first week, and the app has to pick one for somebody who has
+     no way yet of knowing which they want. It picks the one nobody quits. */
+  it("starts everybody on the short version, and says what that means", async () => {
     await mountFresh();
     await toTune();
+    expect(exact("Quick")!.getAttribute("aria-pressed")).toBe("true");
+    expect(exact("Balanced")!.getAttribute("aria-pressed")).toBe("false");
+    // A preset nobody can read is a slider with no units.
+    expect(document.querySelector(".fhj-fr-depth-note")!.textContent)
+      .toMatch(/worst morning|start here/i);
+    // Short enough to be a genuinely different offer from Balanced.
+    expect(countOnScreen()).toBeLessThanOrEqual(5);
+  });
+
+  /* Four severity ratings would all move together, and the question this app
+     exists to answer needs something that does not. */
+  it("puts something other than a 1–10 in the short version", async () => {
+    await mountFresh();
+    await toTune();
+    tap(/See it as it'll look/);
+    const pv = await waitFor(() => document.querySelector(".fhj-fr-pv")!);
+    expect(pv.querySelectorAll(".fhj-fr-pv-scale").length).toBeGreaterThan(0);
+    expect(pv.querySelectorAll(".fhj-fr-pv-field").length)
+      .toBeGreaterThan(pv.querySelectorAll(".fhj-fr-pv-scale").length);
+  });
+
+  it("offers a longer version, without hiding the middle", async () => {
+    await mountFresh();
+    await toTune();
+    const quick = countOnScreen();
+    fireEvent.click(exact("Balanced")!);
+    await waitFor(() => expect(countOnScreen()).toBeGreaterThan(quick));
     const balanced = countOnScreen();
-    fireEvent.click(exact("Quick")!);
-    await waitFor(() => expect(countOnScreen()).toBeLessThan(balanced));
     fireEvent.click(exact("Thorough")!);
     await waitFor(() => expect(countOnScreen()).toBeGreaterThan(balanced));
+    fireEvent.click(exact("Quick")!);
+    await waitFor(() => expect(countOnScreen()).toBe(quick));
   });
 
   it("keeps the daily number switched on, because a journal without one is not one", async () => {
@@ -288,10 +326,10 @@ describe("shaping the check-in", () => {
 describe("what else the journal keeps", () => {
   it("draws the one-tap buttons being chosen, rather than filing the choice away", async () => {
     await mountFresh();
-    await toExtras();
+    await toExtras(undefined, [/Flare-ups/]);
     const row = () => document.querySelector(".fhj-fr-preview-row")!.textContent || "";
     // Check-in always leads it; the camera follows because the act before this
-    // one found something worth photographing.
+    // one was told there was something worth photographing.
     expect(row()).toMatch(/Check-in/);
     expect(row()).toMatch(/Photo/);
 
@@ -472,9 +510,191 @@ describe("understanding the survey you are designing", () => {
   });
 });
 
+/* ---------- the guided passes ----------
+
+   The two screens with more options than anybody weighs in one glance now
+   deal them out a card at a time. What is protected here is not the animation
+   or the wording: it is that the pass is optional, that leaving it half-way
+   keeps every answer already given, that what somebody says inside it is the
+   same state the list outside it edits, and that it ends on the thing they
+   built rather than on a "done". */
+
+describe("choosing the questions, one group at a time", () => {
+  const step = () => document.querySelector(".fhj-fr-step")!.textContent || "";
+  const tally = () => Number(document.querySelector(".fhj-fr-walk-tally-num")!.textContent);
+  const groupCount = () => document.querySelectorAll(".fhj-fr-walkbar-seg").length - 1;
+
+  it("offers the pass beside the list, rather than instead of it", async () => {
+    await mountFresh();
+    await toTune();
+    // Both ways through are on the same screen: the invitation, and the list.
+    expect(document.querySelector(".fhj-fr-invite")!.textContent).toMatch(/one group at a time/i);
+    expect(document.querySelectorAll(".fhj-fr-qsec").length).toBeGreaterThan(0);
+    expect((exact("Continue") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("puts one group on the screen, says what it costs, and takes an answer", async () => {
+    await mountFresh();
+    await toTune();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/group 1 of \d/i));
+
+    // The shape of the group, in the words an answer is given in.
+    expect(document.querySelector(".fhj-fr-sub")!.textContent).toMatch(/question(s)? here/i);
+    const rows = document.querySelectorAll(".fhj-fr-wq");
+    expect(rows.length).toBeGreaterThan(0);
+
+    // All of them, then none of them — one tap each, and the running total
+    // under the thumb answers back both times.
+    const start = tally();
+    tap(/^Ask me all/);
+    await waitFor(() => expect(tally()).toBeGreaterThan(start));
+    const all = tally();
+    fireEvent.click(exact("None of these")!);
+    await waitFor(() => expect(tally()).toBeLessThan(all));
+  });
+
+  it("ends on the check-in the person built, and hands it back to the list", async () => {
+    await mountFresh();
+    await toTune();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/group 1 of/i));
+
+    for (let i = 0; i < groupCount(); i++) tap(/Next group|See my check-in/);
+    await screen.findByText(/This is your check-in\./i);
+    // Tomorrow morning, drawn — not a "setup complete" tick.
+    expect(document.querySelector(".fhj-fr-pv")).toBeTruthy();
+    expect(document.querySelector(".fhj-fr-pv-body")!.children.length).toBeGreaterThan(0);
+
+    tap(/That's my check-in/);
+    await screen.findByText(/What should it ask you\?/i);
+    // And the screen knows it has been walked.
+    expect(document.querySelector(".fhj-fr-invite")!.textContent).toMatch(/again/i);
+  });
+
+  it("keeps every answer when somebody leaves it half-way", async () => {
+    await mountFresh();
+    await toTune();
+    const before = countOnScreen();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/group 1 of/i));
+    tap(/^Ask me all/);
+    const walked = tally();
+    expect(walked).toBeGreaterThan(before);
+
+    fireEvent.click(exact("Show me the whole list")!);
+    await screen.findByText(/What should it ask you\?/i);
+    expect(countOnScreen()).toBe(walked);
+  });
+
+  it("lets somebody out from the middle of it, not only from the first card", async () => {
+    await mountFresh();
+    await toTune();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/group 1 of/i));
+    tap(/Next group/);
+    await waitFor(() => expect(step()).toMatch(/group 2 of/i));
+    // Back is there, and so is the door — walking out the way you came in is
+    // what makes a guided anything feel like a trap.
+    expect(exact("Back")).toBeTruthy();
+    fireEvent.click(exact("Show me the whole list")!);
+    await screen.findByText(/What should it ask you\?/i);
+  });
+
+  /* The whole point of the pass: a question somebody turned down inside it is
+     a question their journal does not ask. */
+  it("writes what was chosen in the pass into the journal itself", async () => {
+    await mountFresh();
+    await toTune();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/group 1 of/i));
+    const itch = screen.getAllByRole("switch")
+      .find((b) => /^Itch/.test((b.textContent || "").trim()))!;
+    const wasOn = itch.getAttribute("aria-checked") === "true";
+    fireEvent.click(itch);
+    await waitFor(() =>
+      expect(screen.getAllByRole("switch")
+        .find((b) => /^Itch/.test((b.textContent || "").trim()))!
+        .getAttribute("aria-checked")).toBe(String(!wasOn)));
+
+    fireEvent.click(exact("Show me the whole list")!);
+    await screen.findByText(/What should it ask you\?/i);
+    fireEvent.click(exact("Continue")!);
+    await screen.findByText(/What's worth a photo\?/i);
+    tap(/^Continue/);
+    await screen.findByText(/What else should it keep\?/i);
+    fireEvent.click(exact("Continue")!);
+    await screen.findByText(/How is your skin today\?/i);
+    fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 4 out of 10/ }));
+    tap(/Save my first entry/);
+    await screen.findByText("Your journal has begun.");
+    tap(/Open my journal/);
+
+    await waitFor(() => {
+      const off = saved().profile.disabledFields || [];
+      expect(off.includes("itch")).toBe(wasOn);
+    }, { timeout: 10000 });
+  });
+});
+
+describe("choosing the photographs, one subject at a time", () => {
+  const step = () => document.querySelector(".fhj-fr-step")!.textContent || "";
+
+  it("holds up one subject, says what it is worth, and offers a yes beside a no", async () => {
+    await mountFresh();
+    await toPhotos();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/Step 3 of 5 · 1 of \d/i));
+
+    // What this one is for six weeks from now — not just what it is.
+    expect(document.querySelector(".fhj-fr-pw-why")!.textContent!.length).toBeGreaterThan(20);
+    // The same shot twice, weeks apart, which is the whole argument for it.
+    expect(document.querySelectorAll(".fhj-fr-pw-shot .fhj-fr-frame").length).toBe(2);
+    expect(screen.getAllByRole("button").some((b) => /Not this one/.test(b.textContent || ""))).toBe(true);
+
+    // A no is an answer, and it moves on like one.
+    tap(/Not this one/);
+    await waitFor(() => expect(step()).toMatch(/2 of \d/i));
+  });
+
+  it("lands every yes on the contact sheet, and every no nowhere", async () => {
+    await mountFresh();
+    await toPhotos();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/1 of \d/i));
+
+    const first = document.querySelector(".fhj-fr-display")!.textContent!;
+    tap(/Not this one/);
+    await waitFor(() => expect(step()).toMatch(/2 of \d/i));
+    const second = document.querySelector(".fhj-fr-display")!.textContent!;
+    tap(/Yes — I'll photograph this/);
+    await waitFor(() => expect(step()).toMatch(/3 of \d/i));
+
+    fireEvent.click(exact("Show me the whole list")!);
+    await screen.findByText(/What's worth a photo\?/i);
+    const sheet = document.querySelector(".fhj-fr-sheet")!.textContent || "";
+    expect(sheet).toMatch(new RegExp(second.split(",")[0].slice(0, 8), "i"));
+    expect(subjectBtn(new RegExp(first)).getAttribute("aria-pressed")).toBe("false");
+    expect(subjectBtn(new RegExp(second)).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("ends on the camera it built, whether or not anything is in it", async () => {
+    await mountFresh();
+    await toPhotos();
+    tap(/Walk me through them/);
+    await waitFor(() => expect(step()).toMatch(/1 of (\d+)/i));
+    const total = Number(step().match(/1 of (\d+)/)![1]);
+    for (let i = 0; i < total; i++) tap(/Not this one/);
+
+    await screen.findByText(/No photographs, then\./i);
+    tap(/Continue without photos/);
+    await screen.findByText(/What's worth a photo\?/i);
+    expect(document.querySelector(".fhj-fr-invite")!.textContent).toMatch(/again/i);
+  });
+});
+
 describe("what is worth a photograph", () => {
-  const subject = (re: RegExp) =>
-    screen.getAllByRole("button").find((b) => b.className.includes("fhj-fr-subject") && re.test(b.textContent || ""))!;
+  const subject = subjectBtn;
   const sheet = () => document.querySelector(".fhj-fr-sheet")!.textContent || "";
 
   it("asks what the photos are of, rather than whether to have photos", async () => {
@@ -488,6 +708,25 @@ describe("what is worth a photograph", () => {
     expect(subject(/Specific body areas/)).toBeTruthy();
   });
 
+  /* The one screen in this flow that arrives genuinely blank, and on purpose.
+     Every answer here ends with a camera pointed at somebody's own skin or
+     plate, and an app that had already decided which of those it would be
+     asking for has taken a decision that was never on offer. It is still
+     allowed an opinion — it just has to say it out loud and then wait. */
+  it("picks nothing for anybody: the suggestions are marked, not ticked", async () => {
+    await mountFresh();
+    await toPhotos();
+    for (const re of [/Specific body areas/, /Flare-ups/, /Products & labels/, /Meals/]) {
+      expect(subject(re).getAttribute("aria-pressed")).toBe("false");
+    }
+    // Eczema suggests body areas — and says so rather than acting on it.
+    expect(subject(/Specific body areas/).textContent).toMatch(/suggested for what you track/i);
+    expect(sheet()).toMatch(/nothing picked yet/i);
+    // Continuing on an empty sheet is a finished answer, not an unfilled form.
+    expect(screen.getAllByRole("button").some((b) => /Continue without photos/.test(b.textContent || "")))
+      .toBe(true);
+  });
+
   it("assembles a contact sheet as the subjects are picked", async () => {
     await mountFresh();
     await toPhotos();
@@ -496,7 +735,6 @@ describe("what is worth a photograph", () => {
     await waitFor(() => expect(sheet()).toMatch(/Meals/));
 
     // A body area is a shot of its own, named by where it is.
-    fireEvent.click(subject(/Specific body areas/));   // eczema arrives with it on
     fireEvent.click(subject(/Specific body areas/));
     const map = await waitFor(() => document.querySelector('[aria-label^="Tap body areas"]')!);
     fireEvent.click(map.querySelectorAll('[role="button"]')[0]);
@@ -508,6 +746,7 @@ describe("what is worth a photograph", () => {
     await mountFresh();
     await toPhotos();
     fireEvent.click(subject(/Meals/));
+    fireEvent.click(subject(/Flare-ups/));
     tap(/^Continue/);
     await screen.findByText(/What else should it keep\?/i);
     fireEvent.click(exact("Continue")!);
@@ -532,13 +771,12 @@ describe("what is worth a photograph", () => {
   it("lets somebody want no photos at all, and does not hand them a camera", async () => {
     await mountFresh();
     await toPhotos();
-    for (const re of [/Specific body areas/, /Flare-ups/, /Products & labels/]) {
-      const b = subject(re);
-      if (b.getAttribute("aria-pressed") === "true") fireEvent.click(b);
-    }
+    // Turning one on and off again lands back where the screen started.
+    fireEvent.click(subject(/Meals/));
+    fireEvent.click(subject(/Meals/));
     await waitFor(() =>
       expect(screen.getAllByRole("button").some((b) => /Continue without photos/.test(b.textContent || ""))).toBe(true));
-    expect(sheet()).toMatch(/that's a real answer/i);
+    expect(sheet()).toMatch(/is a real answer/i);
 
     tap(/^Continue/);
     await screen.findByText(/What else should it keep\?/i);

@@ -1,5 +1,104 @@
 # Changelog
 
+## 1.28.0
+
+The setup stops choosing for you.
+
+First run has been eight screens and one path for a while now, and the shape of
+it was right. What was wrong was quieter, and it was in the defaults.
+
+Two screens in the middle of that flow arrive with a lot on the table — the
+questions your check-in will ask, and the things worth photographing — and both
+of them were arriving *already decided*. The check-in opened on **Balanced**:
+every question the packs you picked consider everyday, which for eczema is
+fourteen of them before you have answered a single one. The photos screen
+opened with three or four subjects already ticked, because the app had looked
+at your conditions and formed an opinion about what your camera would be
+pointed at.
+
+Both are defensible. Both are also the reason people scroll a setup screen
+instead of reading it, and a survey you scrolled past is a survey you resent on
+the first bad morning.
+
+### It starts short now
+
+Everybody lands on **Quick**: your daily number and a few everyday questions,
+about fifteen seconds. Balanced and Thorough are still one tap away and still
+say what they are — a line under the presets now spells out what the one you
+are standing on actually means, because "Balanced" is a slider with no units.
+
+This is a straight reversal of which mistake to make. Balanced is the better
+*journal*; Quick is the better *first week*. Nobody has ever quit a health
+journal because the first week asked too little, and adding a question in March
+is a thing people do. Deleting twenty in March is not — they just stop opening
+the app.
+
+One rule keeps Quick honest: it will not hand you four severity ratings. Four
+1–10s all move together, and the question this app exists to answer — *what was
+different about the bad weeks?* — has nothing to work with. So where a pack's
+own everyday order would give you nothing but ratings, the last slot goes to the
+first question answered another way: something you *did*, beside something you
+*felt*.
+
+### Nothing gets photographed unless you say so
+
+The photos screen no longer arrives with anything ticked. Every subject on it
+ends with a camera pointed at your own skin, your own plate or your own bathroom
+shelf, and an app that had already decided which of those it would be asking for
+has helped itself to a decision that was never on offer.
+
+It is still allowed an opinion. It just has to say it out loud and then wait: the
+suggestions are marked **suggested for what you track**, and the contact sheet
+fills in as you answer rather than starting full. Continuing with an empty sheet
+is a finished answer, and the button says so.
+
+### And both screens can now walk you through it
+
+This is the part that matters most. Beside each of those lists there is now a
+guided pass — optional, leaveable from any card, editing exactly the same state
+the list edits.
+
+**The questions**, one group at a time. Each card says how big the group is and
+what answering it feels like — *five questions here — three rated 1–10, two yes /
+no* — draws the control beside every row, offers *ask me all of them* and *none
+of these* as single taps, and keeps the running cost of the whole check-in under
+your thumb. It ends on your finished check-in, drawn exactly as tomorrow morning
+will draw it, over the line: *every one of these is here because you said so*.
+
+**The photographs**, one subject at a time. What it is, the same frame twice six
+weeks apart, what it turns out to be worth later — *the flare you photograph on
+the bad night is the one you can still show somebody in March* — whether people
+tracking what you track tend to keep it, and then a Yes beside a No. Both
+answers move on. A no is recorded as a no, so stepping back through the deck
+shows the decision you made rather than a card that looks untouched.
+
+Neither pass hides anything. Leaving one half-way keeps every answer already
+given, and the full list is one tap away from every card.
+
+### And it tells you what is coming
+
+Picking what you track now draws the four screens that follow it: your
+questions, your photographs, everything else a day holds, your first entry. Two
+minutes, and nothing permanent — every one of them exists again in Settings,
+with more on the table than first run ever shows you.
+
+A step rail names four words. It does not tell you that the questions arrive
+short, that nothing gets photographed unless you ask, or that all of it is
+changeable tomorrow. Somebody who knows those three things arrives at the next
+screen deciding. Somebody who does not arrives at it bracing.
+
+### Under it
+
+`FirstRun.tsx` gains two guided passes (`walk` over the question sections,
+`photoWalk` over the photo subjects, both null when not walking and neither
+holding state of its own), `DEPTHS` with the presets' meanings written down,
+`shapeOf()` for the group-shape sentence, and a `why` on every photo subject in
+the catalogue. `presetKeys("light")` does the non-scale swap. `chosenSubjects`
+no longer falls back to the suggestions. 1743 tests across 69 suites, all green;
+`tests/firstRun.test.tsx` covers the new default, the swap, both passes, leaving
+one from the middle, and that what you chose inside a pass is what your journal
+ends up asking.
+
 ## 1.27.0
 
 How often it asks.

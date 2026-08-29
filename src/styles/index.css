@@ -6121,6 +6121,338 @@ button.fhj-section:disabled {
   }
 }
 
+/* What the next four screens are, before they arrive. */
+.fhj-fr-next {
+  margin-top: 1.25rem;
+  padding: 0.875rem 1rem 1rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+
+.fhj-fr-next-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  counter-reset: fhj-next;
+}
+
+.fhj-fr-next-list li {
+  position: relative;
+  padding-left: 1.625rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+  counter-increment: fhj-next;
+}
+.fhj-fr-next-list li::before {
+  content: counter(fhj-next);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--fhj-accent-text, #a6c3ea);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+.fhj-fr-next-list b {
+  color: var(--fhj-ink, #ecebe7);
+  font-weight: 700;
+}
+
+/* ---------- the guided passes ----------
+
+   Two screens in first run have more options than anybody weighs in one
+   glance — which questions get asked, and what gets photographed — and both
+   now carry a pass that deals them out one card at a time. The paint is
+   shared: an invitation card on the list screen, a segmented bar across the
+   top of the pass, and rows big enough to read while walking. */
+
+/* What the preset you are standing on actually means. */
+.fhj-fr-depth-note {
+  margin-top: 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-depth-note b { color: var(--fhj-ink, #ecebe7); }
+
+/* The offer itself. Deliberately not a primary button — the list under it is
+   a perfectly good way through, and a screaming CTA here would turn an offer
+   into a demand. */
+.fhj-fr-invite {
+  margin-top: 1.25rem;
+  padding: 0.875rem 1rem 1rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+
+.fhj-fr-invite-body .fhj-fr-eyebrow { margin-bottom: 0.375rem; }
+
+.fhj-fr-invite-body b {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+
+.fhj-fr-invite-body > span:not([class]) {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-fr-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 0.75rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--fhj-on-accent, #121419);
+  background: var(--fhj-accent, #8fb0e3);
+  transition: transform 90ms var(--fhj-out);
+}
+.fhj-fr-invite-btn:active { transform: scale(0.985); }
+
+/* How far through the pass you are. The same hollow-ahead, filled-behind
+   shape the step rail uses, because it is the same promise. */
+.fhj-fr-walkbar {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.fhj-fr-walkbar-seg {
+  flex: 1;
+  height: 0.1875rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-fr-walkbar-seg.is-done { background: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 55%, transparent); }
+.fhj-fr-walkbar-seg.is-now { background: var(--fhj-accent, #8fb0e3); }
+
+/* One question, at the size somebody decides about it. Two lines: what it
+   asks and how it is answered on top, what it currently costs underneath. */
+.fhj-fr-walkqs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.fhj-fr-wq {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  text-align: left;
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  transition: transform 90ms var(--fhj-out), border-color var(--fhj-quick) ease, background var(--fhj-quick) ease;
+}
+.fhj-fr-wq:active:not(:disabled) { transform: scale(0.985); }
+.fhj-fr-wq.is-on {
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+.fhj-fr-wq.is-locked { opacity: 0.9; }
+
+.fhj-fr-wq-top {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.fhj-fr-wq-mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.4375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
+  transition: background var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
+}
+.fhj-fr-wq.is-on .fhj-fr-wq-mark {
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-wq-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+}
+
+.fhj-fr-wq-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+  padding-left: 1.875rem;
+  font-size: 0.6875rem;
+}
+
+.fhj-fr-wq-state { color: var(--fhj-subtle, #9a9ca6); }
+.fhj-fr-wq.is-on .fhj-fr-wq-state {
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-weight: 700;
+}
+
+.fhj-fr-wq-type {
+  flex: none;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* All of them, or none of them, for the people who already know. */
+.fhj-fr-walk-bulk {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.fhj-fr-walk-bulk .fhj-fr-mini { flex: 1; }
+
+.fhj-fr-mini.is-quiet {
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+
+/* The running cost, under the thumb rather than at the top of the screen. */
+.fhj-fr-walk-tally {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-fr-walk-tally b { color: var(--fhj-ink, #ecebe7); }
+
+.fhj-fr-walk-tally-num {
+  font-family: var(--fhj-font-display);
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One photo subject, held up: the same shot twice, weeks apart, which is the
+   entire argument for taking it. */
+.fhj-fr-pw-shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.875rem;
+  margin-top: 1.5rem;
+  padding: 1.25rem 1rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+.fhj-fr-pw-shot .fhj-fr-frame { width: 5.5rem; }
+.fhj-fr-pw-shot .fhj-fr-frame.is-square .fhj-fr-frame-win { height: 5.5rem; }
+.fhj-fr-pw-shot .fhj-fr-frame.is-tall .fhj-fr-frame-win { height: 7rem; }
+.fhj-fr-pw-shot .fhj-fr-frame-label { text-align: center; }
+
+.fhj-fr-pw-then { display: inline-flex; }
+
+.fhj-fr-pw-why {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin-top: 1rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+/* A yes beside a no, both of which move on. The no is not greyed out and not
+   hidden — half the answers on this screen ought to be noes. */
+.fhj-fr-pw-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.fhj-fr-pw-yes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 3rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--fhj-on-accent, #121419);
+  background: var(--fhj-accent, #8fb0e3);
+  transition: transform 90ms var(--fhj-out);
+}
+.fhj-fr-pw-yes:active { transform: scale(0.985); }
+.fhj-fr-pw-yes[aria-pressed="true"] {
+  box-shadow: var(--fhj-shadow-pop, 3px 3px 0 rgba(0, 0, 0, 0.45));
+}
+
+.fhj-fr-pw-no {
+  width: 100%;
+  min-height: 3rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fhj-sub, #b9bac2);
+  background: var(--fhj-faint, #2a2d35);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+}
+.fhj-fr-pw-no[aria-pressed="true"] {
+  color: var(--fhj-ink, #ecebe7);
+  border-color: var(--fhj-line-strong, #464a55);
+}
+
+/* Back, and the way out, side by side under the primary. Leaving a guided
+   pass has to cost one tap from anywhere in it — walking back out the way you
+   came is the thing that makes a wizard feel like a trap. */
+.fhj-fr-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* The way out takes the room; Back only takes the word. Two half-width ghosts
+   both wrap, and a wrapped exit reads as an afterthought. */
+.fhj-fr-foot-row .fhj-fr-ghost {
+  flex: 1;
+  width: auto;          /* the base ghost is a full-width block on its own */
+  min-width: 0;
+  white-space: nowrap;
+}
+.fhj-fr-foot-row .fhj-fr-ghost:first-child:not(:only-child) {
+  flex: 0 0 auto;
+  padding: 0 1rem;
+}
+
 /* ============================================================
    Navigation: two destinations and one verb
    ============================================================ */
