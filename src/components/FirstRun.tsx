@@ -103,8 +103,8 @@ import { C, readableInk } from "../lib/theme";
 import { feedback, place } from "../lib/feedback";
 import { scoreWord } from "../lib/pulse";
 import {
-  actIn, bloom, buildTimeline, countUp, heroIn, landCard, liftCard, readoutSwap, rungPop,
-  type CardFlight,
+  actIn, bloom, buildTimeline, countUp, heroIn, landCard, liftCard, railAdvance, readoutSwap,
+  rungPop, type CardFlight,
 } from "../lib/intro";
 
 export interface FirstRunScale {
@@ -250,7 +250,28 @@ type Act = "hero" | "you" | "focus" | "tune" | "photos" | "extras" | "entry" | "
     into paperwork. */
 const FLOW: Act[] = ["focus", "tune", "photos", "extras", "entry"];
 
-const RAIL = ["Tracking", "Questions", "Photos", "Extras", "First entry"];
+/**
+ * The five acts, and the one line each of them is worth.
+ *
+ * The note matters as much as the label, because it is what replaced a wall.
+ * The first act used to carry a four-item list headed "What happens next",
+ * which said, in four paragraphs, exactly what these four segments say in four
+ * words — and then a fifth paragraph promising that none of it was permanent,
+ * a promise the sentence above it had already made. Orientation delivered as
+ * a wall on screen three is orientation nobody reads.
+ *
+ * So it is delivered a line at a time, from the rail, on the screen each line
+ * is about. Same place every act, one sentence, and it says the thing the five
+ * segments cannot draw: not *where* you are — the bars have that — but what
+ * this act is going to ask of you.
+ */
+const RAIL: { label: string; note: string }[] = [
+  { label: "Tracking", note: "Sets what you'll be offered — you pick the questions themselves next, and all of it changes later in Settings." },
+  { label: "Questions", note: "Nothing is on yet. A group at a time — keep what you'll answer in March." },
+  { label: "Photos", note: "Nothing is photographed unless you ask for it. One subject at a time." },
+  { label: "Extras", note: "Meals, doses, flares, a nudge — each one you keep becomes a button." },
+  { label: "First entry", note: "A real one, written to your journal. Not a demo." },
+];
 
 const ramp = (v: number, dir?: string): string => {
   const bad = dir === "pos" ? 11 - v : v;
@@ -430,20 +451,41 @@ function HeroCollage({ Icon }: { Icon: Props["Icon"] }) {
 
 /* ---------- the rail across the top of the numbered acts ---------- */
 
-/** Where you are, and how much is left, without a number nobody trusts.
+/** Where you are, how much is left, and what this one is for.
 
-    Four segments, filled behind you and hollow ahead — the same shape as the
+    Five segments, filled behind you and hollow ahead — the same shape as the
     timeline the last act draws, which is not an accident: this app's one
-    picture is a line of days, and its progress indicator is a short one. */
-function StepRail({ index, labels }: { index: number; labels: string[] }) {
+    picture is a line of days, and its progress indicator is a short one.
+
+    It carries the whole burden of orientation now, and it is the only thing
+    that does. Every act used to stack four indicators for two facts: this rail,
+    a line reading "Step 2 of 5 · group 1 of 4", and a second bar under it
+    drawing that inner position again. The rail says which act. The walkbar says
+    which card. Neither needed a number spelling it out underneath, and a screen
+    that draws its own progress twice is a screen that trusts neither drawing.
+
+    So what is left of that line is the half no bar can draw — what the act is
+    about — and it sits here, on the rail, where the position it belongs to is. */
+function StepRail({ index, note }: { index: number; note?: string }) {
+  const line = note ?? RAIL[index]?.note;
+  /* The bars are `aria-hidden` — they are a shape, and a shape read out is
+     noise. So the position that used to be spelled out underneath them is not
+     gone, it has moved to where it costs a sighted person nothing: somebody on
+     a screen reader still hears "Step 2 of 5, Questions", and somebody looking
+     at the screen still sees it drawn once instead of written twice. */
   return (
-    <div className="fhj-fr-rail-steps" aria-hidden="true">
-      {labels.map((l, i) => (
-        <span key={l} className={"fhj-fr-rail-seg" + (i < index ? " is-done" : i === index ? " is-now" : "")}>
-          <span className="fhj-fr-rail-bar" />
-          <span className="fhj-fr-rail-label">{l}</span>
-        </span>
-      ))}
+    <div className="fhj-fr-rail-block" role="group"
+      aria-label={`Step ${index + 1} of ${RAIL.length} — ${RAIL[index]?.label}`}>
+      <div className="fhj-fr-rail-steps" aria-hidden="true">
+        {RAIL.map((seg, i) => (
+          <span key={seg.label}
+            className={"fhj-fr-rail-seg" + (i < index ? " is-done" : i === index ? " is-now" : "")}>
+            <span className="fhj-fr-rail-bar" data-rail-bar={i === index ? "now" : undefined} />
+            <span className="fhj-fr-rail-label">{seg.label}</span>
+          </span>
+        ))}
+      </div>
+      {line && <p className="fhj-fr-rail-note" data-rail-note>{line}</p>}
     </div>
   );
 }
@@ -936,7 +978,11 @@ export default function FirstRun({
 
   useLayoutEffect(() => {
     if (act === "hero" || act === "born") return;
-    return actIn(actRef.current, dir.current);
+    const stop = actIn(actRef.current, dir.current);
+    /* The rail is the one thing on screen that outlives the act, so it is the
+       one thing whose change is worth showing rather than cutting to. */
+    railAdvance(actRef.current, dir.current);
+    return stop;
   }, [act]);
 
   useLayoutEffect(() => {
@@ -1375,19 +1421,16 @@ export default function FirstRun({
 
   if (act === "focus") {
     const shown = showAllPacks ? packs : packs.slice(0, 6);
-    const questionCount = catalogue.length;
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={0} labels={RAIL} />
-          <div className="fhj-fr-step" data-act-block>Step 1 of 5</div>
+          <StepRail index={0} />
           <h1 className="fhj-fr-display is-small" data-act-block>
             {first ? `${first} — what are you tracking?` : "What are you tracking?"}
           </h1>
-          <p className="fhj-fr-sub" data-act-block>
-            Pick one or more. It only sets what you'll be <i>offered</i> — you choose every question
-            yourself on the screens after this, and change them any time after that.
-          </p>
+          {/* No sub. The rail's line above already says what picking a pack
+              does and that none of it is permanent, and saying it twice under
+              one headline is the habit this whole pass exists to break. */}
 
           <div className="fhj-fr-packs" data-act-block>
             {shown.map((p) => {
@@ -1414,49 +1457,14 @@ export default function FirstRun({
             </button>
           )}
 
-          {/* The consequence of the choice, immediately. Two packs is not an
-              abstraction once it says what it brings with it — and neither is
-              "four more screens" until somebody has been told what is on them.
-
-              This is the orientation the flow never gave. A step rail names
-              four words; it does not say that the questions arrive short, that
-              nothing gets photographed unless it is asked for, or that every
-              one of these screens exists again in Settings tomorrow. Somebody
-              who knows all three arrives at the next screen deciding. Somebody
-              who does not arrives at it bracing. */}
-          {mods.length > 0 && (
-            <div className="fhj-fr-next" aria-live="polite">
-              <div className="fhj-fr-eyebrow">What happens next</div>
-              <ol className="fhj-fr-next-list">
-                <li>
-                  <b>Your questions.</b>{" "}
-                  {questionCount} came with what you just picked, and none of them are switched on
-                  yet. They come a group at a time and you say which get asked — there is no
-                  "recommended" size, because the right one is the one you will still answer in
-                  March.
-                </li>
-                <li>
-                  <b>Your photographs.</b>{" "}
-                  What is worth a picture, and of what — one subject at a time, a yes beside a no.
-                  Nothing here is chosen for you either.
-                </li>
-                <li>
-                  <b>Everything else a day holds.</b>{" "}
-                  Meals, doses, flares, a nudge in the evening — and how often it should ask at all.
-                  One at a time, and each one you keep becomes a button under your thumb.
-                </li>
-                <li>
-                  <b>Your first entry.</b>{" "}
-                  A real one, written to your journal rather than a demo.
-                </li>
-              </ol>
-              <p className="fhj-fr-hint">
-                A couple of minutes of short screens, and nothing is permanent: every one of these
-                choices exists again in Settings, with more on the table than first run ever shows
-                you.
-              </p>
-            </div>
-          )}
+          {/* Nothing here restates the rail. This screen used to end with a
+              four-item list headed "What happens next", whose four items were
+              the rail's four remaining segments written out as paragraphs, over
+              a fifth paragraph promising nothing was permanent — which the
+              sentence under the headline had already promised. Four indicators
+              and two reassurances for one screen's worth of orientation. The
+              rail carries it now, a line at a time, on the screen each line is
+              actually about. */}
         </div>
 
         <div className="fhj-fr-foot">
@@ -1503,17 +1511,20 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={1} labels={RAIL} />
-          <div className="fhj-fr-step" data-act-block>
-            {done ? "Step 2 of 5 · anything of your own" : `Step 2 of 5 · group ${walkAt + 1} of ${walkCards.length}`}
-          </div>
+          <StepRail index={1} note={done ? "Anything of your own, in your own words." : undefined} />
 
-          <div className="fhj-fr-walkbar" aria-hidden="true" data-act-block>
+          {/* Which card of this act, drawn once. The words it used to be
+              written out as live on the element rather than under it — see
+              StepRail. */}
+          <div className="fhj-fr-walkbar" data-act-block role="group"
+            aria-label={done
+              ? `Last card of ${walkCards.length + 1} — anything of your own`
+              : `Group ${walkAt + 1} of ${walkCards.length}`}>
             {walkCards.map(([name], i) => (
-              <span key={name}
+              <span key={name} aria-hidden="true"
                 className={"fhj-fr-walkbar-seg" + (i < walkAt ? " is-done" : i === walkAt ? " is-now" : "")} />
             ))}
-            <span className={"fhj-fr-walkbar-seg" + (done ? " is-now" : "")} />
+            <span aria-hidden="true" className={"fhj-fr-walkbar-seg" + (done ? " is-now" : "")} />
           </div>
 
           {done ? (
@@ -1736,14 +1747,12 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={2} labels={RAIL} />
-          <div className="fhj-fr-step" data-act-block>
-            {detail ? "Step 3 of 5 · one more detail" : `Step 3 of 5 · ${at + 1} of ${total}`}
-          </div>
+          <StepRail index={2} note={detail ? "One more detail about this one." : undefined} />
 
-          <div className="fhj-fr-walkbar" aria-hidden="true" data-act-block>
+          <div className="fhj-fr-walkbar" data-act-block role="group"
+            aria-label={`Subject ${at + 1} of ${total}`}>
             {Array.from({ length: total }, (_, i) => (
-              <span key={i}
+              <span key={i} aria-hidden="true"
                 className={"fhj-fr-walkbar-seg" + (i < at ? " is-done" : i === at ? " is-now" : "")} />
             ))}
           </div>
@@ -1942,14 +1951,12 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={3} labels={RAIL} />
-          <div className="fhj-fr-step" data-act-block>
-            Step 4 of 5 · {at + 1} of {total}
-          </div>
+          <StepRail index={3} />
 
-          <div className="fhj-fr-walkbar" aria-hidden="true" data-act-block>
+          <div className="fhj-fr-walkbar" data-act-block role="group"
+            aria-label={`Extra ${at + 1} of ${total}`}>
             {Array.from({ length: total }, (_, i) => (
-              <span key={i}
+              <span key={i} aria-hidden="true"
                 className={"fhj-fr-walkbar-seg" + (i < at ? " is-done" : i === at ? " is-now" : "")} />
             ))}
           </div>
@@ -2096,8 +2103,7 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={4} labels={RAIL} />
-          <div className="fhj-fr-step" data-act-block>Step 5 of 5</div>
+          <StepRail index={4} />
           <h1 className="fhj-fr-display is-small" data-act-block>{ask}</h1>
 
           {/* This card is the thing that flies. It is laid out here exactly as

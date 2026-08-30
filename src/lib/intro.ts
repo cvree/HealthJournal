@@ -110,6 +110,43 @@ export function actIn(root: El, dir: 1 | -1 = 1): () => void {
   return kill(tl);
 }
 
+/**
+ * The rail advances.
+ *
+ * The five segments across the top of every numbered act used to change state
+ * on the cut: you left one screen with three bars lit and arrived at the next
+ * with four, and the fourth had simply always been lit. Nothing was *shown* to
+ * happen, which is the definition of a progress indicator you have to read
+ * rather than see.
+ *
+ * So the segment you have just arrived on draws itself, left to right, in the
+ * time it takes the act behind it to settle — and the line under the rail, the
+ * one sentence saying what this act is about, arrives after it rather than
+ * with it. That order is the whole effect: the place, then the reason. A
+ * sentence that lands before the bar that explains where it applies is a
+ * caption with no picture.
+ *
+ * Backwards is not the same movement reversed. Going back is a correction, and
+ * a correction that replays the fanfare of progress is the app congratulating
+ * somebody for undoing something.
+ */
+export function railAdvance(root: El, dir: 1 | -1 = 1): void {
+  if (!root || prefersReducedMotion()) return;
+  const bar = root.querySelector<HTMLElement>('[data-rail-bar="now"]');
+  const note = root.querySelector<HTMLElement>("[data-rail-note]");
+  if (bar && dir > 0) {
+    gsap.fromTo(bar,
+      { scaleX: 0, transformOrigin: "left center" },
+      { scaleX: 1, duration: 0.5, ease: "power2.out", clearProps: "transform" });
+  }
+  if (note) {
+    gsap.fromTo(note,
+      { autoAlpha: 0, y: 6 },
+      { autoAlpha: 1, y: 0, duration: 0.42, ease: "power3.out", delay: dir > 0 ? 0.24 : 0.06,
+        clearProps: "transform" });
+  }
+}
+
 /* ---------- act three: choosing the number ---------- */
 
 /** The chosen rung answers back: a quick swell, and the reading behind it

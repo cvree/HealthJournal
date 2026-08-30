@@ -84,7 +84,17 @@ async function toFocus(who?: Who) {
 }
 
 /** Where the pass says it is. Every one of the three walked acts prints it. */
-const stepText = () => document.querySelector(".fhj-fr-step")?.textContent || "";
+/* Where the flow is, read the way the flow now says it.
+ *
+ * This used to read a printed "Step 2 of 5 · group 1 of 4" eyebrow. That
+ * eyebrow was two facts the two bars above it were already drawing, so it is
+ * gone from the screen — but it is not gone from the app: the rail and the
+ * walkbar carry it as their accessible names, which is the one audience that
+ * cannot see a bar. So the probe reads what a screen reader would be told. */
+const stepText = () => [
+  document.querySelector(".fhj-fr-rail-block")?.getAttribute("aria-label"),
+  document.querySelector(".fhj-fr-walkbar")?.getAttribute("aria-label"),
+].filter(Boolean).join(" · ");
 /** The card's own heading — the group, the subject, or the thing being kept. */
 const cardTitle = () => document.querySelector(".fhj-fr-display")?.textContent || "";
 
@@ -94,7 +104,7 @@ async function toTune(who?: Who) {
   await toFocus(who);
   tap(/Eczema/);
   fireEvent.click(exact("Continue")!);
-  await waitFor(() => expect(stepText()).toMatch(/Step 2 of 5 · group 1 of/i));
+  await waitFor(() => expect(stepText()).toMatch(/Step 2 of 5.*group 1 of/i));
 }
 
 /** Through every group of questions, and the card that takes one of your own,
@@ -252,6 +262,54 @@ describe("the hero", () => {
   });
 });
 
+/* The flow used to say where it was four times on every numbered screen: the
+   rail across the top, a printed "Step 2 of 5 · group 1 of 4" under it, a
+   second bar drawing the inner half again, and — on the first act — a
+   four-paragraph list headed "What happens next" whose four items were the
+   rail's four remaining segments spelled out. Four indicators and a wall for
+   two facts.
+
+   What is left is the two bars, plus one sentence saying the thing no bar can
+   draw: what this act is going to ask for. */
+describe("the rail says it once", () => {
+  it("draws the position instead of printing it beside itself", async () => {
+    await mountFresh();
+    await toTune();
+    expect(document.querySelector(".fhj-fr-rail-steps")).toBeTruthy();
+    expect(document.querySelector(".fhj-fr-walkbar")).toBeTruthy();
+    // Not written out anywhere a sighted person reads it.
+    const seen = [...document.querySelectorAll<HTMLElement>(".fhj-fr-act *")]
+      .filter((el) => !el.closest("[aria-hidden='true']"))
+      .map((el) => el.textContent || "").join(" ");
+    expect(seen).not.toMatch(/Step \d of 5/);
+  });
+
+  it("still tells a screen reader exactly where it is", async () => {
+    /* The bars are aria-hidden, so dropping the printed line without this
+       would have taken the position away from the one audience that cannot
+       see a bar at all. */
+    await mountFresh();
+    await toTune();
+    expect(document.querySelector(".fhj-fr-rail-block")!.getAttribute("aria-label"))
+      .toMatch(/^Step 2 of 5 — Questions$/);
+    expect(document.querySelector(".fhj-fr-walkbar")!.getAttribute("aria-label"))
+      .toMatch(/^Group 1 of \d+$/);
+  });
+
+  it("carries the orientation a line at a time, on the screen it is about", async () => {
+    await mountFresh();
+    await toFocus();
+    const note = () => document.querySelector(".fhj-fr-rail-note")?.textContent || "";
+    expect(note()).toMatch(/changes later in Settings/i);
+    /* And the wall it replaced is gone — including the promise that was made
+       twice on the same screen. */
+    expect(document.body.textContent).not.toMatch(/What happens next/i);
+    tap(/Eczema/);
+    fireEvent.click(exact("Continue")!);
+    await waitFor(() => expect(note()).toMatch(/Nothing is on yet/i));
+  });
+});
+
 describe("one path, and no door beside it", () => {
   it("never offers a longer setup somewhere else", async () => {
     await mountFresh();
@@ -268,7 +326,7 @@ describe("one path, and no door beside it", () => {
   it("asks what somebody is tracking first, and will not continue without it", async () => {
     await mountFresh();
     await toFocus();
-    expect(screen.getByText("Step 1 of 5")).toBeTruthy();
+    expect(stepText()).toMatch(/Step 1 of 5/);
     const cta = screen.getAllByRole("button").find((b) => /Pick what you're tracking/.test(b.textContent || ""))!;
     expect((cta as HTMLButtonElement).disabled).toBe(true);
   });
@@ -494,7 +552,7 @@ describe("what else the journal keeps", () => {
   it("holds up one thing a day can hold at a time, with a yes beside a no", async () => {
     await mountFresh();
     await toExtras();
-    expect(stepText()).toMatch(/Step 4 of 5 · 1 of \d/i);
+    expect(stepText()).toMatch(/Step 4 of 5.*\b1 of \d/i);
     expect(exact("Yes — keep this")).toBeTruthy();
     expect(exact("Not this one")).toBeTruthy();
 
@@ -635,7 +693,7 @@ describe("choosing the photographs, one subject at a time", () => {
   it("holds up one subject, says what it is worth, and offers a yes beside a no", async () => {
     await mountFresh();
     await toPhotos();
-    expect(stepText()).toMatch(/Step 3 of 5 · 1 of \d/i);
+    expect(stepText()).toMatch(/Step 3 of 5.*\b1 of \d/i);
 
     // What this one is for six weeks from now — not just what it is.
     expect(document.querySelector(".fhj-fr-pw-why")!.textContent!.length).toBeGreaterThan(20);
