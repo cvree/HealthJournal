@@ -296,6 +296,19 @@ describe("the rail says it once", () => {
       .toMatch(/^Group 1 of \d+$/);
   });
 
+  it("demonstrates a mechanism once, with the real thing rather than a picture of it", async () => {
+    /* The extras card used to draw a mock-up of one tile with an arrow and a
+       caption reading "One tap on your home screen, every day you need it" —
+       directly above the row where the person's own buttons assemble as they
+       answer. Two demonstrations of one mechanism, and the drawing was the
+       weaker: it showed a button, and the row below shows theirs. */
+    await mountFresh();
+    await toExtras();
+    expect(document.querySelector(".fhj-fr-preview")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/One tap on your home screen/i);
+    expect(document.querySelectorAll(".fhj-fr-preview-tile.is-hero")).toHaveLength(0);
+  });
+
   it("carries the orientation a line at a time, on the screen it is about", async () => {
     await mountFresh();
     await toFocus();

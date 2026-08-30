@@ -6111,26 +6111,6 @@ button.fhj-section:disabled {
 
 .fhj-fr-pw-then { display: inline-flex; }
 
-.fhj-fr-pw-shot.is-tile {
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.fhj-fr-preview-tile.is-hero {
-  padding: 0.75rem 1.125rem;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  border-color: var(--fhj-accent, #8fb0e3);
-  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
-}
-
-.fhj-fr-pw-caption {
-  flex: 1;
-  min-width: 9rem;
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--fhj-subtle, #9a9ca6);
-}
 
 
 .fhj-fr-pw-why {

@@ -1981,31 +1981,18 @@ export default function FirstRun({
               <h1 className="fhj-fr-display is-small" data-act-block>{e.label}</h1>
               <p className="fhj-fr-sub" data-act-block>{e.blurb}.</p>
 
-              {/* What saying yes actually does: a button appears in the row
-                  below, and that is the entire mechanism. Drawn rather than
-                  described, on the card where the decision is made. */}
-              <div className="fhj-fr-pw-shot is-tile" data-act-block>
-                <span className="fhj-fr-preview-tile is-hero">
-                  <span className="fhj-fr-preview-icon">
-                    <Icon name={e.tile?.icon || e.icon} size={16} color={C.accentText} />
-                  </span>
-                  {e.tile?.label || e.label}
-                </span>
-                <span className="fhj-fr-pw-then" aria-hidden="true">
-                  <Icon name="right" size={13} color={C.subtle} />
-                </span>
-                <span className="fhj-fr-pw-caption">
-                  One tap on your home screen, every day you need it.
-                </span>
-              </div>
+              {/* No mock-up of the tile here any more. It drew one button with
+                  an arrow and a caption reading "One tap on your home screen,
+                  every day you need it" — directly above the row that shows the
+                  real ones assembling as they are answered. Two demonstrations
+                  of one mechanism, and the illustration was the weaker of them:
+                  it showed a button, and the row below shows *theirs*. */}
 
-              <p className="fhj-fr-hint" data-act-block>
-                {suggested
-                  ? "Suggested for what you track — which is a suggestion, not a decision. "
-                  : ""}
-                Nothing here is permanent: buttons can be added, dropped and rearranged from your
-                home screen whenever you like.
-              </p>
+              {suggested && (
+                <p className="fhj-fr-hint" data-act-block>
+                  Suggested for what you track — which is a suggestion, not a decision.
+                </p>
+              )}
 
               <div className="fhj-fr-pw-actions" data-act-block>
                 <button type="button" className="fhj-fr-pw-yes"
@@ -2040,9 +2027,11 @@ export default function FirstRun({
                     </button>
                   ))}
                 </div>
-                <p className="fhj-fr-hint">
-                  Changeable any time, and there are more choices in Settings.
-                </p>
+                {/* The fact, not the reassurance: "changeable any time" is the
+                    promise the rail already made on the first act, and made
+                    again two cards ago. What it does not say is that this list
+                    is the short one. */}
+                <p className="fhj-fr-hint">More choices in Settings.</p>
               </div>
             </>
           ) : (
