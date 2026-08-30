@@ -103,8 +103,8 @@ import { C, readableInk } from "../lib/theme";
 import { feedback, place } from "../lib/feedback";
 import { scoreWord } from "../lib/pulse";
 import {
-  actIn, bloom, buildTimeline, countUp, heroIn, landCard, liftCard, railAdvance, readoutSwap,
-  rungPop, type CardFlight,
+  actIn, bloom, buildTimeline, countUp, heroIn, heroOut, landCard, liftCard, railAdvance,
+  readoutSwap, rungPop, type CardFlight,
 } from "../lib/intro";
 
 export interface FirstRunScale {
@@ -789,6 +789,12 @@ export default function FirstRun({
   const tallyRef = useRef<HTMLDivElement>(null);
   const flight = useRef<CardFlight | null>(null);
   const dir = useRef<1 | -1>(1);
+  /* The hero's exit outlives its own click handler by a third of a second, and
+     the person could have left in that time — reloaded, or tapped through to
+     the sample journal. Setting state on a torn-down flow is a warning nobody
+     can act on. */
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   const chosen = useMemo(() => packs.filter((p) => mods.includes(p.key)), [packs, mods]);
 
@@ -1029,7 +1035,16 @@ export default function FirstRun({
 
   /* ---------- actions ---------- */
 
-  const start = () => { feedback("complete"); dir.current = 1; setAct("you"); };
+  /* The hero recedes rather than being cut away — see `heroOut`. The state
+     change is inside the callback, which is the whole point: the promise the
+     first screen made has to still be on the screen while it is being kept.
+     Under reduced motion the callback runs on this same tick, so nobody who
+     asked for stillness waits for one. */
+  const start = () => {
+    feedback("complete");
+    dir.current = 1;
+    heroOut(heroRef.current, () => { if (alive.current) setAct("you"); });
+  };
 
   /* The name, as it will be said out loud. A journal that greets somebody by
      their full legal name is not greeting them. */

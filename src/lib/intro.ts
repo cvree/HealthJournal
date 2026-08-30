@@ -50,7 +50,7 @@ export function heroIn(root: El): () => void {
   const lines = parts(root, "hero-line");
   const cards = parts(root, "hero-card");
   const cta = parts(root, "hero-cta");
-  const rail = root.querySelector<SVGPathElement>("[data-hero-rail]");
+  const rail = root.querySelector<HTMLElement>("[data-hero-rail]");
 
   if (lines.length) {
     /* A clip reveal rather than a fade: the words rise out from behind their
@@ -61,10 +61,21 @@ export function heroIn(root: El): () => void {
   }
 
   if (rail) {
-    const len = 420;
+    /* The rail grows downward — the same movement `buildTimeline` makes at the
+       other end of the flow, which is the point: the line the collage hangs
+       off in the first three seconds is the line somebody's own days hang off
+       in the last three.
+
+       It used to be written as a stroke-dash reveal, which is the right
+       technique for an SVG path and does nothing at all to the `<span>` this
+       actually is. `stroke-dashoffset` on a div is a property nothing reads,
+       so the rail quietly fell back to a one-second opacity fade and the one
+       drawing gesture in the hero never happened. The CSS had it right the
+       whole time — `.fhj-fr-rail` has carried `transform-origin: top center`
+       since the day it was written, waiting for this. */
     tl.fromTo(rail,
-      { strokeDasharray: len, strokeDashoffset: len, opacity: 0 },
-      { strokeDashoffset: 0, opacity: 1, duration: 1.1, ease: "power2.inOut" }, 0.25);
+      { scaleY: 0, opacity: 0 },
+      { scaleY: 1, opacity: 1, duration: 1.1, ease: "power2.inOut" }, 0.25);
   }
 
   if (cards.length) {
@@ -92,6 +103,53 @@ export function heroIn(root: El): () => void {
   );
 
   return () => { tl.kill(); floats.forEach((f) => f.kill()); };
+}
+
+/**
+ * The hero leaves.
+ *
+ * The one cut in this flow that was worth not making. Pressing Start took a
+ * full-bleed dark screen — a collage breathing behind display type — and
+ * replaced it, on the frame, with a plain column on a plain background. The
+ * biggest change of register in the app's first minute, and it happened
+ * between two frames, which reads as the promise being withdrawn rather than
+ * kept.
+ *
+ * So it recedes instead. The buttons go first, because they have just been
+ * pressed and there is nothing left for them to offer. The headline unsets
+ * itself — the two lines slide back down behind the edges they rose out of,
+ * which is the entrance played backwards and therefore the only exit that
+ * cannot look like a different idea. And the collage lifts away last and
+ * furthest, because it is the thing furthest back.
+ *
+ * Under four hundred milliseconds, and it never blocks: `onDone` is called on
+ * the same tick under reduced motion, so the flow is never waiting on this.
+ */
+export function heroOut(root: El, onDone: () => void = NOOP): void {
+  if (!root || prefersReducedMotion()) { onDone(); return; }
+  const lines = parts(root, "hero-line");
+  const cards = parts(root, "hero-card");
+  const cta = parts(root, "hero-cta");
+  const collage = root.querySelector<HTMLElement>(".fhj-fr-collage");
+
+  let called = false;
+  const done = () => { if (!called) { called = true; onDone(); } };
+  /* A safety net rather than a second timer: if a tween is ever dropped — a
+     backgrounded tab, a killed timeline — the flow still moves on. It cannot
+     fire twice, and it cannot fire early. */
+  const guard = setTimeout(done, 700);
+
+  const tl = gsap.timeline({
+    defaults: { ease: "power2.in" },
+    onComplete: () => { clearTimeout(guard); done(); },
+  });
+  if (cta.length) tl.to(cta, { autoAlpha: 0, y: 8, duration: 0.16, stagger: 0.03 }, 0);
+  if (lines.length) tl.to(lines, { yPercent: 60, opacity: 0, duration: 0.3, stagger: 0.05 }, 0.06);
+  if (collage) tl.to(collage, { y: -34, autoAlpha: 0, duration: 0.34 }, 0.04);
+  else if (cards.length) tl.to(cards, { y: -34, autoAlpha: 0, duration: 0.34, stagger: 0.03 }, 0.04);
+  /* An empty timeline never completes, so nothing above having matched has to
+     still hand the flow onward. */
+  if (!tl.getChildren().length) { clearTimeout(guard); done(); }
 }
 
 /* ---------- act transitions ---------- */
