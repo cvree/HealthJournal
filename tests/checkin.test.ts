@@ -150,6 +150,60 @@ describe("finished means finished", () => {
   });
 });
 
+/* Rituals were absent from this arithmetic for a release, and the symptom was
+   the one a check-in cannot survive: a person whose morning is a five-step
+   ritual could leave the whole of it untouched and be told the day was fully
+   on the record. A ritual is exactly what this module says a counted part is —
+   something today asked for, with a denominator its owner set. */
+describe("the rituals today asked for", () => {
+  const withRituals = (over = {}) => checkinStatus(src({
+    answers: { severity: 5, itch: 1, sleep: 7, flared: true, triggers: ["dust"] },
+    rituals: { done: 0, skipped: 0, total: 2, ...over },
+  }));
+
+  it("puts them in the fraction, not beside it", () => {
+    const s = withRituals();
+    expect(part(s, "rituals").counted).toBe(true);
+    expect(s.total).toBe(7);
+    expect(s.done).toBe(5);
+  });
+
+  it("will not call a day complete while one is still untouched", () => {
+    expect(withRituals().complete).toBe(false);
+    expect(withRituals({ done: 2 }).complete).toBe(true);
+  });
+
+  it("counts a deliberate skip as answered, exactly as the routine does", () => {
+    /* The question a scheduled thing asks is "did you deal with this", and
+       "not today" is a way of dealing with it. */
+    expect(withRituals({ done: 1, skipped: 1 }).complete).toBe(true);
+    expect(part(withRituals({ done: 1, skipped: 1 }), "rituals").done).toBe(2);
+  });
+
+  it("counts a part-finished ritual as unanswered — that is the state worth showing", () => {
+    expect(withRituals({ done: 1 }).left).toBe(1);
+  });
+
+  it("shows no ritual row on a journal that has none", () => {
+    expect(checkinStatus(src()).parts.some((p) => p.id === "rituals")).toBe(false);
+    expect(checkinStatus(src({ rituals: { done: 0, skipped: 0, total: 0 } }))
+      .parts.some((p) => p.id === "rituals")).toBe(false);
+  });
+
+  it("gives them their own run of marks, after the routine's", () => {
+    const pips = checkinPips(checkinStatus(src({
+      answers: { severity: 5 },
+      routine: { done: 1, skipped: 0, total: 2 },
+      rituals: { done: 1, skipped: 0, total: 2 },
+    })));
+    expect(pips.map((p) => p.part)).toEqual([
+      "questions", "questions", "questions", "questions", "questions",
+      "routine", "routine", "rituals", "rituals",
+    ]);
+    expect(pips.filter((p) => p.on)).toHaveLength(3);
+  });
+});
+
 describe("the words", () => {
   it("changes with the state and says nothing about the person", () => {
     expect(checkinLine(checkinStatus(src()))).toBe("5 to answer, about a minute.");

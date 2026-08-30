@@ -141,7 +141,7 @@ import {
    This file owns the writes and decides which single tune-up, if any, today
    is allowed to show. */
 import {
-  applyTweak, clearRun, completeRun, dueReview, newReview, newRun,
+  applyTweak, boardProgress, checklistSettled, clearRun, completeRun, dueReview, newReview, newRun,
   pickReviewDay, ritualFromStarter, runOn, spreadReviewDays, tweakReceipt,
   RITUAL_STARTERS, sanitizeRituals, sanitizeRitualRuns, sanitizeRitualReviews,
 } from "./lib/rituals";
@@ -6163,6 +6163,7 @@ function CatchUpRow({ cadence, logged, today, openLog }) {
 
 function HistoryScreen({
   profile, entries, food = [], bowel = [], routine = [], routineItems = [],
+  rituals = [], ritualRuns = [],
   openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, goSun, goLabs,
   goExperiments, viewer, syncStatus, context = [], sun = [], labs = [], lit, onClearLit,
 }) {
@@ -6191,8 +6192,9 @@ function HistoryScreen({
     photos: todayEntry?.photos,
     hasPhotoFields: tpl.fields.some((f) => f.type === "photo"),
     routine: routineProgress(routineItems || [], routine || [], today),
+    rituals: boardProgress(rituals || [], ritualRuns || [], today),
     meals: food.filter((f) => f.date === today).length,
-  }), [tpl, due, todayEntry, routineItems, routine, food, today]);
+  }), [tpl, due, todayEntry, routineItems, routine, rituals, ritualRuns, food, today]);
   /* When a finding is illuminating a set of days, History shows those days
      rather than the last fortnight. That is the whole cross-feature promise:
      tapping "8 of your 10 hardest days were above 29°C" and arriving on the
@@ -16493,7 +16495,8 @@ function TodayCheckinCard({ status, tint, stand, onOpen }) {
 function DailyPulse({
   profile, tpl, keyField, entries, entry, date, viewer,
   cadence = DEFAULT_CADENCE, fieldCadences = {},
-  routineItems, routine, photoFields, onPatch, onOpenLog, onOpenPhotos, onOpenRoutine,
+  routineItems, routine, rituals = [], ritualRuns = [],
+  photoFields, onPatch, onOpenLog, onOpenPhotos, onOpenRoutine,
 }) {
   const answers = entry?.answers || {};
   const { value, recorded } = pulseState(answers, keyField.k);
@@ -16615,7 +16618,12 @@ function DailyPulse({
     photos: entry?.photos,
     hasPhotoFields: photoFields.length > 0,
     routine: routineProgress(routineItems || [], routine || [], date),
-  }), [tpl.fields, keyField.k, due, answers, value, entry, photoFields, routineItems, routine, date]);
+    /* Today's rituals count toward today's check-in, because today asked for
+       them. Without this the ring could go to a tick on a morning whose
+       five-step ritual was never opened. */
+    rituals: boardProgress(rituals || [], ritualRuns || [], date),
+  }), [tpl.fields, keyField.k, due, answers, value, entry, photoFields, routineItems, routine,
+       rituals, ritualRuns, date]);
   /* What is on the stage. The daily number is the first question of the same
      review, so it is a state of this one slot rather than a separate widget
      sitting above one. */
@@ -17312,6 +17320,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           date={todayStr()} viewer={viewer}
           cadence={cadence} fieldCadences={fieldCadences}
           routineItems={routineItems} routine={routine} photoFields={photoFields}
+          rituals={rituals} ritualRuns={ritualRuns}
           onPatch={onPatch}
           onOpenLog={() => openLog(todayStr())}
           onOpenPhotos={() => openLog(todayStr(), { photos: true })}
@@ -18254,10 +18263,20 @@ function alreadyDone(db, reminder) {
   if (reminder.kind === "bowel") return (db.bowel || []).some((b) => b.date === today);
   /* Everything the day asked for has been answered — ticked or deliberately
      skipped. Nudging somebody about a checklist they have already cleared is
-     the fastest way to have the whole feature muted. */
+     the fastest way to have the whole feature muted.
+
+     "The day" means the routine *and* the rituals scheduled for it. Reading
+     only the flat checklist had a failure mode that got worse the better
+     somebody had set the app up: move a morning into a ritual, leave the
+     routine empty, and `p.total > 0` is false forever — so the reminder fired
+     every single morning no matter how completely the ritual had been
+     finished. And an empty day is nothing to nudge about either, which is why
+     nothing due now counts as done rather than as permanently outstanding. */
   if (reminder.kind === "routine") {
-    const p = routineProgress(db.routineItems || [], db.routine || [], today);
-    return p.total > 0 && p.done + p.skipped >= p.total;
+    return checklistSettled(
+      db.routineItems || [], db.routine || [],
+      db.rituals || [], db.ritualRuns || [], today
+    );
   }
   /* A check-in reminder now has to ask the journal's own schedule first. On a
      weekly journal, six evenings out of seven there is nothing to nudge about
@@ -20048,6 +20067,7 @@ export default function App({ viewer = false }) {
         profile={profile} entries={entries}
         food={db.food || []} bowel={db.bowel || []} routine={db.routine || []}
         routineItems={db.routineItems || []}
+        rituals={db.rituals || []} ritualRuns={db.ritualRuns || []}
         openLog={goToLog} viewer={viewer} syncStatus={syncStatus}
         goInsights={() => setScreen("insights")} goDiary={() => setScreen("food")}
         goExport={() => setScreen("export")} goGallery={() => setScreen("gallery")}

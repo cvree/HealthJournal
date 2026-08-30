@@ -43,6 +43,15 @@ export const DEVICE_LOCAL_DB_KEYS = ["ai", "ack", "onboarded", "reports", "sync"
 export function syncIdOf(kind: RecordKind, item: any): string {
   if (kind === "entry") return String(item?.date || "");
   if (kind === "profile") return "self";
+  /* A ritual run is one day's attempt at one ritual, and there can only ever be
+     one of those — but `newRun` mints a fresh uid on whichever device is asked
+     first, so two devices that both tick this morning's shower mint two. Sync
+     on those uids and the week reads as fourteen days, the streak doubles, and
+     the tune-up reports on a week that never happened. So a run is identified
+     the way an entry is: by what it is about. */
+  if (kind === "ritualRun") return `${item?.ritualId || ""}\u0000${item?.date || ""}`;
+  /* One day, one reading — same argument as an entry. */
+  if (kind === "context") return String(item?.date || "");
   return String(item?.id || "");
 }
 
@@ -56,11 +65,31 @@ interface Db {
   foods?: any[];
   routine?: any[];
   routineItems?: any[];
+  rituals?: any[];
+  ritualRuns?: any[];
+  ritualReviews?: any[];
+  sun?: any[];
+  labs?: any[];
+  experiments?: any[];
+  context?: any[];
   episodes?: any[];
   tombstones?: Tombstone[];
   [k: string]: unknown;
 }
 
+/* Every collection the journal holds. The seven added after the first six were
+   the one place this file's promise was not kept: a ritual built on a phone
+   never reached the tablet, a lab result filed on the laptop stayed there, and
+   — worse than either — deleting a ritual, a sun session or a lab result wrote
+   a tombstone of a kind nothing on this side had ever heard of, so the delete
+   was faithfully recorded and then dropped on the floor.
+
+   `context` travels too, and the reasoning is the backup file's rather than a
+   new one: the weather on a day is a fact about that day, and a second device
+   whose Insights quietly disagreed with the first about which days were damp
+   would be two journals, not one. The consent that allows any of it to be held
+   lives in `profile` and already crosses — it describes what this journal may
+   contain, not what a machine may send. */
 const COLLECTIONS: [RecordKind, string][] = [
   ["entry", "entries"],
   ["food", "food"],
@@ -68,6 +97,13 @@ const COLLECTIONS: [RecordKind, string][] = [
   ["foodItem", "foods"],
   ["routine", "routine"],
   ["routineItem", "routineItems"],
+  ["ritual", "rituals"],
+  ["ritualRun", "ritualRuns"],
+  ["ritualReview", "ritualReviews"],
+  ["sun", "sun"],
+  ["lab", "labs"],
+  ["experiment", "experiments"],
+  ["context", "context"],
   ["episode", "episodes"],
 ];
 
@@ -81,7 +117,10 @@ function stripDeviceLocal(profile: any) {
     turned on. Falling back to `createdAt` and then to the epoch keeps ordering
     total even for a journal restored from a very old backup. */
 function stampOf(item: any): string {
-  return String(item?.updatedAt || item?.createdAt || "1970-01-01T00:00:00.000Z");
+  /* `capturedAt` is a context row's only clock — it has never been edited by a
+     person, so the newest fetch is the version that wins, which is exactly the
+     answer wanted when two devices looked up the same day from two places. */
+  return String(item?.updatedAt || item?.createdAt || item?.capturedAt || "1970-01-01T00:00:00.000Z");
 }
 
 /**
@@ -123,10 +162,9 @@ export function projectDb(db: Db, deviceId: string, rev = 0): SyncRecord[] {
 
 /* ---------- records -> db ---------- */
 
-const FIELD_OF: Record<string, string> = {
-  entry: "entries", food: "food", bowel: "bowel", foodItem: "foods",
-  routine: "routine", routineItem: "routineItems", episode: "episodes",
-};
+const FIELD_OF: Record<string, string> = Object.fromEntries(
+  COLLECTIONS.map(([kind, field]) => [kind, field])
+);
 
 export interface ApplyResult {
   db: Db;

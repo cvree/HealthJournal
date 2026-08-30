@@ -40,7 +40,7 @@
 
 import type { RoutineItem, RoutineTime } from "../types/models";
 import { addDays, daySpan } from "./episodes";
-import { ROUTINE_TIMES, slotForTime, timeLabel } from "./routine";
+import { ROUTINE_TIMES, routineProgress, slotForTime, timeLabel } from "./routine";
 import type { DerivedMetric } from "./tracking";
 import { localDate, localTime } from "./tracking";
 
@@ -343,6 +343,37 @@ export function boardProgress(rituals: Ritual[], runs: RitualRun[], date: string
     done, skipped, total: rows.length,
     ratio: rows.length ? (done + skipped) / rows.length : null,
   };
+}
+
+/**
+ * Is there anything left on today's checklist — the flat routine *and* the
+ * rituals the day asked for?
+ *
+ * This is what a routine reminder has to ask before it fires, and reading only
+ * half of it had a failure mode that got worse the better somebody had set the
+ * app up. Move a morning out of the flat checklist and into a ritual, which is
+ * the whole point of rituals existing, and the old test — "the routine has rows
+ * and they are all dealt with" — could never be true: there were no rows. So
+ * the nudge arrived every morning forever, however completely the ritual had
+ * been finished, which is precisely how a person learns to turn notifications
+ * off.
+ *
+ * A day that asks for nothing is settled too. A reminder about an empty
+ * checklist is the app nudging somebody about its own absence of content.
+ */
+export function checklistSettled(
+  items: RoutineItem[],
+  logs: Parameters<typeof routineProgress>[1],
+  rituals: Ritual[],
+  runs: RitualRun[],
+  date: string
+): boolean {
+  const r = routineProgress(items || [], logs || [], date);
+  const b = boardProgress(rituals || [], runs || [], date);
+  const total = r.total + b.total;
+  /* Skips count as dealt with on both sides — the question a scheduled thing
+     asks is "did you handle this", and "not today" is an answer to it. */
+  return total === 0 || r.done + r.skipped + b.done + b.skipped >= total;
 }
 
 /* ---------- streaks and the week strip ---------- */

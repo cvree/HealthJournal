@@ -820,6 +820,16 @@ What that costs to build, and what it buys:
 | Both sides already have a journal | The first pass is a **union**. Every day from both devices survives; neither side is overwritten. |
 | Photos are enormous | **Separate opt-in.** Sync your entries without paying for a year of daily photos on a metered connection. |
 
+Everything you wrote crosses: days, meals, bowel entries, the food library, the routine and its
+doses, **rituals, their daily runs and their weekly tune-ups**, sun sessions, lab results,
+experiments, flares, and the day's weather. Two devices that disagreed about whether you had done
+this morning's ritual would be two journals, not one. A ritual run is identified by *which ritual
+on which day* rather than by the id whichever device asked first happened to mint — otherwise a
+week ticked on both a phone and a tablet reads as fourteen days and doubles its own streak.
+
+What stays home is what describes a machine rather than a journal: sound and haptics, the AI
+connection, notification permission, and when *this* device last downloaded a backup.
+
 #### What the encryption does and doesn't claim
 
 Every record's contents are sealed on your device with **AES-256-GCM**, under a key derived by

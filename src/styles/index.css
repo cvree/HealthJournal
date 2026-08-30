@@ -6643,6 +6643,15 @@ button.fhj-section:disabled {
 .fhj-checkin-pip.fhj-pip-routine {
   border-radius: var(--fhj-radius-pill);
 }
+/* Rituals get the third colour and a round end of their own. Three runs of
+   marks in three shapes is still readable at a glance; a fourth would be a
+   legend, which is the point at which the row has stopped being a shape. */
+.fhj-checkin-pip.fhj-pip-rituals.is-on {
+  background: var(--fhj-chart3, #7bc2b6);
+}
+.fhj-checkin-pip.fhj-pip-rituals {
+  border-radius: var(--fhj-radius-pill);
+}
 
 /* The fallback for a setup with more questions than a row of marks can carry
    legibly. Same information, less of a texture. */

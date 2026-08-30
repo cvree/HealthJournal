@@ -27,10 +27,18 @@
 
    **What counts, and what merely shows.**
 
-   Two of the five parts have a real daily target: the questions in somebody's
-   own setup, and the rows on their routine that were scheduled for today. Both
-   are things the day *asked for*, both have a denominator that the person
-   themselves set, and both are therefore what the ring is a ring of.
+   Three parts have a real daily target: the questions in somebody's own setup,
+   the rows on their routine that were scheduled for today, and the rituals
+   today asked for. All three are things the day *asked for*, all three have a
+   denominator the person themselves set, and all three are therefore what the
+   ring is a ring of.
+
+   The rituals were missing from that list for a release, and it showed in the
+   one place it could not be argued with: somebody whose morning is a five-step
+   ritual could leave the whole of it untouched and still be told that today was
+   fully on the record. A card named "today's check-in" that does not know about
+   a thing today asked for is not a check-in, it is a subset with an ambitious
+   name.
 
    The other three — a photo, a note, a meal — have no honest denominator. The
    right number of notes for a Tuesday is not one; it is however many there
@@ -63,7 +71,7 @@ import { isAskable, type PulseField } from "./pulse";
 
 /** One line of the breakdown: what it is, how much of it is done. */
 export interface CheckinPart {
-  id: "questions" | "routine" | "photo" | "note" | "meals";
+  id: "questions" | "routine" | "rituals" | "photo" | "note" | "meals";
   label: string;
   /** An icon name from the app's own set (see `Icon` in App.tsx). */
   icon: string;
@@ -93,6 +101,10 @@ export interface CheckinSource {
   /** Today's routine, already reduced (see routineProgress). Absent, or with a
       total of zero, and the routine row does not appear. */
   routine?: { done: number; skipped: number; total: number } | null;
+  /** Today's rituals, already reduced (see boardProgress in lib/rituals). Same
+      contract as the routine: absent or empty and the row is not there, because
+      a journal with no rituals in it is not short of one. */
+  rituals?: { done: number; skipped: number; total: number } | null;
   /** How many meals are on today's diary. Shown, never counted. */
   meals?: number;
   /** The question keys today is asking for — see `dueKeys` in lib/cadence.
@@ -179,6 +191,20 @@ export function checkinStatus(src: CheckinSource): CheckinStatus {
          uses. The question a routine row asks is "did you deal with this". */
       done: routine.done + routine.skipped,
       total: routine.total,
+      counted: true,
+    });
+  }
+
+  /* A ritual is answered when it is finished or deliberately skipped — the
+     same rule as a routine row, and for the same reason: the question a
+     scheduled thing asks is "did you deal with this". A part-done ritual is
+     not answered, which is exactly the state worth showing on a check-in. */
+  const rituals = src.rituals;
+  if (rituals && rituals.total > 0) {
+    parts.push({
+      id: "rituals", label: "Rituals", icon: "drop",
+      done: rituals.done + rituals.skipped,
+      total: rituals.total,
       counted: true,
     });
   }

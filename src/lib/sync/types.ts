@@ -32,6 +32,8 @@
 export type RecordKind =
   | "entry" | "food" | "bowel" | "foodItem"
   | "routine" | "routineItem"
+  | "ritual" | "ritualRun" | "ritualReview"
+  | "sun" | "lab" | "experiment" | "context"
   | "episode"
   | "profile";
 

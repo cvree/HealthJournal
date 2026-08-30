@@ -209,6 +209,39 @@ const sampleDb = () => ({
   tombstones: [],
 });
 
+/* The same journal, plus one row of every collection that arrived after sync
+   was first written. */
+const richDb = () => ({
+  ...sampleDb(),
+  rituals: [{
+    id: "r1", name: "Morning", icon: "drop", steps: [{ id: "s1", label: "Cream" }],
+    days: [], reviewDay: 3, createdAt: "2026-03-01T07:00:00.000Z",
+    updatedAt: "2026-03-01T07:00:00.000Z",
+  }],
+  ritualRuns: [{
+    id: "run1", ritualId: "r1", date: "2026-03-04", time: "07:10", name: "Morning",
+    total: 1, done: ["s1"], createdAt: "2026-03-04T07:10:00.000Z",
+    updatedAt: "2026-03-04T07:10:00.000Z",
+  }],
+  ritualReviews: [{
+    id: "rev1", ritualId: "r1", date: "2026-03-04", felt: 4,
+    createdAt: "2026-03-04T20:00:00.000Z",
+  }],
+  sun: [{
+    id: "sun1", date: "2026-03-04", createdAt: "2026-03-04T12:00:00.000Z",
+    updatedAt: "2026-03-04T12:30:00.000Z",
+  }],
+  labs: [{
+    id: "lab1", date: "2026-03-02", value: 12, createdAt: "2026-03-02T09:00:00.000Z",
+    updatedAt: "2026-03-02T09:00:00.000Z",
+  }],
+  experiments: [{
+    id: "exp1", title: "Dairy", createdAt: "2026-03-01T09:00:00.000Z",
+    updatedAt: "2026-03-01T09:00:00.000Z",
+  }],
+  context: [{ date: "2026-03-04", coords: { lat: 51.5, lon: -0.1 }, capturedAt: "2026-03-04T06:00:00.000Z", tempMean: 9 }],
+});
+
 describe("what crosses the wire", () => {
   it("identifies a day by its date, not by the random id the device minted", () => {
     // Two devices mint different local ids for the same Tuesday. Sync on those
@@ -237,6 +270,60 @@ describe("what crosses the wire", () => {
   it("still sends an imported day once the person edits it", () => {
     const db = { ...sampleDb(), entries: [{ id: "x", date: "2026-02-02", auto: true, quickLogCompleted: true, answers: {} }] };
     expect(projectDb(db, "d1").filter((r) => r.kind === "entry")).toHaveLength(1);
+  });
+
+  /* The 1.21 features shipped without a seam into this file, and nothing said
+     so: `projectDb` walked a fixed list of collections, a kind it did not know
+     fell through `FIELD_OF` and hit a bare `continue`, and the whole of
+     somebody's rituals, sun sessions, lab results and experiments stayed on the
+     device that made them. The delete path was the loud version of the same
+     bug — App.tsx wrote tombstones of kind "ritual", "sun" and "lab" that this
+     side had never heard of, so a deletion was recorded and then ignored. */
+  it("sends every collection the journal holds, not just the ones sync shipped with", () => {
+    const kinds = new Set(projectDb(richDb(), "d1").map((r) => r.kind));
+    for (const k of ["ritual", "ritualRun", "ritualReview", "sun", "lab", "experiment", "context"]) {
+      expect(kinds.has(k as any)).toBe(true);
+    }
+  });
+
+  it("brings a ritual, its runs and its weekly reviews to a device that has none", () => {
+    const recs = projectDb(richDb(), "d1");
+    const { db } = applyRecords({ profile: {}, entries: [], tombstones: [] } as any, recs);
+    expect((db as any).rituals).toHaveLength(1);
+    expect((db as any).ritualRuns).toHaveLength(1);
+    expect((db as any).ritualReviews).toHaveLength(1);
+    expect((db as any).labs[0].id).toBe("lab1");
+    expect((db as any).sun[0].id).toBe("sun1");
+    expect((db as any).experiments[0].id).toBe("exp1");
+  });
+
+  it("identifies a ritual run by its ritual and its day, not by the id a device minted", () => {
+    /* `newRun` mints a uid on whichever device is asked first. Two devices both
+       ticking this morning's shower mint two, and syncing on those would make
+       one week read as fourteen days — doubling the streak and handing the
+       weekly tune-up a report on a week nobody lived. */
+    const phone = { id: "run_aaa", ritualId: "r1", date: "2026-03-04", done: ["s1"] };
+    const tablet = { id: "run_zzz", ritualId: "r1", date: "2026-03-04", done: ["s2"] };
+    expect(syncIdOf("ritualRun", phone)).toBe(syncIdOf("ritualRun", tablet));
+    expect(syncIdOf("ritualRun", { ...phone, date: "2026-03-05" }))
+      .not.toBe(syncIdOf("ritualRun", tablet));
+  });
+
+  it("carries a deletion of a ritual across, instead of writing a tombstone nothing reads", () => {
+    const gone = addTombstone(richDb() as any, "ritual", "r1", "d1", 0, "2026-03-10T00:00:00Z");
+    const tomb = projectDb(gone as any, "d1").find((r) => r.kind === "ritual" && r.deleted);
+    expect(tomb).toBeTruthy();
+    const { db } = applyRecords(richDb() as any, [tomb!]);
+    expect((db as any).rituals).toHaveLength(0);
+  });
+
+  /* A weather row has never been edited by a person, so `updatedAt` and
+     `createdAt` are both absent and every row would tie at the epoch — which
+     means the newest reading could never win. */
+  it("orders a context row by when it was fetched", () => {
+    const r = projectDb(richDb(), "d1").find((x) => x.kind === "context")!;
+    expect(r.updatedAt).toBe("2026-03-04T06:00:00.000Z");
+    expect(r.id).toBe("2026-03-04");
   });
 
   it("gives a record with no timestamp an ordering rather than dropping it", () => {

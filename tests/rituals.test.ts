@@ -19,7 +19,7 @@ import {
   newStep, nextReviewDate, pickReviewDay, requiredSteps, ritualFromStarter, ritualReport,
   ritualStreak, runComplete, runOn, runProgress, sanitizeRitualReviews, sanitizeRitualRuns,
   sanitizeRituals, scheduledOn, skipRun, spreadReviewDays, suggestTweaks, toggleStep,
-  tuneUpCards, tweakReceipt, weekDots, weekLine, weekdayOf,
+  tuneUpCards, tweakReceipt, weekDots, weekLine, weekdayOf, checklistSettled,
   RITUAL_METRICS,
 } from "../src/lib/rituals";
 import type { Ritual, RitualReview, RitualRun } from "../src/lib/rituals";
@@ -198,6 +198,57 @@ describe("the day's board", () => {
 
   it("returns a null ratio rather than a zero when nothing is scheduled", () => {
     expect(boardProgress([], [], WED).ratio).toBeNull();
+  });
+});
+
+/* What a routine reminder has to ask before it fires. The bug this replaced
+   got worse the better somebody had set the app up: the check read only the
+   flat checklist, so moving a morning into a ritual — the entire reason
+   rituals exist — left the reminder with no rows to find and therefore nothing
+   it could ever call finished. It fired every morning, forever, however
+   completely the ritual had been done. */
+describe("whether today's checklist is settled", () => {
+  const morningRitual = newRitual({
+    id: "rt_am", name: "Morning meds", slot: "morning",
+    steps: [newStep({ id: "m1", label: "Water" })],
+  });
+  const item = newRoutineItem({ id: "ri_d", name: "Vitamin D3", times: ["morning"], daily: true });
+  const dose = (date: string): any => ({
+    id: "rl_1", date, time: "08:00", itemId: "ri_d", name: "Vitamin D3",
+    kind: "supplement", slot: "morning",
+    createdAt: `${date}T08:00:00.000Z`, updatedAt: `${date}T08:00:00.000Z`,
+  });
+
+  it("is settled once a ritual is finished, even with no routine rows at all", () => {
+    expect(checklistSettled([], [], [morningRitual], [], WED)).toBe(false);
+    const done = [completeRun(newRun(morningRitual, WED), morningRitual)];
+    expect(checklistSettled([], [], [morningRitual], done, WED)).toBe(true);
+  });
+
+  it("is not settled while either half is still outstanding", () => {
+    const done = [completeRun(newRun(morningRitual, WED), morningRitual)];
+    // Ritual done, dose still owed.
+    expect(checklistSettled([item], [], [morningRitual], done, WED)).toBe(false);
+    // Dose taken, ritual still owed.
+    expect(checklistSettled([item], [dose(WED)], [morningRitual], [], WED)).toBe(false);
+    // Both.
+    expect(checklistSettled([item], [dose(WED)], [morningRitual], done, WED)).toBe(true);
+  });
+
+  it("takes a deliberate skip as dealt with, on either side", () => {
+    const skipped = [skipRun(newRun(morningRitual, WED))];
+    expect(checklistSettled([], [], [morningRitual], skipped, WED)).toBe(true);
+  });
+
+  it("ignores a ritual today never asked for", () => {
+    const notToday = newRitual({ id: "rt_sun", name: "Sunday reset", days: [0], steps: [newStep({ id: "x", label: "Tidy" })] });
+    expect(checklistSettled([], [], [notToday], [], WED)).toBe(true);
+  });
+
+  it("counts a day that asks for nothing as settled rather than permanently owed", () => {
+    /* A reminder about an empty checklist is the app nudging somebody about
+       its own lack of content. */
+    expect(checklistSettled([], [], [], [], WED)).toBe(true);
   });
 });
 
