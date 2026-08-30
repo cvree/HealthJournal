@@ -101,49 +101,73 @@ years. Both are editable in Edit Setup afterwards.
 
 **What are you tracking?** The only question that cannot be defaulted — and once it is answered,
 the screen draws the four that follow it: your questions, your photographs, everything else a day
-holds, your first entry. Two minutes, and nothing permanent: every one of those screens exists
-again in Settings, with more on the table than first run ever shows you.
+holds, your first entry. It also says what those screens will and will not do: that nothing is
+switched on yet, that nothing gets photographed unless you ask, and that all of it exists again in
+Settings with more on the table than first run ever shows you.
 
-**What should it ask you?** Your daily check-in, already set up from the packs you picked, with
-the honest cost of it printed above in the largest number on the screen — *4 questions, about 15
-seconds a day* — that changes as you switch one on or off. It **starts short**: everybody lands on
-Quick, because Balanced is the better journal and Quick is the better first week, and nobody ever
-quit a health journal for asking too little. Quick will not hand you four severity ratings either
-— four 1–10s all move together, so where a pack's everyday order would give you nothing but
-ratings, one slot goes to something you *did* rather than something you *felt*. Balanced and
-Thorough are one tap each and a line underneath says what the one you are on actually means;
-sections fold; the daily number is locked on because a journal without one is not one.
-Most people have never been asked to design a survey, so this act teaches rather than asks:
-**every question is drawn with the control it will actually use** — ten rungs, a Yes beside a No,
-a keypad, three lines of text — the whole thing can be sorted by *how* it is answered (1–10 /
-yes-no / numbers & words, each with a live count), and **See it as it'll look** prints the entire
-check-in exactly as it will be answered tomorrow morning. *Ask me something of my own* takes a
-question in your own words as a 1–10, a yes/no, a number or a few words, drawn as you write it.
+**Three acts, and each of them walks you through it.** The questions, the photographs and
+everything else a day holds are the three screens with more on the table than anybody weighs in a
+glance, and all three are now dealt out **one card at a time**. There is no list beside them and no
+preset to arrive on — both were the same mistake in two shapes, a journal assembled by a default
+rather than by the person who has to answer it at 7am on the morning they feel worst.
 
-**Or it walks you through them.** Beside the list — never instead of it — there is a guided pass
-that puts one group of questions on the screen at a time: how big the group is and what answering
-it feels like (*five questions here — three rated 1–10, two yes / no*), the control drawn beside
-every row, *ask me all of them* and *none of these* as single taps, and the running cost of the
-whole check-in under your thumb. It ends on your finished check-in drawn exactly as tomorrow
-morning will draw it. You can leave it from any card, and leaving keeps every answer you gave.
+**What should it ask you?** One group of questions per screen: how big the group is and what
+answering it feels like (*five questions here — three rated 1–10, two yes / no*), **the control
+drawn beside every row** — ten rungs, a Yes beside a No, a keypad, three lines of text, because
+almost nobody has been asked to design a survey and nobody needs a yes/no explained once the Yes
+and the No are sitting there — *ask me all of them* and *none of these* as single taps, and the
+running cost of the whole check-in under your thumb, which answers back every time it changes.
 
-**What's worth a photo?** Not a switch — a question about subjects. Specific body areas off a
-tappable map, flare-ups as they happen, progress shots (front, side, back), meals, products and
-labels, swelling, wounds and healing, or anything worth a picture. Each one becomes a real photo
-question with its own baseline, so every shot lines up against the last one *of the same thing*,
-and a contact sheet of labelled empty frames assembles as you pick. Wanting none of it is a
-first-class answer the screen says out loud.
+**Nothing arrives switched on but your daily number.** There is no Quick, no Balanced and no
+Thorough. Three unlabelled sizes is a slider with no units, and whichever one the app lands on is
+the app deciding what you track — the person most likely to tap "Thorough" is the person least
+likely to still be answering it in March. The packs still have an opinion and still say it, on the
+row it is about: *most people keep this*. Then they wait. The last card of the pass is the one
+thing a pack cannot supply — *anything it should ask that isn't here?* — which takes a question in
+your own words as a 1–10, a yes/no, a number or a few words, drawn as you write it.
 
-**Nothing here is ticked for you.** Every subject on this screen ends with a camera pointed at your
-own skin, plate or bathroom shelf, so the app suggests — marked *suggested for what you track* —
-and then waits. This screen has a guided pass too: one subject at a time, the same frame twice six
-weeks apart, what it turns out to be worth later, and a Yes beside a No. Both answers move on, and
-a no is remembered as a no.
+**And it does not ask you to agree with yourself at the end.** A review card after a pass that
+asked about every single item is the app asking you to confirm a list you built row by row. It
+reads as doubt, and the second reading of a list you have just made is the reading where you stop
+caring. The last answer is the answer; the next act starts.
 
-**What else should it keep?** Meds and creams, meals, flares, the bathroom, weight — and each one
-you tick draws itself into the row of one-tap buttons underneath, so the dashboard is assembled in
-front of you out of your own answers rather than filed away to be discovered later. A nudge, if
-you want one, at a time you choose.
+**What's worth a photo?** Not a switch — a question about subjects, one to a screen. Specific body
+areas off a tappable map, flare-ups as they happen, progress shots, meals, products and labels,
+swelling, wounds and healing, or anything worth a picture. Each card holds one up: what it is, the
+same frame twice six weeks apart, what it turns out to be worth later — *the flare you photograph
+on the bad night is the one you can still show somebody in March* — whether people tracking what
+you track tend to keep it, and a **Yes beside a No**. Both answers move on and a no is remembered
+as a no. The contact sheet of labelled empty frames fills in underneath as you answer, and every
+subject becomes a real photo question with its own baseline, so every shot lines up against the
+last one *of the same thing*.
+
+**Nothing here is ticked for you, and nothing is left dangling.** Every subject on this screen ends
+with a camera pointed at your own skin, plate or bathroom shelf, so the app suggests and then
+waits. The two subjects that need one more fact — *which body areas*, *which angles* — now ask for
+it **inside the pass**, on the card straight after the yes, rather than on a screen the pass hands
+back to. Saying yes to the body map and then never being shown a body map was the one way a guided
+pass could strand the exact person it was there to help.
+
+**What else should it keep?** Meds and creams, meals, flares, the bathroom, weight — one to a
+screen, a yes beside a no, and each yes drawing itself into the row of one-tap buttons underneath,
+so the dashboard is assembled in front of you out of your own answers rather than filed away to be
+discovered later. Then the two questions that are not about *what* a day holds but about *when* it
+is asked for: how often it should ask at all, and a nudge if you want one, at a time you choose —
+in that order, because the reminder is about when in the day and the cadence is about whether the
+day is even one of the days.
+
+**And then you are shown around.** The journal is born onto a home screen full of controls you
+chose a minute ago and have never seen working, so there is one pass over it — once, on this
+device, and never again. It dims the app and cuts a hole around **one real control at a time**:
+the card that asks today's questions, the row of buttons you assembled, today's check-in ring, the
++ button, the + button *held*, History, and the gear. Nothing here is a mock-up, because the thing
+being taught is where your thumb goes and a picture of a button teaches nobody where a button is.
+It spends a whole stop on the two things nothing else explains — **holding the + fans every screen
+in the app out from under your thumb**, and what is actually behind the gear, listed rather than
+left to be discovered in six weeks — and there is a way out on every card. It only ever runs itself
+once, which is exactly why **Settings → A look around** can ask for it again: somebody who skipped
+it on day one, or who has just handed the phone to the person the journal is actually for, should
+not have to erase their data to be shown around.
 
 Then your first real entry — ten large targets you can tap or slide a thumb across, with the card
 taking the colour of the day as soon as there is a number — and the part that is the point: **the
@@ -152,10 +176,12 @@ past it into the days you have not lived yet, and the streak counts to one. A jo
 about the future, and watching your own first entry become the first thing on a timeline makes that
 promise in about three seconds.
 
-Every screen after the first arrives already answered, so Continue is never blocked on work and a
-person who wants to be through in thirty seconds still can be. There is no "set everything up in
-detail instead" door beside it any more: a link to a longer setup is an admission that the main
-path does not do the job. The main number you pick is what Today asks for every day, what the
+Nothing is ever demanded and nothing is ever assumed — two different promises, and the flow makes
+both. The way forward is live on every card and *not this one* is a real button rather than a
+greyed-out apology; and no question and no photograph is switched on by anything but a tap. There
+is no "set everything up in detail instead" door beside it, and no list beside the passes either: a
+second way through is an admission that the first one does not do the job, and an optional guided
+pass is one the people who need it never take. The main number you pick is what Today asks for every day, what the
 streak counts, and the first figure in an appointment pack; everything here is changeable whenever
 you like, from Edit Setup and from the Quick Add editor.
 
@@ -281,26 +307,37 @@ explicitly choose that analysis.
 **One tap is a whole day.** Today opens with the **Daily Pulse**: your main number, ten large
 targets, and the tap *is* the save — no button, no confirmation, no screen. The line under it is
 read back out of the journal rather than asserted, so it says "Nothing recorded yet" until the
-number is actually there, and it says which end of the scale the number is at. Tapping the same
-number again clears it. For most people on most days this is the entire interaction, and a year
-of one honest number beats a fortnight of forty.
+number is actually there, and it says which end of the scale the number is at. For most people on
+most days this is the entire interaction, and a year of one honest number beats a fortnight of
+forty.
 
-**And then the next most important question.** Answering the pulse used to be the end of the
-easy path: everything else was behind "Add more detail", which opens the survey. So the pulse now
-hands straight over to a **queue** — the highest-priority question you have not answered today,
-asked in place, with the app's own input for it and the tap as the save. Answer it and the next
-one takes its place; a whole daily review can be done from the first card of the first screen at
-the speed of tapping, and a progress line says how much is left (*4 of 12 answered*) so it is
-never an open-ended demand. What the queue asks first is decided by what your packs are about,
-what kind of day you have said it is, and **what you actually record** — somebody who fills in
-their weight every morning and has never touched "possible triggers" is asked for the weight,
-whatever the template thinks. A question finished by one tap moves on by itself; a number or a
-multi-select waits for **Next**, because snatching a field away mid-keystroke is the app racing
-you. **Skip this one** and **Done for now** are both there, and neither is remembered — tomorrow
-it asks again, because a journal that permanently stops asking on the strength of one impatient
-tap has started deciding what you track.
+**And then the next question takes its place.** One slot, and whichever question the day is on is
+in it. Answer the number and the answer is said back where you gave it — *8/10 saved for today — a
+hard day* — it holds for a beat, and then the whole thing lifts away and the next question arrives
+in the same place, at the same size, with the same weight. Nothing moves down the screen and
+nothing appears underneath: a whole daily review can be done from the top of the first card at the
+speed of tapping, with a progress line saying how much is left (*4 of 12 answered*) so it is never
+an open-ended demand.
 
-**Detail comes after, never in front.** Under the queue: the things a question cannot be — the
+This used to be a second card under the pulse, and two questions were on the screen at once — the
+one just answered still holding the top of the card with its confirmation, and the one being asked
+in a smaller box below it. A card that has to tell you where to look has already lost the tap. The
+beat before the swap is the confirmation rather than a delay, because moving on the instant a
+finger lands would make anybody doubt the tap registered, and that is the one thing a journal may
+never do.
+
+What it asks first is decided by what your packs are about, what kind of day you have said it is,
+and **what you actually record** — somebody who fills in their weight every morning and has never
+touched "possible triggers" is asked for the weight, whatever the template thinks. A question
+finished by one tap hands over by itself; a number or a multi-select waits for **Next**, because
+snatching a field away mid-keystroke is the app racing you. **Back to the question before** walks
+out the way you came, all the way to the number — which is how *tap it again to clear* is still
+true five questions later — and the slot always opens on the number when you come back to the app,
+even on a day you rated at breakfast. **Skip this one** and **Done for now** are both there, and
+neither is remembered: tomorrow it asks again, because a journal that permanently stops asking on
+the strength of one impatient tap has started deciding what you track.
+
+**Detail comes after, never in front.** Under it: the things a question cannot be — the
 routine still owed, the camera, and the note, which is last because it is the one that needs
 typing. Nothing already answered is offered, and a photo is only asked for on a bad day or after
 a week without one.
@@ -1004,7 +1041,10 @@ bellwether/
 │   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
-│   │                           #   first run (the doorway and five acts),
+│   │                           #   first run (the doorway and five acts, three
+│   │                           #     of them walked one card at a time),
+│   │                           #   tour (being shown around the finished app,
+│   │                           #     once, with the real controls spotlit),
 │   │                           #   rail (the one horizontal scroller),
 │   │                           #   rituals (the day's card, the step player,
 │   │                           #     the weekly tune-up, the manage screen)
@@ -1025,6 +1065,8 @@ bellwether/
 │   │   ├── intro.ts            # the first-run choreography (hero, FLIP, timeline draw)
 │   │   ├── pulse.ts            # the one-tap day, the question queue behind it,
 │   │   │                       #   and which details to offer next
+│   │   ├── tour.ts             # the stops of the one-off tour, what is behind
+│   │   │                       #   the gear, and where each card sits
 │   │   ├── import.ts           # reading somebody's own notes into rows (AI-only):
 │   │   │                       #   prompt, boundary, and a pure writer. The one
 │   │   │                       #   outbound path whose payload is your writing

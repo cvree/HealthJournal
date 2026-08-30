@@ -1,5 +1,153 @@
 # Changelog
 
+## 1.29.0
+
+You choose it, one card at a time — and then it shows you around.
+
+Three screens in the middle of first run had more on them than anybody weighs in
+a glance: the questions your check-in will ask, what is worth photographing, and
+everything else a day holds. Each of them had a list, each list arrived with
+something already decided, and each had a guided pass offered *beside* it for
+anybody who wanted one.
+
+That was the wrong shape twice over, and this release takes both apart.
+
+### There is no preset any more
+
+The check-in opened on **Quick** — four or five questions already switched on.
+Before that it opened on **Balanced**, which was worse. Both are the same
+mistake: three unlabelled sizes is a slider with no units, and whichever one the
+app lands on is the app deciding what you track. The person most likely to tap
+"Thorough" is the person least likely to still be answering it in March, and the
+person who taps nothing at all has had a check-in chosen for them by a default.
+
+So Quick, Balanced and Thorough are gone. Nothing arrives switched on but your
+daily number — the question this app *is*, and the one thing that cannot be
+switched off. Every other question in your journal got there because you tapped
+it.
+
+The packs still have an opinion and they still say it, on the row it is about:
+**most people keep this**. Then they wait. That is the whole difference between
+a suggestion and a decision, and it is the same rule the photographs screen has
+followed since 1.28.
+
+### And there is no list beside the pass
+
+A guided pass that is optional is a guided pass the people who need it never
+take, because taking it means admitting on screen four that you would like some
+help. So the lists are gone and the pass *is* the screen — for all three acts,
+not two.
+
+**The questions**, one group at a time. How big the group is and what answering
+it feels like — *five questions here — three rated 1–10, two yes / no* — the
+control drawn beside every row, *ask me all of them* and *none of these* as
+single taps, and the running cost of the whole check-in under your thumb,
+answering back every time it changes. The last card is the one thing a pack
+cannot supply: *anything it should ask that isn't here?*
+
+**The photographs**, one subject at a time, as before — with the gap closed.
+Saying yes to the body map used to hand you back to a screen you had already
+left, which meant the one way to say yes to it and never see a body map was to
+be walked through the deck: the exact person the pass was there to help. *Which
+areas* and *which angles* are cards in the pass now, on the screen straight
+after the yes that needs them.
+
+**Everything else a day holds**, which was never walked at all. Five rows with
+the app's suggestions ticked, and the row of buttons under your thumb for the
+next year was therefore assembled by a default. One card each now, a yes beside
+a no, and the dashboard drawn underneath as it fills in — then how often it
+should ask, then whether it should nudge, in that order, because the reminder is
+about when in the day and the cadence is about whether the day is even one of
+the days.
+
+### Nothing to confirm at the end of one
+
+Each pass used to end on a review: your finished check-in, drawn as tomorrow
+morning would draw it, over the line *every one of these is here because you
+said so*. It was a nice screen and it had to go. A review card after a pass that
+asked about every single item is the app asking you to agree with yourself; it
+reads as doubt, and the second reading of a list you have just built row by row
+is the reading where you stop caring.
+
+The last answer is the answer. The next act starts.
+
+### Today asks one question, in one place
+
+The pulse card asked your daily number at the top and drew the next question as
+a second card underneath it. Two questions were therefore on the screen at once
+— the one you had just answered, still holding the top of the card with its
+confirmation, and the one being asked, in a smaller box below. A card that has
+to tell you where to look has already lost the tap.
+
+There is one slot now. Your number is asked in it; the moment you answer, the
+answer is said back where you gave it — *8/10 saved for today — a hard day* —
+it holds for a beat, and then the whole thing lifts away and the next question
+arrives in the same place, at the same size, with the same weight. Nothing moves
+down the screen, nothing appears underneath, and the next question is never
+something to *notice*: it is simply what the card says now.
+
+The beat is the point. Swapping on the tap itself would make anybody doubt the
+tap registered, which is the one thing a journal may never do.
+
+Four rules keep it an offer. It never advances out from under a half-typed
+answer — a number or a multi-select waits for **Next**. **Back to the question
+before** walks out the way you came, all the way to the number, which is how
+*tap it again to clear* is still true five questions later. The slot always
+opens on your number when you come back to the app, even on a day you rated at
+breakfast, because being shown question four with no sign of what you answered
+at breakfast is the card hiding your own day from you. And **Skip this one** and
+**Done for now** are still there, still not remembered.
+
+### Then it shows you around
+
+First run ends with a journal that has one day in it and a home screen full of
+controls you chose ninety seconds ago and have never seen working. The pulse
+card looks like a rating widget rather than a queue. The + looks like one button
+rather than three. The row of tiles looks fixed rather than rearrangeable. And
+Settings, where every one of those decisions can be taken again, looks like a
+gear.
+
+So there is one pass over the finished thing, on the morning it is finished,
+once per device and never again. It dims the app and cuts a hole around **one
+real control at a time** — the card that asks today's questions, the buttons you
+assembled, today's check-in ring, the + button, the + button *held*, History, and
+the gear. Nothing in it is a mock-up or a screenshot: what you are being taught
+is where your thumb goes, and a picture of a button teaches nobody where a
+button is.
+
+It spends a whole stop on the two things nothing else explains. **Holding the +**
+fans every screen in the app out from that corner — keep holding and slide, one
+gesture, without your hand leaving the bottom of the phone — and the card draws
+the movement as well as describing it. And **what is behind the gear** is listed
+rather than left to be found in six weeks: your survey, how often it asks,
+reminders, appearance, goals, taps and sounds, app lock, sync, the optional AI,
+export, import, and the one page that says what can leave this device. There is
+a way out on every card, and a way straight into Settings from the last one.
+
+A stop whose control is not on your screen is dropped rather than drawn over
+empty space — somebody who kept no extras has no row of buttons, and pointing at
+where one would have been is worse than saying nothing.
+
+### Under it
+
+`FirstRun.tsx` loses `DEPTHS`, the lens row, the folded question list, the photo
+subject list, the invite cards and both review cards; `walk`, `photoWalk` and a
+new `extraWalk` are plain indices rather than "null means not walking", and
+`enabled` derives from what somebody tapped rather than from a preset. Custom
+questions are kept out of the group deck, so writing one no longer grows the
+pass under the index you are standing on.
+
+`DailyPulse` gains one stage: `cursor` (null is the daily number), `landed` for
+the beat, and `trail` for the walk back, with `questionOut` / `questionIn` /
+`answerLanded` added to `lib/motion.ts`. `NextQuestion` is gone.
+
+New: `lib/tour.ts` (the stops, what is behind the gear, and where a card sits
+against a hole) and `components/Tour.tsx` (the spotlight, which is one box with
+a 200vmax box-shadow — the dim is outside it by construction, so there is no
+mask to keep in step and the light travels between stops). Targets are CSS
+selectors, so nothing on the dashboard knows the tour exists; `data-tour` lands
+on two nav tabs and the gear. 1743 tests across 69 suites, all green.
+
 ## 1.28.0
 
 The setup stops choosing for you.

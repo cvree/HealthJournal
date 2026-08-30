@@ -4763,111 +4763,6 @@ button.fhj-section:disabled {
   background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
 }
 
-/* ---------- the cost of a day ---------- */
-
-.fhj-fr-cost {
-  margin-top: 1.5rem;
-  padding: 0.875rem;
-  border-radius: var(--fhj-radius-lg);
-  background: var(--fhj-card, #1e2026);
-  border: var(--fhj-bw-strong) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
-}
-
-.fhj-fr-cost-read {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.fhj-fr-cost-num {
-  font-family: var(--fhj-font-display);
-  font-size: 2.5rem;
-  line-height: 1;
-  color: var(--fhj-accent-text, #a6c3ea);
-  font-variant-numeric: tabular-nums;
-}
-
-.fhj-fr-cost-word {
-  font-size: 0.75rem;
-  line-height: 1.4;
-  color: var(--fhj-subtle, #9a9ca6);
-}
-.fhj-fr-cost-word b {
-  color: var(--fhj-ink, #ecebe7);
-  font-weight: 700;
-}
-
-.fhj-fr-depth {
-  display: flex;
-  gap: 0.25rem;
-  margin-top: 0.75rem;
-  padding: 0.1875rem;
-  border-radius: var(--fhj-radius-pill);
-  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
-}
-
-.fhj-fr-depth-btn {
-  flex: 1;
-  min-height: 2.25rem;
-  border-radius: var(--fhj-radius-pill);
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--fhj-sub, #b9bac2);
-  transition: background var(--fhj-quick) ease, color var(--fhj-quick) ease;
-}
-.fhj-fr-depth-btn.is-on {
-  background: var(--fhj-accent, #8fb0e3);
-  color: var(--fhj-on-accent, #121419);
-}
-
-/* ---------- the question list ---------- */
-
-.fhj-fr-qs {
-  margin-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.fhj-fr-qsec {
-  border-radius: var(--fhj-radius);
-  border: var(--fhj-bw) solid var(--fhj-line, rgba(255, 255, 255, 0.08));
-  overflow: hidden;
-}
-
-.fhj-fr-qsec-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0 0.75rem;
-  text-align: left;
-  background: var(--fhj-card, #1e2026);
-}
-
-.fhj-fr-qsec-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: -0.008em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.fhj-fr-qsec-count {
-  font-size: 0.6875rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--fhj-subtle, #9a9ca6);
-}
-
-.fhj-fr-qlist {
-  display: flex;
-  flex-direction: column;
-}
-
 /* One question. The whole row is the switch — a 44px target that says what it
    is, what kind of answer it wants, and whether it is on. */
 .fhj-fr-q {
@@ -4880,52 +4775,6 @@ button.fhj-section:disabled {
   text-align: left;
   border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
   transition: background var(--fhj-quick) ease;
-}
-.fhj-fr-q.is-on { background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15)); }
-.fhj-fr-q.is-locked { opacity: 0.9; }
-
-.fhj-fr-q-mark {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 0.4375rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--fhj-line-strong, rgba(255, 255, 255, 0.14));
-  transition: background var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
-}
-.fhj-fr-q.is-on .fhj-fr-q-mark {
-  background: var(--fhj-accent, #8fb0e3);
-  border-color: var(--fhj-accent, #8fb0e3);
-}
-
-.fhj-fr-q-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.fhj-fr-q-label {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.fhj-fr-q-type {
-  display: block;
-  font-size: 0.6875rem;
-  color: var(--fhj-subtle, #9a9ca6);
-  margin-top: 0.0625rem;
-}
-
-.fhj-fr-q-own {
-  flex: none;
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fhj-accent-text, #a6c3ea);
 }
 
 /* ---------- a question of your own ---------- */
@@ -5753,66 +5602,6 @@ button.fhj-section:disabled {
 .fhj-fr-mini-ctl.is-lines > span:nth-child(2) { width: 1rem; }
 .fhj-fr-mini-ctl.is-lines > span:nth-child(3) { width: 0.625rem; }
 
-/* ---------- the lens row: the survey, by how it is answered ---------- */
-
-.fhj-fr-lenses {
-  margin-top: 1.125rem;
-}
-
-.fhj-fr-lens-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.fhj-fr-lens-head .fhj-fr-eyebrow { margin-bottom: 0; }
-
-.fhj-fr-lens-preview {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-height: 2rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--fhj-accent-text, #a6c3ea);
-}
-
-.fhj-fr-lens-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.375rem;
-  margin-top: 0.5rem;
-}
-
-.fhj-fr-lens {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  min-height: 3.5rem;
-  padding: 0.5rem 0.4375rem;
-  border-radius: var(--fhj-radius);
-  background: var(--fhj-faint, #2a2d35);
-  border: 1px solid transparent;
-  transition: background var(--fhj-quick) ease, border-color var(--fhj-quick) ease;
-}
-.fhj-fr-lens.is-on {
-  border-color: var(--fhj-accent, #8fb0e3);
-  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
-}
-.fhj-fr-lens b {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  line-height: 1.15;
-}
-.fhj-fr-lens > span:not([class]) {
-  font-size: 0.5625rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fhj-subtle, #9a9ca6);
-}
-.fhj-fr-lens.is-on > span:not([class]) { color: var(--fhj-accent-text, #a6c3ea); }
-
 /* ---------- tomorrow morning, drawn ----------
    The check-in exactly as it will be answered: same order, same controls,
    inert on purpose. */
@@ -5967,65 +5756,6 @@ button.fhj-section:disabled {
 }
 .fhj-fr-own-pv .fhj-fr-pv-field { border-bottom: 0; padding: 0.25rem 0 0; }
 
-/* ---------- the photos act ---------- */
-
-.fhj-fr-subjects {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-}
-
-.fhj-fr-subject {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.75rem 0.875rem;
-  border-radius: var(--fhj-radius);
-  text-align: left;
-  background: var(--fhj-card, #1e2026);
-  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
-  transition: transform 90ms var(--fhj-out), border-color var(--fhj-quick) ease, background var(--fhj-quick) ease;
-}
-.fhj-fr-subject:active { transform: scale(0.985); }
-.fhj-fr-subject.is-on {
-  border-color: var(--fhj-accent, #8fb0e3);
-  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
-}
-
-.fhj-fr-subject-mark {
-  flex: none;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--fhj-radius-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--fhj-faint, #2a2d35);
-  transition: background var(--fhj-quick) ease;
-}
-.fhj-fr-subject.is-on .fhj-fr-subject-mark { background: var(--fhj-accent, #8fb0e3); }
-
-.fhj-fr-subject-body { min-width: 0; }
-
-.fhj-fr-subject-name {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.fhj-fr-subject-blurb {
-  display: block;
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--fhj-subtle, #9a9ca6);
-  margin-top: 0.125rem;
-}
-
 .fhj-fr-angles {
   display: flex;
   gap: 0.375rem;
@@ -6168,65 +5898,13 @@ button.fhj-section:disabled {
 
 /* ---------- the guided passes ----------
 
-   Two screens in first run have more options than anybody weighs in one
-   glance — which questions get asked, and what gets photographed — and both
-   now carry a pass that deals them out one card at a time. The paint is
-   shared: an invitation card on the list screen, a segmented bar across the
-   top of the pass, and rows big enough to read while walking. */
-
-/* What the preset you are standing on actually means. */
-.fhj-fr-depth-note {
-  margin-top: 0.625rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--fhj-subtle, #9a9ca6);
-}
-.fhj-fr-depth-note b { color: var(--fhj-ink, #ecebe7); }
-
-/* The offer itself. Deliberately not a primary button — the list under it is
-   a perfectly good way through, and a screaming CTA here would turn an offer
-   into a demand. */
-.fhj-fr-invite {
-  margin-top: 1.25rem;
-  padding: 0.875rem 1rem 1rem;
-  border-radius: var(--fhj-radius-lg);
-  background: var(--fhj-card, #1e2026);
-  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
-}
-
-.fhj-fr-invite-body .fhj-fr-eyebrow { margin-bottom: 0.375rem; }
-
-.fhj-fr-invite-body b {
-  display: block;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: -0.012em;
-}
-
-.fhj-fr-invite-body > span:not([class]) {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--fhj-subtle, #9a9ca6);
-}
-
-.fhj-fr-invite-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4375rem;
-  width: 100%;
-  min-height: 2.75rem;
-  margin-top: 0.75rem;
-  border-radius: var(--fhj-radius-pill);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--fhj-on-accent, #121419);
-  background: var(--fhj-accent, #8fb0e3);
-  transition: transform 90ms var(--fhj-out);
-}
-.fhj-fr-invite-btn:active { transform: scale(0.985); }
+   The three middle acts of first run — which questions get asked, what gets
+   photographed, and what else a day holds — are each a pass that deals its
+   options out one card at a time. There is no list beside any of them and no
+   preset to arrive on, so this is not decoration on a screen that also works
+   another way: it is the screen. The paint is shared — a segmented bar across
+   the top, rows big enough to read one-handed, a yes beside a no, and the
+   running cost under the thumb. */
 
 /* How far through the pass you are. The same hollow-ahead, filled-behind
    shape the step rail uses, because it is the same promise. */
@@ -6359,6 +6037,52 @@ button.fhj-section:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* The questions somebody wrote themselves, listed back on the card that took
+   them. A question you have just typed vanishing off the screen is the app
+   losing your work in front of you. */
+.fhj-fr-ownlist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 1.25rem;
+}
+
+.fhj-fr-ownrow {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  border: var(--fhj-bw) solid var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-ownrow-mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.4375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent, #8fb0e3);
+}
+
+.fhj-fr-ownrow-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+}
+
+/* A suggestion, sitting on the row it is a suggestion about. It is a claim
+   about what other people keep, never a tick somebody has to undo. */
+.fhj-fr-wq-label .fhj-fr-extra-tag {
+  margin-left: 0.4375rem;
+  vertical-align: 0.06em;
+}
+
 /* One photo subject, held up: the same shot twice, weeks apart, which is the
    entire argument for taking it. */
 .fhj-fr-pw-shot {
@@ -6378,6 +6102,28 @@ button.fhj-section:disabled {
 .fhj-fr-pw-shot .fhj-fr-frame-label { text-align: center; }
 
 .fhj-fr-pw-then { display: inline-flex; }
+
+.fhj-fr-pw-shot.is-tile {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.fhj-fr-preview-tile.is-hero {
+  padding: 0.75rem 1.125rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border-color: var(--fhj-accent, #8fb0e3);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+.fhj-fr-pw-caption {
+  flex: 1;
+  min-width: 9rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
 
 .fhj-fr-pw-why {
   display: flex;
@@ -7005,15 +6751,8 @@ button.fhj-section:disabled {
    matter: the number is the day, this is the rest of the day, and the chips
    are what is left over. */
 
-.fhj-next {
-  margin-top: 0.875rem;
-  padding: 0.875rem 0.875rem 0.75rem;
-  border-radius: var(--fhj-radius);
-  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
-}
-
-.fhj-next-head {
+/* The eyebrow and the count, on one line above the slot. */
+.fhj-pulse-top {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -7044,12 +6783,60 @@ button.fhj-section:disabled {
   transition: width 320ms var(--fhj-out);
 }
 
-.fhj-next-title {
+/* ---------- the slot ----------
+
+   One question at a time, and always at this size. The whole point of the
+   change is that the second question is not a smaller version of the first
+   sitting underneath it: it takes the same place, at the same weight, and the
+   only thing that tells you it is a different question is that it is a
+   different question.
+
+   `min-height` is what stops the card jumping between a 1–10 and a yes/no.
+   Without it the buttons under the slot walk up and down the screen as the
+   queue advances, which is how a thumb ends up tapping "Done for now" while
+   aiming at an answer. */
+.fhj-pulse-stage {
+  margin-top: 0.25rem;
+  min-height: 9.5rem;
+}
+
+.fhj-pulse-q {
   font-family: var(--fhj-font-display);
-  font-size: 1.0625rem;
-  line-height: 1.25;
-  margin-bottom: 0.625rem;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+  margin: 0.25rem 0 0.75rem;
   color: var(--fhj-ink, #ecebe7);
+}
+
+/* The answer, said back. It holds for a beat before the slot turns over, so
+   it has to read in one glance — hence the weight on the value itself. */
+.fhj-pulse-said {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.fhj-pulse-said b { color: var(--fhj-ink, #ecebe7); }
+
+/* The way back out of the queue, all the way to the number. Quiet, because
+   almost nobody needs it and the ones who do are looking for it. */
+.fhj-pulse-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  min-height: 2.25rem;
+  padding: 0 0.625rem;
+  margin: 0.25rem 0 0 -0.625rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-pulse-back:hover { color: var(--fhj-ink, #ecebe7); }
 }
 
 .fhj-next-unit {
@@ -7063,7 +6850,9 @@ button.fhj-section:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-top: 0.625rem;
+  margin-top: 0.75rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
 }
 
 .fhj-next-btn {
@@ -10803,4 +10592,350 @@ button.fhj-section:disabled {
 }
 .fhj-range:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 3px var(--fhj-focus, rgba(125, 148, 184, 0.55));
+}
+
+/* ============================================================
+   Being shown around, once
+   ============================================================
+
+   The tour (src/components/Tour.tsx) dims the app and cuts a hole around one
+   real control at a time. Two things here are doing the actual work.
+
+   **The hole is a shadow.** `.fhj-tour-hole` is a box the size of the target
+   with a 200vmax spread on its box-shadow, so everything outside it is dim by
+   construction — at any size, with no mask to keep in step and no seams where
+   four scrim rectangles would meet. Moving between two stops is one box moving
+   between two rects, which is why the light appears to travel rather than to
+   cut.
+
+   **Nothing under it is live.** The overlay takes every pointer event,
+   including over the lit control. A tour where the spotlit button still works
+   is a tour that navigates away from itself.
+
+   It sits above the bar (z 30) and above the modals (z 60), because it points
+   at the bar and must never be the thing that is covered. */
+
+.fhj-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  /* Every event, including over the hole. */
+  pointer-events: auto;
+}
+
+.fhj-tour-hole {
+  position: fixed;
+  border-radius: var(--fhj-radius-lg);
+  box-shadow:
+    0 0 0 200vmax color-mix(in srgb, #05070c 78%, transparent),
+    0 0 0 2px var(--fhj-accent, #8fb0e3),
+    0 0 2.5rem 0.25rem color-mix(in srgb, var(--fhj-accent, #8fb0e3) 30%, transparent);
+  transition:
+    top 380ms var(--fhj-out), left 380ms var(--fhj-out),
+    width 380ms var(--fhj-out), height 380ms var(--fhj-out);
+}
+/* No target on this stop: the whole screen dims and the card is the stop.
+   Parked off-screen at zero size rather than unmounted, so the next stop with
+   a target has something to travel *from*. */
+.fhj-tour-hole.is-off {
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  box-shadow: 0 0 0 200vmax color-mix(in srgb, #05070c 84%, transparent);
+}
+.fhj-tour-hole.is-still { transition: none; }
+
+.fhj-tour-card {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(28rem, calc(100vw - 1.75rem));
+  max-height: min(78vh, 40rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.125rem 1.125rem 1rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.55);
+  animation: fhjTourCard 320ms var(--fhj-out) both;
+}
+.fhj-tour-card:focus { outline: none; }
+.fhj-tour-card.is-center {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes fhjTourCard {
+  from { opacity: 0; transform: translateX(-50%) translateY(0.625rem); }
+  to { opacity: 1; }
+}
+
+.fhj-tour-eyebrow {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fhj-accent-text, #a6c3ea);
+  margin-bottom: 0.4375rem;
+}
+
+.fhj-tour-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.3rem;
+  line-height: 1.18;
+  letter-spacing: -0.014em;
+  color: var(--fhj-ink, #ecebe7);
+  margin-bottom: 0.5rem;
+}
+
+.fhj-tour-body {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--fhj-sub, #b9bac2);
+}
+
+/* The two or three things about a control that are not obvious. Never more
+   than three: a fourth is a manual, and nobody reads a manual on the morning
+   they install something. */
+.fhj-tour-points,
+.fhj-tour-map {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-top: 0.875rem;
+}
+
+.fhj-tour-points li,
+.fhj-tour-map li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5625rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.fhj-tour-points li > span:last-child,
+.fhj-tour-map li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-width: 0;
+}
+.fhj-tour-points b,
+.fhj-tour-map b {
+  font-size: 0.78125rem;
+  font-weight: 700;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-tour-points li span span,
+.fhj-tour-map li span span { color: var(--fhj-subtle, #9a9ca6); }
+
+/* The whole of Settings, listed. It is long on purpose and it scrolls inside
+   the card rather than growing it off the screen. */
+.fhj-tour-map {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-tour-point-mark {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
+  border-radius: var(--fhj-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+}
+
+/* ---------- the gestures, drawn ----------
+
+   "Hold it and slide" is a sentence somebody has to translate into a movement.
+   These are the movement: a thumb on a disc, and what comes out of it. They
+   are decorative — the sentence above is always the real explanation — so they
+   are aria-hidden and they stop entirely under reduced motion. */
+.fhj-tour-gest {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-top: 0.875rem;
+  padding: 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+
+.fhj-tour-gest-surface {
+  position: relative;
+  flex: none;
+  width: 5.5rem;
+  height: 3.25rem;
+}
+
+.fhj-tour-gest-label {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-tour-thumb {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  box-shadow: 0 0 0 0.3125rem color-mix(in srgb, var(--fhj-accent, #8fb0e3) 22%, transparent);
+}
+
+.fhj-tour-ripple {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--fhj-radius-pill);
+  border: 1.5px solid var(--fhj-accent, #8fb0e3);
+  animation: fhjTourRipple 1.8s var(--fhj-out) infinite;
+}
+
+@keyframes fhjTourRipple {
+  0% { transform: scale(1); opacity: 0.9; }
+  70% { transform: scale(2.1); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
+/* The fan, in miniature: three arcs off the corner the thumb is in. */
+.fhj-tour-arc {
+  position: absolute;
+  right: 0.9375rem;
+  bottom: 0.9375rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--fhj-radius-pill);
+  background: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 55%, transparent);
+  transform: translate(-1.75rem, -0.25rem);
+  animation: fhjTourArc 2.2s var(--fhj-out) infinite;
+}
+.fhj-tour-arc.is-b {
+  transform: translate(-1.4rem, -1.4rem);
+  animation-delay: 0.12s;
+}
+.fhj-tour-arc.is-c {
+  transform: translate(-0.25rem, -1.75rem);
+  animation-delay: 0.24s;
+}
+
+@keyframes fhjTourArc {
+  0%, 12% { opacity: 0; }
+  30%, 78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Three tiles, the middle one lifted out of the row. */
+.fhj-tour-gest.is-drag .fhj-tour-gest-surface {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+.fhj-tour-gest.is-drag .fhj-tour-thumb {
+  right: auto;
+  bottom: 0.125rem;
+  left: 2.0625rem;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.fhj-tour-tile {
+  flex: 1;
+  height: 2rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+}
+.fhj-tour-tile.is-lift {
+  background: var(--fhj-accent, #8fb0e3);
+  animation: fhjTourLift 2s var(--fhj-out) infinite;
+}
+
+@keyframes fhjTourLift {
+  0%, 15% { transform: translate(0, 0) scale(1); }
+  35%, 65% { transform: translate(0, -0.375rem) scale(1.06); }
+  85%, 100% { transform: translate(0, 0) scale(1); }
+}
+
+/* How far through, in the same hollow-ahead shape as everything else here. */
+.fhj-tour-bar {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 1rem;
+}
+
+.fhj-tour-seg {
+  flex: 1;
+  height: 0.1875rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition: background var(--fhj-quick) ease;
+}
+.fhj-tour-seg.is-done { background: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 55%, transparent); }
+.fhj-tour-seg.is-now { background: var(--fhj-accent, #8fb0e3); }
+
+.fhj-tour-foot { margin-top: 0.75rem; }
+
+.fhj-tour-next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  width: 100%;
+  min-height: 2.875rem;
+  border-radius: var(--fhj-radius-pill);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--fhj-on-accent, #121419);
+  background: var(--fhj-accent, #8fb0e3);
+  transition: transform 90ms var(--fhj-out);
+}
+.fhj-tour-next:active { transform: scale(0.985); }
+
+.fhj-tour-foot-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.375rem;
+}
+
+.fhj-tour-quiet {
+  min-height: 2.25rem;
+  padding: 0 0.5rem;
+  border-radius: var(--fhj-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-tour-quiet:hover { color: var(--fhj-ink, #ecebe7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-tour-card { animation: none; }
+  .fhj-tour-hole { transition: none; }
+  .fhj-tour-ripple,
+  .fhj-tour-arc,
+  .fhj-tour-tile.is-lift { animation: none; }
+  /* Still legible without the loop: the arcs and the lift are drawn in their
+     finished positions rather than hidden. */
+  .fhj-tour-arc { opacity: 1; }
+  .fhj-tour-ripple { opacity: 0.5; transform: scale(1.6); }
 }

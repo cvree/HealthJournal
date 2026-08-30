@@ -195,6 +195,9 @@ export interface ThumbNavProps {
   destinations: Destination[];
   hand: Hand;
   viewer?: boolean;
+  /** Suppress the one-line "hold +" hint, because something else is teaching
+      that gesture right now — the first-run tour spends a whole stop on it. */
+  hideCoach?: boolean;
   Icon: IconComponent;
   onBack: () => void;
   onGo: (id: string) => void;
@@ -207,7 +210,7 @@ export interface ThumbNavProps {
 }
 
 export function ThumbNav({
-  screen, canBack, backLabel, destinations, hand, viewer, Icon,
+  screen, canBack, backLabel, destinations, hand, viewer, hideCoach, Icon,
   onBack, onGo, onAdd, onFlipHand, onReach, onTop,
 }: ThumbNavProps) {
   const [fan, setFan] = useState(false);
@@ -225,7 +228,10 @@ export function ThumbNav({
   const handled = useRef(false);
   const press = useRef<{ id: number; x: number; y: number; timer: number | null; opened: boolean; moved: boolean } | null>(null);
 
-  /* Shown above the bar until the fan has been opened once. */
+  /* Shown above the bar until the fan has been opened once — and never at all
+     when something else has just taught the same gesture properly. The tour
+     spends a whole stop on it; a one-line hint about the thing somebody was
+     shown ninety seconds ago is the app not listening. */
   const [coach, setCoach] = useState(() => !fanSeen());
 
   const openFan = useCallback(() => {
@@ -351,6 +357,10 @@ export function ThumbNav({
   const tab = (id: string, icon: string, label: string) => (
     <button type="button"
       className={"fhj-thumb-tab" + (screen === id ? " is-active" : "")}
+      /* Named for the one-off tour, which points at real controls rather than
+         at pictures of them and therefore has to be able to find this one.
+         Nothing in this file knows what a tour is. */
+      data-tour={id}
       aria-current={screen === id ? "page" : undefined}
       /* Tapping the tab you are already on returns to the top of it. A year
          of History is a very long page, and the alternative is a hundred
@@ -370,7 +380,7 @@ export function ThumbNav({
         <Fan destinations={destinations} active={screen} hand={hand} pivot={pivotRef.current} Icon={Icon}
           steerRef={steerRef} commitRef={commitRef} onGo={go} onFlipHand={onFlipHand} onClose={closeFan} />
       )}
-      {coach && !viewer && !canBack && (
+      {coach && !hideCoach && !viewer && !canBack && (
         /* Outside the <nav> deliberately: it is a note about the bar, not a
            destination in it, and a fourth thing inside the landmark would be
            announced as one. */

@@ -47,6 +47,8 @@ async function mountToday(mutate?: (db: any) => void) {
 const saved = () => JSON.parse(kv.get("fhj_v1")!);
 const todayEntry = () => saved().entries.find((e: any) => e.date === today());
 const rung = (n: number) => screen.getByRole("button", { name: `Overall skin severity ${n} out of 10` });
+/** The question the one slot is on right now. */
+const asked = () => document.querySelector(".fhj-pulse-q")?.textContent?.trim() || "";
 
 beforeEach(() => cleanup());
 
@@ -68,6 +70,8 @@ describe("one tap", () => {
     expect(screen.queryByText(/saved for today/)).toBeNull();
 
     fireEvent.click(rung(8));
+    /* The answer is said back in the slot it was given in, and holds there for
+       a beat before the slot turns over to the next question. */
     const state = await screen.findByText(/saved for today/);
     expect(state.textContent).toMatch(/8\/10/);
     expect(state.textContent).toMatch(/a hard day/);
@@ -150,7 +154,10 @@ describe("today's check-in, on Today", () => {
     await waitFor(() => expect(line()).toMatch(/^1 of/));
     const marks = filledPips();
 
-    const rungs = document.querySelectorAll<HTMLButtonElement>(".fhj-next .fhj-scale-rung");
+    /* The slot has turned over to the next question by now — same place, same
+       size, and answerable without a form opening. */
+    await waitFor(() => expect(asked()).not.toBe("Overall skin severity"));
+    const rungs = document.querySelectorAll<HTMLButtonElement>(".fhj-pulse-stage .fhj-scale-rung");
     expect(rungs.length).toBeGreaterThan(0);
     fireEvent.click(rungs[3]);
 
@@ -170,22 +177,39 @@ describe("today's check-in, on Today", () => {
   });
 });
 
-/* The queue. One question, then the next one, without a form ever opening —
-   this is the difference between a journal that records one number a day and
-   one somebody can do their whole daily review in.
+/* The queue, in the one slot at the top of the card.
 
-   The rule worth pinning: it must never advance out from under a half-typed
-   answer, and it must always be leaveable. */
-describe("the next most important question", () => {
-  const nextTitle = () => document.querySelector(".fhj-next-title")?.textContent?.trim() || "";
+   This is the change worth pinning hardest. There is no second card: the
+   question the day is on takes the top of the pulse card, and answering it
+   turns that same slot over to the next one. Two questions are never on the
+   screen at once, and nothing appears underneath the thing somebody just
+   answered.
 
-  it("appears the moment the day is rated, and not before", async () => {
+   The rules: the answer is said back before the slot turns over, it never
+   advances out from under a half-typed answer, it is always leaveable, and
+   Back walks out the way it came — all the way to the number, which is how
+   "tap it again to clear" is still true five questions later. */
+describe("one question, in one place", () => {
+  it("asks the day's number first, in the slot, and nothing else beside it", async () => {
     await mountToday();
+    expect(asked()).toBe("Overall skin severity");
+    // The second card is gone: one slot, one question.
+    expect(document.querySelectorAll(".fhj-pulse-q").length).toBe(1);
     expect(document.querySelector(".fhj-next")).toBeNull();
+  });
 
+  it("turns the slot over to the next question once the number is answered", async () => {
+    await mountToday();
     fireEvent.click(rung(9));
-    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
-    expect(nextTitle().length).toBeGreaterThan(0);
+
+    /* First the answer, said back where it was given. */
+    await screen.findByText(/saved for today/);
+    expect(asked()).toBe("Overall skin severity");
+
+    /* Then the slot turns over — in place, still one question on screen. */
+    await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
+    expect(asked().length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".fhj-pulse-q").length).toBe(1);
   });
 
   it("counts the pulse itself as answered, so the progress never lies about what just happened", async () => {
@@ -200,15 +224,15 @@ describe("the next most important question", () => {
   it("hands straight over to the next question when one tap finished the last one", async () => {
     await mountToday();
     fireEvent.click(rung(8));
-    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+    await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
 
-    const first = nextTitle();
-    const tap = [...document.querySelectorAll<HTMLButtonElement>(".fhj-next button")]
+    const first = asked();
+    const tap = [...document.querySelectorAll<HTMLButtonElement>(".fhj-pulse-stage button")]
       .find((b) => /\b5$/.test(b.getAttribute("aria-label") || ""));
     expect(tap).toBeTruthy();
     fireEvent.click(tap!);
 
-    await waitFor(() => expect(nextTitle()).not.toBe(first));
+    await waitFor(() => expect(asked()).not.toBe(first), { timeout: 4000 });
     // and the answer it moved on from is in the journal, not just off the screen
     await waitFor(() => expect(
       Object.values(todayEntry()?.answers || {}).filter((v) => v === 5).length
@@ -218,22 +242,34 @@ describe("the next most important question", () => {
   it("skips one without answering it, and does not come back to it in this sitting", async () => {
     await mountToday();
     fireEvent.click(rung(6));
-    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+    await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
 
-    const first = nextTitle();
+    const first = asked();
     fireEvent.click(screen.getByRole("button", { name: /Skip this one/ }));
-    await waitFor(() => expect(nextTitle()).not.toBe(first));
-    expect(nextTitle()).not.toBe(first);
+    await waitFor(() => expect(asked()).not.toBe(first), { timeout: 4000 });
+    expect(asked()).not.toBe(first);
+  });
+
+  it("walks back out the way it came, all the way to the number", async () => {
+    await mountToday();
+    fireEvent.click(rung(6));
+    await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
+
+    fireEvent.click(screen.getByRole("button", { name: /Back to the question before/ }));
+    await waitFor(() => expect(asked()).toBe("Overall skin severity"), { timeout: 4000 });
+    // And it is still clearable from there, which is the point of going back.
+    expect(screen.getByText(/Tap it again to clear/)).toBeTruthy();
   });
 
   it("closes for the sitting when somebody says they are done", async () => {
     await mountToday();
     fireEvent.click(rung(6));
-    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeTruthy());
+    await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
 
     fireEvent.click(screen.getByRole("button", { name: /Done for now/ }));
-    await waitFor(() => expect(document.querySelector(".fhj-next")).toBeNull());
-    // The day's number is untouched by leaving the queue.
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Done for now/ })).toBeNull());
+    // The slot falls back to the number, untouched by leaving the queue.
+    expect(asked()).toBe("Overall skin severity");
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(6));
   });
 });

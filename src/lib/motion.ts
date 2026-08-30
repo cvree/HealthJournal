@@ -198,6 +198,46 @@ export function animateStepIn(el: HTMLElement | null) {
   );
 }
 
+/* ---------- the daily queue, advancing in place ----------
+
+   Today's card asks one question at a time in one slot: answer it and the next
+   one takes its place. Two halves of one movement, and the order matters —
+   the answered question leaves *upward*, under its own confirmation, and its
+   replacement arrives from below, so the pair reads as a stack being worked
+   through rather than as two unrelated fades.
+
+   Both no-op under reduced motion, and `questionOut` still calls back, because
+   the swap is a state change that has to happen either way. */
+export function questionOut(el: HTMLElement | null, onDone: () => void) {
+  if (!el || prefersReducedMotion()) { onDone(); return; }
+  gsap.to(el, {
+    autoAlpha: 0, y: -18, scale: 0.975,
+    duration: 0.24, ease: "power2.in",
+    onComplete: () => { gsap.set(el, { clearProps: "all" }); onDone(); },
+  });
+}
+
+export function questionIn(el: HTMLElement | null) {
+  if (!el || prefersReducedMotion()) return;
+  gsap.fromTo(
+    el,
+    { autoAlpha: 0, y: 18, scale: 0.98 },
+    { autoAlpha: 1, y: 0, scale: 1, duration: 0.44, ease: "back.out(1.3)", clearProps: "all" }
+  );
+}
+
+/** The answer landing: the confirmation under a question swells once as it
+    arrives, so the beat before the swap reads as "got it" rather than as a
+    delay. */
+export function answerLanded(el: HTMLElement | null) {
+  if (!el || prefersReducedMotion()) return;
+  gsap.fromTo(
+    el,
+    { scale: 0.9, autoAlpha: 0 },
+    { scale: 1, autoAlpha: 1, duration: 0.32, ease: "back.out(2.2)", clearProps: "all" }
+  );
+}
+
 /** Report screens: stagger cards in as a single orchestrated moment. */
 export function animateReportCards(container: HTMLElement | null) {
   if (!container || prefersReducedMotion()) return;

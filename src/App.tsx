@@ -7,11 +7,12 @@ import {
   BarChart, Bar, CartesianGrid, ComposedChart, Area, Cell,
 } from "recharts";
 import * as XLSX from "xlsx";
-import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll } from "./lib/motion";
+import { markTourSeen, tourSeen } from "./lib/tour";
+import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll, questionOut, questionIn, answerLanded } from "./lib/motion";
 import { ThumbNav, EdgeBack } from "./components/ThumbNav";
 import {
   ROOT, applyHand, canGoBack, destinationsFor, navBack, navGo, navParent, navTop,
-  onHandChange, onSystemBack, otherHand, readHand, reachDrop, screenLabel, setHand,
+  markFanSeen, onHandChange, onSystemBack, otherHand, readHand, reachDrop, screenLabel, setHand,
 } from "./lib/oneHanded";
 import AmbientBackdrop from "./components/AmbientBackdrop";
 import AppearancePanel from "./components/AppearancePanel";
@@ -93,6 +94,7 @@ import {
 } from "./lib/metrics";
 import AppointmentPackView from "./components/AppointmentPackView";
 import FirstRun from "./components/FirstRun";
+import Tour from "./components/Tour";
 import {
   answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord, surveyProgress,
 } from "./lib/pulse";
@@ -205,7 +207,7 @@ import { ContextStrip, ContextWash, SkyGlyph, TempTrace, washScale } from "./com
    their magic value (see BACKUP_APP_IDS) so journals exported before the
    rename keep restoring. */
 export const APP_NAME = "Bellwether";
-export const APP_VERSION = "1.28.0";
+export const APP_VERSION = "1.29.0";
 
 const DISCLAIMER =
   "This app is a personal tracking tool and is not medical advice. It does not diagnose, treat, cure, or prevent any condition. For medical concerns, symptoms, medication changes, restrictive diets, fainting, allergic reactions, abnormal labs, or major health changes, consult a qualified healthcare professional.";
@@ -9416,7 +9418,7 @@ function SyncCard({ engine, status, available, onRefreshConfig }) {
   );
 }
 
-function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, goExport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete, syncEngine, syncStatus, syncConfigured, onRefreshSyncConfig }) {
+function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, goExport, lockEnabled, onSetupPin, onChangePin, onDisablePin, setAi, onAiSetupComplete, syncEngine, syncStatus, syncConfigured, onRefreshSyncConfig, onTour }) {
   const prefs = db.profile.prefs || DEFAULT_PREFS;
   const setPrefs = (patch) => setDb((prev) => ({
     ...prev,
@@ -9440,6 +9442,22 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, go
         <div className="fhj-eyebrow mb-2.5">Your survey</div>
         <Button variant="secondary" block icon="sliders" onClick={goSetup}>
           Edit survey / tracking setup
+        </Button>
+      </Card>
+
+      {/* The tour runs itself once, on the morning the journal is created, and
+          then never again — which is right, and is also why there has to be a
+          way back to it. Somebody who skipped it on day one, or who has just
+          handed the phone to the person the journal is actually for, should
+          not have to erase their data to be shown around. */}
+      <Card className="mt-3">
+        <div className="fhj-eyebrow mb-1.5">A look around</div>
+        <p className="text-[11.5px] leading-relaxed mb-2.5" style={{ color: C.subtle }}>
+          Where everything lives, with each control lit up in its own place — today's questions,
+          your one-tap buttons, the + button and what holding it does, and what is in here.
+        </p>
+        <Button variant="secondary" block icon="info" onClick={onTour}>
+          Show me around again
         </Button>
       </Card>
 
@@ -16229,77 +16247,76 @@ function PulseScale({ field, value, onSet, disabled }) {
   );
 }
 
-/** The next question, asked where the person already is.
+/* ---------- one question, in one place ----------
 
-    The Daily Pulse answers "how was today" in one tap, and for most people on
-    most days that is the whole log. But some days somebody *wants* to do the
-    round — and the only route to it was the card at the foot of this one, which
-    opens the survey: a screen, a scroll, forty fields, and a Back button. The
-    chip row underneath is not that route either. A chip row is a menu; it
-    shows what could be answered and hands the choosing back. Choosing is work,
-    and at eleven questions it is most of the work.
+   The Daily Pulse answers "how was today" in one tap, and for most people on
+   most days that is the whole log. But some days somebody *wants* to do the
+   round, and the routes to it were both bad. The card at the foot of this one
+   opens the survey: a screen, a scroll, forty fields and a Back button. The
+   chip row is not a route either — a chip row is a menu, it shows what could
+   be answered and hands the choosing back, and choosing is work.
 
-    So: a queue, and the front of it, in place.
+   So there was a queue, and the front of it was drawn as a second card sitting
+   underneath the pulse. That was better and still wrong, because two questions
+   were on the screen at once: the one just answered, still holding the top of
+   the card with its confirmation, and the one being asked, in a smaller box
+   below it. The eye has to be told which one is live. A card that has to
+   explain where to look has already lost the tap.
 
-    One question. The app's own input for it, so an answer given here is the
-    same act as an answer given in the survey. The tap writes it, the question
-    leaves the queue, and the next one takes its place — which means the whole
-    daily review can be done from the first card of the first screen, at the
-    speed of tapping, without a form ever opening.
+   There is one slot now. The number is asked in it, and the moment it is
+   answered its confirmation swells, holds for a beat, and the whole thing
+   lifts away to be replaced by the next question in the same place, at the
+   same size, with the same weight. Nothing moves down the screen, nothing
+   appears underneath, and the next question is never something to *notice* —
+   it is simply what the card says now.
 
-    Two rules keep it an offer rather than a wall:
+   Four rules keep it an offer rather than a wall:
 
-    **It never advances out from under an answer.** A scale, a yes/no and a
-    single-choice are finished by the tap, so those move on by themselves. A
-    number or a multi-select is not — the person is still typing, or still
-    choosing — so those stay put until they say Next. Snatching a field away
-    mid-keystroke would be the app racing its user.
+   **It never advances out from under an answer.** A scale, a yes/no and a
+   single-choice are finished by the tap, so those hand over by themselves
+   after their confirmation. A number or a multi-select is not — the person is
+   still typing, or still choosing — so those stay put until they say Next.
+   Snatching a field away mid-keystroke would be the app racing its user.
 
-    **It is always leaveable.** Skip moves past this one; "Done for now" closes
-    the queue for the sitting. Neither is remembered: tomorrow it asks again,
-    because a journal that permanently stops asking on the strength of one
-    impatient tap has quietly started deciding what its owner tracks. */
-function NextQuestion({ tpl, field, value, ghost, progress, onSet, onAdvance, onStop }) {
-  const oneTap = isOneTap(field);
-  const answeredNow = value != null && !(Array.isArray(value) && value.length === 0);
-  const pct = progress.total ? Math.round((progress.answered / progress.total) * 100) : 0;
-  return (
-    <div className="fhj-next">
-      <div className="fhj-next-head">
-        <span className="fhj-eyebrow">Next question</span>
-        <span className="fhj-next-count">
-          {progress.answered} of {progress.total} answered
-        </span>
-      </div>
-      <div className="fhj-next-bar" aria-hidden="true">
-        <span className="fhj-next-bar-fill" style={{ width: `${pct}%`, background: tpl.color }} />
-      </div>
-      {/* The live region is the count and the question together: a screen
-          reader landing on a silently-replaced input would otherwise be
-          answering a question nobody read out. */}
-      <div aria-live="polite">
-        <h3 className="fhj-next-title">
-          {field.label}
-          {field.unit && <span className="fhj-next-unit"> · {field.unit}</span>}
-        </h3>
-      </div>
-      <FieldInput field={field} value={value} onChange={onSet} tint={tpl.color} ghost={ghost} hideLabel />
-      <div className="fhj-next-foot">
-        <button type="button" className={"fhj-next-btn" + (answeredNow && !oneTap ? " is-forward" : "")}
-          onClick={() => { feedback("nav"); onAdvance(); }}>
-          {answeredNow && !oneTap ? "Next" : "Skip this one"}
-          {answeredNow && !oneTap && <Icon name="right" size={12} color="currentColor" />}
-        </button>
-        <button type="button" className="fhj-next-btn" onClick={() => { feedback("tap"); onStop(); }}>
-          Done for now
-        </button>
-      </div>
-    </div>
-  );
+   **The beat before the swap is the confirmation, not a delay.** The answer
+   lands, it is said back in words, and *then* the card moves. Swapping on the
+   tap itself would make somebody doubt the tap registered, which is the one
+   thing a journal may never do.
+
+   **Nothing is ever left behind.** Back returns to the question before it,
+   all the way to the daily number — which is how "tap it again to clear" is
+   still true five questions later.
+
+   **It is always leaveable.** Skip moves past this one; "Done for now" closes
+   the queue for the sitting. Neither is remembered: tomorrow it asks again,
+   because a journal that permanently stops asking on the strength of one
+   impatient tap has quietly started deciding what its owner tracks. */
+
+/** What an answer says back: the value, set in bold, and — where the app has a
+    word for it — the word. It has to be legible in one glance during a beat
+    under a second, which is the whole reason it is two short pieces and not a
+    sentence. Null when there is nothing to say back. */
+function answerWords(field, value, dir) {
+  if (value == null) return null;
+  if (field.type === "scale") return { value: `${value}/10`, tail: scoreWord(value, dir ?? field.dir) };
+  if (field.type === "toggle") return { value: value ? "Yes" : "No", tail: null };
+  if (field.type === "chips") {
+    const list = Array.isArray(value) ? value : [value];
+    if (!list.length) return null;
+    return {
+      value: list.length > 2 ? `${list.slice(0, 2).join(", ")} +${list.length - 2}` : list.join(", "),
+      tail: null,
+    };
+  }
+  if (field.type === "number") {
+    return { value: field.unit ? `${value} ${field.unit}` : String(value), tail: null };
+  }
+  return { value: String(value), tail: null };
 }
 
 /* ============================================================
    Today's check-in
+
    ============================================================
 
    The link at the foot of the pulse card used to say **Add more detail**. Two
@@ -16563,11 +16580,24 @@ function DailyPulse({
      tonight, and "Done for now" means for now. */
   const [skipped, setSkipped] = useState([]);
   const [stopped, setStopped] = useState(false);
-  /* Which question the person is *on*. Null means "whatever is at the front of
-     the queue", which is what lets a one-tap answer hand straight over to the
-     next question. A field that takes typing pins itself here instead, so it
-     cannot vanish between two keystrokes. */
+  /* Which question is on the stage. Null is the daily number, which is where
+     every sitting starts — *including* a sitting that opens on a day already
+     rated. The slot advances because somebody answered something, never
+     because the journal already had an answer in it: opening the app at nine
+     in the evening and being shown question four, with no sign of the number
+     you gave at breakfast, is the card hiding your own day from you. */
   const [cursor, setCursor] = useState(null);
+  /* The answer being said back right now — `{ k, n }`, where `n` changes on
+     every tap so that correcting a number restarts the beat instead of
+     running out the clock the first tap started. And the questions already
+     left behind, newest last, so Back can walk out the way it came. */
+  const [landed, setLanded] = useState(null);
+  const beat = useRef(0);
+  const [trail, setTrail] = useState([]);
+  const stageRef = useRef(null);
+  const landRef = useRef(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   const queue = useMemo(() => askQueue(pulseCtx, skipped), [pulseCtx, skipped]);
   const progress = useMemo(() => surveyProgress(pulseCtx), [pulseCtx]);
@@ -16585,31 +16615,142 @@ function DailyPulse({
     hasPhotoFields: photoFields.length > 0,
     routine: routineProgress(routineItems || [], routine || [], date),
   }), [tpl.fields, keyField.k, due, answers, value, entry, photoFields, routineItems, routine, date]);
-  const asking = (cursor && tpl.fields.find((f) => f.k === cursor)) || queue[0] || null;
+  /* What is on the stage. The daily number is the first question of the same
+     review, so it is a state of this one slot rather than a separate widget
+     sitting above one. */
+  const pinned = cursor ? tpl.fields.find((f) => f.k === cursor) : null;
+  const asking = pinned || keyField;
+  const onPulse = !pinned;
+  /* The queue is spent when the slot has fallen back to the number of its own
+     accord and there is nothing left behind it. */
+  const queueDone = !cursor && !stopped && value != null && !queue.length;
+  /* The freshest ranking, for the callbacks that fire after an answer has
+     landed: the queue a handler closed over was computed before the answer it
+     is reacting to, and would hand back the question just answered. Written in
+     an effect rather than during the render — a ref mutated mid-render is
+     written twice under StrictMode — which is early enough, because every
+     reader of it is a timeout or a click. */
+  const queueRef = useRef(queue);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  const nextKey = (leaving) => queueRef.current.find((f) => f.k !== leaving)?.k ?? null;
   const ghosts = useMemo(
     () => recentAnswers(tpl.fields.filter((f) => f.type === "number"), entries, date),
     [tpl.fields, entries, date]
   );
 
-  const answerNext = (f, v) => {
-    /* Anything that is not finished by one tap holds the queue where it is
-       until the person says Next — see the note on NextQuestion. */
-    if (!isOneTap(f)) setCursor(f.k);
-    else feedback("select");
-    onPatch(profile.id, date, { answers: { [f.k]: v } }, "quick");
+  /* ---------- working the stage ----------
+
+     `leave` is the one way a question ever goes off the screen: it animates
+     out and *then* the state moves, so the swap is always one movement rather
+     than a jump the tween is chasing. The `alive` guard is because the tween
+     outlives the card when somebody navigates away mid-beat. */
+  const leave = (next) => {
+    questionOut(stageRef.current, () => {
+      if (!alive.current) return;
+      setLanded(null);
+      next();
+    });
   };
+
+  /** Leave the question on the stage and take up the next one. `from` is the
+      key being left — null for the daily number — and it goes on the trail so
+      Back can walk out the way it came. */
+  const stepOn = (from) => {
+    const to = nextKey(from);
+    /* Standing on the number with nothing left to ask: there is nowhere to go
+       and nowhere to come back from, so nothing goes on the trail. Otherwise
+       the card grows a Back that returns to the question it is already on. */
+    if (to == null && from == null) return;
+    setTrail((prev) => [...prev, from ?? null]);
+    setCursor(to);
+  };
+
+  const answerNext = (f, v) => {
+    onPatch(profile.id, date, { answers: { [f.k]: v } }, "quick");
+    if (!isOneTap(f)) {
+      /* Still typing, still choosing: the slot holds until they say Next. */
+      return;
+    }
+    feedback("select");
+    /* Say it back where it was given, then hand over. The beat is the whole
+       difference between "it moved on" and "it registered, and moved on". */
+    setLanded({ k: f.k, n: ++beat.current });
+  };
+
   const advance = (f) => {
     setSkipped((prev) => (prev.includes(f.k) ? prev : [...prev, f.k]));
-    setCursor(null);
+    leave(() => {
+      setTrail((prev) => [...prev, f.k]);
+      /* Read past the one being skipped: the queue has not been recomputed
+         with the skip in it yet. */
+      setCursor(nextKey(f.k));
+    });
+  };
+
+  /** Next, from a question that could not finish itself. */
+  const handOver = (f) => {
+    feedback("nav");
+    leave(() => stepOn(f.k));
+  };
+
+  const stepBack = () => {
+    feedback("tap");
+    /* Read the trail here rather than inside an updater: a setState that calls
+       other setStates from within its own updater runs twice under StrictMode
+       and is not a place to put logic. Nothing can change it between the tap
+       and the callback. */
+    const to = trail.length ? trail[trail.length - 1] : null;
+    leave(() => {
+      setTrail((prev) => prev.slice(0, -1));
+      setCursor(to);
+      /* Stepping back onto a question un-skips it — the skip was a way past
+         it, not a decision about it. */
+      if (to) setSkipped((sk) => sk.filter((k) => k !== to));
+      setStopped(false);
+    });
   };
 
   const setPulse = (n, el) => {
     if (viewer) return;
-    if (value === n) { feedback("erase"); onPatch(profile.id, date, { answers: { [keyField.k]: null } }, "quick"); return; }
+    if (value === n) {
+      feedback("erase");
+      setLanded(null);
+      onPatch(profile.id, date, { answers: { [keyField.k]: null } }, "quick");
+      return;
+    }
     feedback("quickadd", { el });
     place("scale", n, 10);
     onPatch(profile.id, date, { answers: { [keyField.k]: n } }, "quick");
+    /* The number is the first question of the same review, so answering it
+       hands over exactly like answering any other. */
+    setLanded({ k: keyField.k, n: ++beat.current });
   };
+
+  /* The beat. Long enough to read four words and feel the tap land, short
+     enough that nobody waiting to answer the next one notices waiting. Under
+     reduced motion the tween is a no-op and this is the whole transition,
+     which is why the confirmation still gets its full hold. */
+  useEffect(() => {
+    if (!landed) return;
+    const t = setTimeout(() => {
+      if (!alive.current) return;
+      leave(() => stepOn(onPulse ? null : landed.k));
+    }, 780);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [landed]);
+
+  /* Something new in the slot: arrive. Keyed on the question rather than on a
+     counter, so a re-render that does not change the question does not
+     re-animate one that is being typed into. */
+  useLayoutEffect(() => {
+    if (landed) return;
+    questionIn(stageRef.current);
+  }, [asking.k, landed]);
+
+  useLayoutEffect(() => {
+    if (landed) answerLanded(landRef.current);
+  }, [landed]);
 
   const openItem = (item) => {
     feedback("tap");
@@ -16622,46 +16763,119 @@ function DailyPulse({
      above, and the routine and the camera open their own screens. */
   const openItemDef = items.find((i) => i.id === open);
 
+  /* One slot, and what is in it right now. */
+  const stageValue = onPulse ? value : answers[asking.k];
+  const said = landed?.k === asking.k
+    ? answerWords(asking, onPulse ? value : answers[asking.k], onPulse ? keyField.dir : asking.dir)
+    : null;
+  const stageAnswered = stageValue != null && !(Array.isArray(stageValue) && stageValue.length === 0);
+  const pct = progress.total ? Math.round((progress.answered / progress.total) * 100) : 0;
+  /* The foot belongs to the queue, not to the number: nothing is offered for
+     skipping until there is something after it to skip to. */
+  const inQueue = !viewer && !stopped && !onPulse;
+  const canGoBack = !viewer && !landed && (trail.length > 0 || !onPulse);
+
   return (
     <Card className="fhj-pulse-card mt-4">
-      <div className="fhj-eyebrow">{recorded ? "Today, recorded" : "Today, in one tap"}</div>
-      <h2 className="font-display text-[1.35rem] leading-tight mt-1 mb-3">{keyField.label}</h2>
+      <div className="fhj-pulse-top">
+        <span className="fhj-eyebrow">{recorded ? "Today, recorded" : "Today, in one tap"}</span>
+        {!viewer && progress.total > 1 && (
+          <span className="fhj-next-count">{progress.answered} of {progress.total} answered</span>
+        )}
+      </div>
+      {!viewer && progress.total > 1 && (
+        <div className="fhj-next-bar" aria-hidden="true">
+          <span className="fhj-next-bar-fill" style={{ width: `${pct}%`, background: tpl.color }} />
+        </div>
+      )}
 
-      <PulseScale field={keyField} value={value} onSet={setPulse} disabled={viewer} />
+      {/* The slot. One question, whichever one the day is on — the number
+          first, then the queue, each taking this same place at this same size.
+          The live region is the heading and the confirmation together: a
+          screen reader landing on a silently-replaced input would otherwise be
+          answering a question nobody read out. */}
+      <div className="fhj-pulse-stage" ref={stageRef}>
+        <div aria-live="polite">
+          <h2 className="fhj-pulse-q">
+            {asking.label}
+            {!onPulse && asking.unit && <span className="fhj-next-unit"> · {asking.unit}</span>}
+          </h2>
+        </div>
 
-      {/* Derived from the journal, not from the tap. See the note above. */}
-      <div className="fhj-pulse-state" aria-live="polite">
-        {recorded ? (
-          <>
-            <span className="fhj-pulse-mark" style={{ background: colorFor(value, keyField.dir) }}>
-              <Icon name="check" size={13} color={readableInk(colorFor(value, keyField.dir))} />
-            </span>
-            <span>
-              <b>{value}/10</b> saved for today — {scoreWord(value, keyField.dir)}.
-              {" "}<span style={{ color: C.subtle }}>Tap it again to clear.</span>
-            </span>
-          </>
+        {onPulse ? (
+          <PulseScale field={keyField} value={value} onSet={setPulse} disabled={viewer} />
         ) : (
-          <span style={{ color: C.subtle }}>
-            {viewer ? "Read-only — nothing is saved here." : "Nothing recorded yet. One tap is a whole day logged."}
-          </span>
+          <FieldInput field={asking} value={answers[asking.k]} tint={tpl.color}
+            ghost={ghosts[asking.k] ?? null} hideLabel
+            onChange={(v) => answerNext(asking, v)} />
+        )}
+
+        {/* Derived from the journal, not from the tap. An app that says
+            "Saved" because a tap fired is an app that will eventually lie
+            about somebody's medical history. */}
+        <div className="fhj-pulse-state" aria-live="polite">
+          {said ? (
+            <span className="fhj-pulse-said" ref={landRef}>
+              <span className="fhj-pulse-mark"
+                style={{ background: onPulse ? colorFor(value, keyField.dir) : tpl.color }}>
+                <Icon name="check" size={13}
+                  color={readableInk(onPulse ? colorFor(value, keyField.dir) : tpl.color)} />
+              </span>
+              <span><b>{said.value}</b> saved for today{said.tail ? ` — ${said.tail}` : ""}.</span>
+            </span>
+          ) : onPulse && recorded ? (
+            <>
+              <span className="fhj-pulse-mark" style={{ background: colorFor(value, keyField.dir) }}>
+                <Icon name="check" size={13} color={readableInk(colorFor(value, keyField.dir))} />
+              </span>
+              <span>
+                <b>{value}/10</b> saved for today — {scoreWord(value, keyField.dir)}.
+                {" "}<span style={{ color: C.subtle }}>Tap it again to clear.</span>
+              </span>
+            </>
+          ) : onPulse ? (
+            <span style={{ color: C.subtle }}>
+              {viewer ? "Read-only — nothing is saved here." : "Nothing recorded yet. One tap is a whole day logged."}
+            </span>
+          ) : stageAnswered ? (
+            <span style={{ color: C.subtle }}>Answered — change it, or move on.</span>
+          ) : (
+            <span style={{ color: C.subtle }}>
+              {isOneTap(asking) ? "One tap and it moves on." : "Answer it, then Next."}
+            </span>
+          )}
+        </div>
+
+        {inQueue && (
+          <div className="fhj-next-foot">
+            <button type="button"
+              className={"fhj-next-btn" + (stageAnswered && !isOneTap(asking) ? " is-forward" : "")}
+              onClick={() => (stageAnswered && !isOneTap(asking) ? handOver(asking) : advance(asking))}>
+              {stageAnswered && !isOneTap(asking) ? "Next" : "Skip this one"}
+              {stageAnswered && !isOneTap(asking) && <Icon name="right" size={12} color="currentColor" />}
+            </button>
+            <button type="button" className="fhj-next-btn"
+              onClick={() => { feedback("tap"); leave(() => { setStopped(true); setCursor(null); setTrail([]); }); }}>
+              Done for now
+            </button>
+          </div>
         )}
       </div>
 
-      {/* One question at a time, straight after the number — the queue, not the
-          menu. See NextQuestion. */}
-      {recorded && !viewer && !stopped && asking && (
-        <NextQuestion
-          tpl={tpl} field={asking} value={answers[asking.k]} ghost={ghosts[asking.k] ?? null}
-          progress={progress}
-          onSet={(v) => answerNext(asking, v)}
-          onAdvance={() => advance(asking)}
-          onStop={() => setStopped(true)} />
+      {/* The way back to the number, and to anything walked past on the way
+          here. Outside the slot, because it is about the stack rather than
+          about the question — and quiet, because almost nobody needs it. */}
+      {canGoBack && (
+        <button type="button" className="fhj-pulse-back" onClick={stepBack}>
+          <Icon name="left" size={12} color="currentColor" />
+          <span>Back to the question before</span>
+        </button>
       )}
+
       {/* The end of it, said once. Only for somebody who actually got there —
           a setup with nothing left to ask on the very first tap has not
           finished anything. */}
-      {recorded && !viewer && !stopped && !asking && progress.total > 1 && progress.left === 0 && (
+      {!viewer && queueDone && progress.total > 1 && progress.left === 0 && (
         <div className="fhj-next-done">
           <span className="fhj-pulse-mark" style={{ background: colorFor(value, keyField.dir) }}>
             <Icon name="check" size={13} color={readableInk(colorFor(value, keyField.dir))} />
@@ -17059,7 +17273,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             <button onClick={goSetup} aria-label="edit survey setup" className="fhj-icon-btn">
               <Icon name="sliders" size={18} color={C.sub} />
             </button>
-            <button onClick={goSettings} aria-label="settings" className="fhj-icon-btn">
+            <button onClick={goSettings} aria-label="settings" data-tour="settings" className="fhj-icon-btn">
               <Icon name="gear" size={19} color={C.sub} />
             </button>
           </div>
@@ -18129,6 +18343,12 @@ export default function App({ viewer = false }) {
      and landing on a dashboard that simply *appears* would drop the thread —
      this carries the movement one screen further and then never runs again. */
   const [justBegan, setJustBegan] = useState(false);
+  /* Being shown around. Set the moment the journal is created rather than read
+     from storage on boot, so it is genuinely once and genuinely *after* first
+     run — an app that greets an existing user with a tour because a flag went
+     missing has spent the one piece of goodwill it had. */
+  const [tour, setTour] = useState(false);
+  const [tourDone, setTourDone] = useState(false);
   /* Which flare the detail screen is showing. Kept here rather than in the URL
      for the same reason every other screen's parameter is: this app has no
      router, and a deep link into a record that may have been deleted on another
@@ -18859,6 +19079,9 @@ export default function App({ viewer = false }) {
       if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); }
       else setScreen("dashboard");
       setJustBegan(true);
+      /* One frame after the dashboard, so the tour measures controls that
+         exist. It points at the real screen; there has to be one. */
+      if (dest !== "log" && !tourSeen()) setTour(true);
     };
 
     return (
@@ -19687,7 +19910,8 @@ export default function App({ viewer = false }) {
       onAiSetupComplete={() => { setAiAutoRun((n) => n + 1); setScreen("dashboard"); }}
       goImport={() => setScreen("fitbit")} goNoteImport={() => setScreen("import")} lockEnabled={!!lock}
       onSetupPin={() => setLockFlow("setup")} onChangePin={() => setLockFlow("change-verify")}
-      onDisablePin={() => setLockFlow("disable-verify")} />;
+      onDisablePin={() => setLockFlow("disable-verify")}
+      onTour={() => { feedback("nav"); setTourDone(false); setTour(true); setScreen("dashboard"); }} />;
   } else if (screen === "setup") {
     content = <EditSetupScreen profile={profile} entries={entries} onSave={updateProfile} goBack={goHome} />;
   } else if (screen === "export") {
@@ -19989,10 +20213,25 @@ export default function App({ viewer = false }) {
 
       <EdgeBack enabled={canBack && !reaching} hand={hand} shellRef={shellRef} onBack={goBack} />
 
+      {/* Being shown around, once, on the morning the journal is finished.
+
+          Here rather than inside the dashboard for two reasons. The obvious
+          one is the shell transform, as above. The other is that the tour
+          points at the bar as well as at the cards — the + button and the
+          History tab are two of its stops — and something that spotlights the
+          navigation cannot be a child of one of the screens the navigation
+          moves between. */}
+      {tour && !viewer && screen === "dashboard" && (
+        <Tour
+          Icon={Icon} name={db?.profile?.name} appName={APP_NAME}
+          onOpenSettings={() => setScreen("settings")}
+          onDone={() => { markTourSeen(); markFanSeen(); setTour(false); setTourDone(true); }} />
+      )}
+
       <ThumbNav
         screen={screen} canBack={canBack} backLabel={screenLabel(backTo)}
         destinations={destinationsFor({ viewer, exclude: [] })}
-        hand={hand} viewer={viewer} Icon={Icon}
+        hand={hand} viewer={viewer} hideCoach={tour || tourDone} Icon={Icon}
         onBack={() => { feedback("nav"); goBack(); }}
         onGo={(id) => { if (screen !== id) feedback("nav"); setScreen(id); }}
         onAdd={() => { feedback("nav"); setScreen("dashboard"); setAddSheet(true); }}
