@@ -236,42 +236,61 @@ describe("flares", () => {
     const db = await mountInsights();
     expect(db.episodes).toEqual([]);
     expect(document.body.textContent).toContain("Nothing is detected for you");
-    expect(screen.getByRole("button", { name: /Start a flare today/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Mark a flare now/i })).toBeTruthy();
   });
 
-  it("starts one, shows it running, and ends it", async () => {
+  it("marks one on the day it happened, complete, and counts the next", async () => {
     await mountInsights();
-    fireEvent.click(screen.getByRole("button", { name: /Start a flare today/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Mark a flare now/i }));
     await waitFor(() => expect(saved().episodes).toHaveLength(1));
-    await screen.findByText("Flare in progress");
-    expect(saved().episodes[0].end).toBeNull();
-    expect(saved().episodes[0].metric).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /^End flare$/ }));
-    await waitFor(() => expect(saved().episodes[0].end).toBeTruthy());
+    /* Nothing is left open. A flare is a thing that happened, and the record
+       of it is whole on the tap — there is no second half to remember. */
+    const first = saved().episodes[0];
+    expect(first.metric).toBeTruthy();
+    expect(first.end).toBe(first.start);
+    expect(typeof first.at).toBe("string");
     expect(screen.queryByText("Flare in progress")).toBeNull();
+
+    // And the count is the point: a second one today is a second flare.
+    const again = await screen.findByRole("button", { name: /Mark another one/i });
+    fireEvent.click(again);
+    await waitFor(() => expect(saved().episodes).toHaveLength(2));
+    await waitFor(() => expect(document.body.textContent).toContain("2 today"));
   });
 
   it("opens the flare's own screen, with its numbers and its days", async () => {
     await mountInsights();
-    fireEvent.click(screen.getByRole("button", { name: /Start a flare today/i }));
-    await screen.findByText("Flare in progress");
-    fireEvent.click(screen.getByRole("button", { name: /^Open$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Mark a flare now/i }));
+    await waitFor(() => expect(saved().episodes).toHaveLength(1));
+
+    /* The row in the timeline is the way in — there is no "in progress" card
+       to open any more, because nothing is in progress. */
+    const row = await screen.findByRole("button", { name: /^Flare/ }, { timeout: 10000 });
+    fireEvent.click(row);
     await screen.findByRole("heading", { name: "Day by day" }, { timeout: 10000 });
-    for (const label of ["Length", "Peak", "Average", "Hard days"]) {
+    for (const label of ["Marked", "Peak", "Average", "Hard days"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /End this flare today/i })).toBeTruthy();
+    /* One day, by default — and the one thing the tap could not know is
+       offered rather than demanded. */
+    expect(screen.getByRole("button", { name: /This one ran on/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /End this flare today/i })).toBeNull();
   });
 
-  it("never opens a second flare for the same metric", async () => {
-    await mountInsights();
-    fireEvent.click(screen.getByRole("button", { name: /Start a flare today/i }));
-    await waitFor(() => expect(saved().episodes).toHaveLength(1));
-    // The button is replaced by the running card, so the only way back in is
-    // through it — and doing so must not create anything.
-    expect(screen.queryByRole("button", { name: /Start a flare today/i })).toBeNull();
-    expect(saved().episodes).toHaveLength(1);
+  it("still knows how to read, show and end a flare left running", async () => {
+    await mountInsights((db: any) => {
+      db.episodes = [{
+        id: "ep_old", title: "Bad fortnight",
+        metric: db.profile.keyMetric || "overall_skin_severity",
+        start: "2020-01-01", end: null,
+        createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z",
+      }];
+    });
+    await screen.findByText("Flare in progress");
+    fireEvent.click(screen.getByRole("button", { name: /^End flare$/ }));
+    await waitFor(() => expect(saved().episodes[0].end).toBeTruthy());
+    expect(screen.queryByText("Flare in progress")).toBeNull();
   });
 });
 

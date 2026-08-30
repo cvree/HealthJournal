@@ -115,10 +115,17 @@ export default function EpisodeTimeline({
                 {s.title}
               </span>
               <span className="block text-[11px] mt-0.5" style={{ color: C.subtle }}>
-                {fmtDay(s.start)}
-                {s.end ? ` – ${fmtDay(s.end)}` : " – now"}
-                {" · "}{durationLabel(s.days)}
-                {s.open && " · ongoing"}
+                {/* A flare marked on the day it happened is one date, said
+                    once. "30 Aug – 30 Aug · 1 day" is the same fact three
+                    times, and it is now the common case. */}
+                {s.end === s.start
+                  ? fmtDay(s.start)
+                  : <>
+                    {fmtDay(s.start)}
+                    {s.end ? ` – ${fmtDay(s.end)}` : " – now"}
+                    {" · "}{durationLabel(s.days)}
+                    {s.open && " · ongoing"}
+                  </>}
               </span>
             </span>
             <span className="text-right shrink-0">

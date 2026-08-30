@@ -151,7 +151,10 @@ pass could strand the exact person it was there to help.
 **What else should it keep?** Meds and creams, meals, flares, the bathroom, weight — one to a
 screen, a yes beside a no, and each yes drawing itself into the row of one-tap buttons underneath,
 so the dashboard is assembled in front of you out of your own answers rather than filed away to be
-discovered later. Then the two questions that are not about *what* a day holds but about *when* it
+discovered later. Say yes to the meal log and the app makes its one offer of the whole flow: a
+short, guided way to connect a free AI so that a photograph of the plate becomes the entry. Three
+taps, no typing — the key is lifted off your clipboard the moment you come back from Google's page
+— and *not now* is a complete answer that leaves the journal exactly as it would have been. Then the two questions that are not about *what* a day holds but about *when* it
 is asked for: how often it should ask at all, and a nudge if you want one, at a time you choose —
 in that order, because the reminder is about when in the day and the cadence is about whether the
 day is even one of the days.
@@ -392,7 +395,7 @@ a routine and a trigger; a gut journal with the bathroom and the day's meals. Fo
 exist — check-in, food, drink, bowel, routine, photo, flare, symptom, heart rate, water, trigger,
 note, measurement, diary — and one only ever appears when your own setup has a question behind it,
 so there is no button that opens an apology. Water is one tap and one cup with an Undo in the
-toast; Flare starts a bad stretch and then reads *End flare · day 6* until you do; Symptom rates
+toast; Flare marks one on the day it happened and then reads *2 logged today*; Symptom rates
 one question 1–10 without the whole check-in; Heart rate takes lying and standing and prints the
 jump between them. **The + button in the navigation bar shows exactly what you put on your
 dashboard** — one list, two doors — with everything else one tap further down and the editor a tap
@@ -434,17 +437,23 @@ each carrying its own count, in the year block's colour ramp — then the typica
 common day, the spread in one word (*steady*, *mixed*, *swinging*), and how many days were hard.
 "How many days were actually bad" is a count, not a curve.
 
-**Flares, marked by you.** A chronic condition is not a smooth line with a slope; it is long
-stretches of "fine, mostly" broken by weeks that reorganise your life. Start a flare, end a
-flare — that is the whole interface, and **nothing is detected automatically**, which is a
-decision rather than a gap: a run of 7s is not always a flare, and an app that invents medical
-events in your history and then reports statistics about them has done something worse than
-nothing. The app does the arithmetic: length, coverage, average, median, peak and its date, hard
-days, the fortnight before, the fortnight after, and the clear days since the last one — then a
-year of them against the year before, with a flare crossing New Year counted in both. Each flare
-has its own screen, and its chart draws a fortnight either side, because a flare drawn from its
-own first day to its own last day always looks like a flare, and drawn with the fortnight before
-it, it looks like what happened.
+**Flares, marked by you, on the day they happen.** A chronic condition is not a smooth line with a
+slope; it is long stretches of "fine, mostly" broken by days and weeks that reorganise your life.
+One tap marks one, on today, complete — **there is no stopwatch to remember to stop**, because the
+day you would have to stop it is a day you feel fine and are not thinking about it. Twice in an
+afternoon is two flares, which is the honest answer and the one a start/end model could not
+represent at all. Everything past that first tap — a name, a note, or *this one ran on* if it
+turned out to be the start of a bad fortnight — is offered afterwards and never chased.
+
+**Nothing is detected automatically**, which is a decision rather than a gap: a run of 7s is not
+always a flare, and an app that invents medical events in your history and then reports statistics
+about them has done something worse than nothing. The app does the arithmetic: how many this month,
+how often they come, coverage, average, median, peak and its date, hard days, the fortnight before,
+the fortnight after, and the clear days since the last one — then a year of them against the year
+before, with a flare crossing New Year counted in both and a day carrying two flares counted once.
+Each flare has its own screen, and its chart draws a fortnight either side, because a bad day drawn
+on its own always looks like a bad day, and drawn with the fortnight before it, it looks like what
+happened.
 
 **The long view**, folded under the year block: a point per calendar month across the whole
 journal, this month against the same month last year, best and hardest month, the longest
@@ -1055,6 +1064,8 @@ bellwether/
 │   │                           #     of them walked one card at a time),
 │   │                           #   tour (being shown around the finished app,
 │   │                           #     once, with the real controls spotlit),
+│   │                           #   ai connect (the three-tap guided way to a
+│   │                           #     free key, offered where it earns it),
 │   │                           #   rail (the one horizontal scroller),
 │   │                           #   rituals (the day's card, the step player,
 │   │                           #     the weekly tune-up, the manage screen)

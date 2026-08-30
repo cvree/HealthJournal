@@ -126,6 +126,7 @@ export default function Tour({ Icon, name, appName, onOpenSettings, onDone }: Pr
   const [at, setAt] = useState(-1);
   const [rect, setRect] = useState<Rect | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const stop = at >= 0 && at < stops.length ? stops[at] : null;
   const last = at >= stops.length + 1;
@@ -188,6 +189,67 @@ export default function Tour({ Icon, name, appName, onOpenSettings, onDone }: Pr
      whatever was behind it. */
   useEffect(() => { cardRef.current?.focus?.(); }, [at]);
 
+  /* ---------- the card scrolls, the app does not ----------
+
+     The tour cannot pin the page the way a sheet does: it *scrolls the page
+     on purpose*, once per stop, to bring each control into the light. So the
+     usual lock is unavailable and the containment has to be done a gesture at
+     a time.
+
+     Which is the bug this fixes. A card taller than the space it was given —
+     the map of Settings, on a phone — could not be read past its first
+     screenful: a wheel over it was claimed by the smooth-scroll driver, which
+     knows nothing about this card, and spent on the document behind the dim.
+     The card stood still, the app slid away underneath it, and the rest of
+     the list was simply unreachable.
+
+     So every wheel and every drag that lands anywhere on this overlay is
+     answered here. If it starts inside the card and the card has room left to
+     move in that direction, it is left alone to scroll natively and stopped
+     from travelling any further — the driver never sees it. Everything else —
+     a flick on the dim, a wheel that runs past the end of the list — is
+     cancelled outright. Nothing behind the tour moves unless the tour moves
+     it. */
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const roomFor = (dy: number) => {
+      const card = cardRef.current;
+      if (!card || !dy) return false;
+      const room = card.scrollHeight - card.clientHeight;
+      if (room <= 1) return false;
+      return dy < 0 ? card.scrollTop > 0 : card.scrollTop < room - 1;
+    };
+    const inCard = (t: EventTarget | null) =>
+      t instanceof Node && !!cardRef.current?.contains(t);
+
+    const onWheel = (e: WheelEvent) => {
+      e.stopPropagation();
+      if (inCard(e.target) && roomFor(e.deltaY)) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0]?.clientY ?? 0; };
+    const onTouchMove = (e: TouchEvent) => {
+      e.stopPropagation();
+      /* Positive means the finger moved up the screen, which is a request to
+         see further down the card. */
+      const dy = startY - (e.touches[0]?.clientY ?? startY);
+      if (inCard(e.target) && roomFor(dy)) return;
+      if (e.cancelable) e.preventDefault();
+    };
+
+    root.addEventListener("wheel", onWheel, { passive: false });
+    root.addEventListener("touchstart", onTouchStart, { passive: true });
+    root.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => {
+      root.removeEventListener("wheel", onWheel);
+      root.removeEventListener("touchstart", onTouchStart);
+      root.removeEventListener("touchmove", onTouchMove);
+    };
+  }, []);
+
   const next = () => {
     if (last) { finish(); return; }
     feedback("nav");
@@ -200,15 +262,33 @@ export default function Tour({ Icon, name, appName, onOpenSettings, onDone }: Pr
 
   /* The card's own place. Below the hole, above it, or in the middle when
      there is no hole — set in px against the viewport, because the thing it
-     is positioned against is a viewport rect. */
+     is positioned against is a viewport rect.
+
+     The height is set here too, and it has to be: a card pinned 14px under a
+     control near the bottom of the screen has whatever is left, which on a
+     phone is often less than the stylesheet's 78vh. Without this the card
+     simply ran off the end of the viewport, and the part hanging past the
+     bottom edge was unreachable — there was no scrollbar to find, because
+     the element was not overflowing, the screen was. Measuring the gap and
+     handing it to `max-height` is what turns the overflow back into a scroll
+     inside the card, where the containment below can keep it. */
+  const viewH = typeof window === "undefined" ? 800 : window.innerHeight;
+  const GAP = 14;
   const cardStyle: React.CSSProperties = !rect || side === "center"
     ? {}
     : side === "below"
-      ? { top: Math.round(rect.top + rect.height + 14) }
-      : { bottom: Math.round((typeof window === "undefined" ? 800 : window.innerHeight) - rect.top + 14) };
+      ? {
+        top: Math.round(rect.top + rect.height + GAP),
+        maxHeight: Math.max(160, Math.round(viewH - (rect.top + rect.height) - GAP * 2)),
+      }
+      : {
+        bottom: Math.round(viewH - rect.top + GAP),
+        maxHeight: Math.max(160, Math.round(rect.top - GAP * 2)),
+      };
 
   return (
-    <div className="fhj-tour" role="dialog" aria-modal="true" aria-label={`${appName} — a look around`}>
+    <div className="fhj-tour" ref={rootRef} role="dialog" aria-modal="true"
+      aria-label={`${appName} — a look around`}>
       {/* The light. One box, one enormous shadow: everything outside it is the
           dim, at any size, with no seams and nothing to keep in step. */}
       <div
@@ -218,8 +298,14 @@ export default function Tour({ Icon, name, appName, onOpenSettings, onDone }: Pr
           ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
           : undefined} />
 
+      {/* data-lenis-prevent is the smooth-scroll driver's own opt-out for a
+          nested scroller: without it a wheel that starts inside this card is
+          claimed by Lenis and spent on the document behind the tour, so the
+          card stays exactly where it is while the app slides away underneath
+          it. The handler on the overlay covers the other half — a flick that
+          lands on the dim, or one that runs past the end of the card. */}
       <div className={"fhj-tour-card is-" + (rect ? side : "center")} style={cardStyle}
-        ref={cardRef} tabIndex={-1}>
+        ref={cardRef} tabIndex={-1} data-lenis-prevent>
         {at < 0 ? (
           /* The welcome. It says how long this is and how to leave, before it
              asks for a second of anybody's morning. */

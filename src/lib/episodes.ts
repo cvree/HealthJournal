@@ -7,12 +7,39 @@
    how bad, and is it happening more than last year.
 
    None of that is answerable from a daily average, so an episode is a first-
-   class thing the user marks — a title, a metric, a start, and an end when it
-   is over. Deliberately *not* detected automatically. A run of 7s is not
-   always a flare and a flare does not always show up as a run of 7s, and an app
-   that invents medical events in someone's history and then reports statistics
-   about them has done something worse than nothing. The user says when it
-   started. The app does the arithmetic.
+   class thing the user marks. Deliberately *not* detected automatically. A run
+   of 7s is not always a flare and a flare does not always show up as a run of
+   7s, and an app that invents medical events in someone's history and then
+   reports statistics about them has done something worse than nothing. The
+   user says when it happened. The app does the arithmetic.
+
+   ---------- marking one is a count, not a stopwatch ----------
+
+   It used to be a stopwatch. You pressed Start when a bad stretch began and
+   you were expected to press Stop when it was over, and the app carried an
+   "in progress" state between the two.
+
+   That is the wrong shape for the moment it is used in. Marking a flare
+   happens on the bad day, one-handed, usually in a hurry — and everything the
+   stopwatch asked for after that first tap had to happen on some *later* day,
+   when the person is fine and has stopped thinking about it. So the ends never
+   got pressed. What the app actually accumulated was a list of flares that
+   apparently never finished, a permanent red banner on the dashboard, and a
+   "day 46" that meant nothing except that nobody had been back.
+
+   So a flare is logged the way it is experienced: it happened, and it happened
+   *now*. One tap records one flare on the day it fell, with the time it was
+   marked, and it is complete the moment it is written. Twice in a day is two
+   flares, which is the honest answer and also the one the old model could not
+   represent at all. Everything past that first tap — a name, a note, whether
+   it in fact ran on into the following week — is a detail somebody may add
+   afterwards and is never chased for.
+
+   `end` therefore now defaults to the day it started rather than to null, and
+   `at` carries the moment. A flare with no end is still meaningful and still
+   supported — it is one somebody has explicitly said is still running, and it
+   is what every journal marked before this change looks like — so nothing here
+   forgets how to read one.
 
    Everything below is pure. `episodeStats` takes the entries it should look at
    and the day it should call today; nothing here reads a clock. */
@@ -29,7 +56,12 @@ export interface HealthEpisode {
   metric: string;
   /** YYYY-MM-DD, local. */
   start: string;
-  /** Absent or null while it is still going on. */
+  /** The moment it was marked, ISO. Present on anything logged as an event —
+      "3:40pm, on the bad Tuesday" — and absent on the older stopwatch-style
+      episodes, which only ever knew about days. */
+  at?: string;
+  /** Absent or null when it is still going on. A flare logged as an event
+      ends on the day it started, so this is normally set. */
   end?: string | null;
   notes?: string;
   createdAt: string;
@@ -50,20 +82,41 @@ export interface NewEpisodeInput {
   title?: string;
   end?: string | null;
   notes?: string;
+  /** The moment it happened, ISO. Defaults to now for anything logged live. */
+  at?: string;
 }
 
 export function newEpisode(input: NewEpisodeInput): HealthEpisode {
-  const at = stamp();
+  const now = stamp();
   return {
     id: newEpisodeId(),
     title: (input.title || "").trim() || "Flare",
     metric: input.metric,
     start: input.start,
+    at: input.at,
     end: input.end || null,
     notes: input.notes || undefined,
-    createdAt: at,
-    updatedAt: at,
+    createdAt: now,
+    updatedAt: now,
   };
+}
+
+/** Mark one, now.
+
+    The whole of the counter model: a flare that happened today, complete on
+    the tap, with the moment it was marked kept alongside the day. It never
+    refuses and never inspects what else is in the list — two in an afternoon
+    is two flares, and an app that quietly merged them would be deciding
+    something it has no way to know. */
+export function logFlare(list: HealthEpisode[], input: NewEpisodeInput): {
+  list: HealthEpisode[]; episode: HealthEpisode;
+} {
+  const episode = newEpisode({
+    ...input,
+    at: input.at ?? stamp(),
+    end: input.end === undefined ? input.start : input.end,
+  });
+  return { list: [...list, episode], episode };
 }
 
 /** Episodes arrive from local storage, a restored backup file and a sync pull,
@@ -89,6 +142,7 @@ export function sanitizeEpisodes(rows: unknown): HealthEpisode[] {
       title: str(r.title, 120).trim() || "Flare",
       metric,
       start: r.start,
+      at: str(r.at, 40) || undefined,
       end,
       notes: str(r.notes, 4000) || undefined,
       createdAt: str(r.createdAt, 40) || stamp(),
@@ -152,6 +206,39 @@ export const episodeOn = (
 /** The last day this episode covers: its end, or today while it is open. */
 export const lastDay = (ep: HealthEpisode, today: string): string =>
   ep.end || (today > ep.start ? today : ep.start);
+
+/* ---------- counting them ----------
+
+   The counter model asks two questions the stopwatch model never had to: how
+   many fell on a given day, and how many fell in a stretch of days. Both count
+   the flare on the day it *started*, which is the day the person marked it and
+   the day they mean when they say "I had two on Tuesday". */
+
+/** Flares marked on one date. */
+export const flaresOn = (
+  list: HealthEpisode[], date: string, metric?: string
+): HealthEpisode[] =>
+  sortEpisodes(list).filter((e) => e.start === date && (!metric || e.metric === metric));
+
+/** How many were marked between two dates, inclusive. */
+export const flareCount = (
+  list: HealthEpisode[], from: string, to: string, metric?: string
+): number =>
+  list.filter((e) => (!metric || e.metric === metric) && e.start >= from && e.start <= to).length;
+
+/** Every day any of these episodes touches, as dates. Distinct: two flares on
+    one afternoon are two flares and one bad day, and counting the day twice is
+    how "flare days" ends up larger than the year. */
+export function flareDates(
+  list: HealthEpisode[], today: string, metric?: string
+): Set<string> {
+  const out = new Set<string>();
+  for (const e of list) {
+    if (metric && e.metric !== metric) continue;
+    for (const d of datesBetween(e.start, lastDay(e, today))) out.add(d);
+  }
+  return out;
+}
 
 export interface StartFlareResult {
   list: HealthEpisode[];
@@ -350,7 +437,12 @@ export function episodeYear(
 ): EpisodeYear {
   const started = list.filter((e) => e.start.slice(0, 4) === String(year));
   const stats = started.map((e) => episodeStats(e, { ...opts, all: list }));
-  const flareDays = list.reduce((a, e) => a + daysInYear(e, year, opts.today), 0);
+  /* Distinct days, not the sum of the episodes' lengths. Under the counter
+     model a bad afternoon can carry two flares, and adding their days together
+     would report two bad days out of one. */
+  let flareDays = 0;
+  const prefix = `${year}-`;
+  for (const d of flareDates(list, opts.today)) if (d.startsWith(prefix)) flareDays++;
   const durations = stats.map((s) => s.days);
   const scores = stats.map((s) => s.average).filter((v): v is number => v != null);
   const peaks = stats.map((s) => s.peak).filter((v): v is number => v != null);
@@ -426,8 +518,16 @@ export const durationLabel = (days: number): string =>
     : days < 60 ? `${Math.round(days / 7)} weeks`
     : `${Math.round(days / 30)} months`;
 
-/** "Ongoing · day 12" while it runs, a date range once it is over. */
+/** A flare that began and ended on its own day: one marked as it happened,
+    rather than one somebody has said is still running. Most of them. */
+export const isEvent = (ep: HealthEpisode): boolean =>
+  !!ep.end && ep.end === ep.start;
+
+/** "Ongoing · day 12" while it runs, a length once it is over. Says nothing
+    about a single-day flare's length, because "1 day" is not information —
+    the day it fell on is already printed beside it. */
 export function episodeWhen(ep: HealthEpisode, today: string): string {
   if (isOpen(ep)) return `Ongoing · day ${daySpan(ep.start, lastDay(ep, today))}`;
+  if (isEvent(ep)) return "Marked on the day";
   return `${durationLabel(daySpan(ep.start, ep.end!))}`;
 }

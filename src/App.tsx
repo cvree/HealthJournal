@@ -71,8 +71,9 @@ import { distribution, hardLabel, calmLabel, pct } from "./lib/distribution";
 import { RELATIONSHIP_COPY } from "./lib/relationships";
 import { buildHeatmap } from "./lib/heatmap";
 import {
-  sanitizeEpisodes, newEpisode, startFlare, endFlare, updateEpisode, removeEpisode,
+  sanitizeEpisodes, newEpisode, logFlare, flaresOn, flareCount, endFlare, updateEpisode, removeEpisode,
   openEpisode, sortEpisodes, isOpen as episodeIsOpen, lastDay as episodeLastDay,
+  isEvent as episodeIsEvent,
   episodeStats, episodeYear, compareEpisodeYears, episodeBands, episodeOn,
   daySpan, datesBetween, durationLabel, episodeWhen,
 } from "./lib/episodes";
@@ -94,6 +95,7 @@ import {
 } from "./lib/metrics";
 import AppointmentPackView from "./components/AppointmentPackView";
 import FirstRun from "./components/FirstRun";
+import AiConnect from "./components/AiConnect";
 import Tour from "./components/Tour";
 import {
   answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord, surveyProgress,
@@ -1710,7 +1712,16 @@ function useSheetDrag(panelRef, onClose) {
 /* `labelledBy` is generated per instance rather than fixed. Two modals can be
    on screen at once — a confirmation sheet over the form it is asking about —
    and a shared id meant the inner dialog announced the outer one's heading. */
-function Modal({ title, children, onClose, labelledBy, footer, eyebrow }) {
+/* `onBack` is for the sheets that are two screens deep — a list of numbers,
+   then the keypad for the one you picked. Without it, those sheets had one
+   way out and it was the wrong one: tapping the backdrop stepped *back* to
+   the list rather than leaving, so getting off a weight keypad took two
+   dismissals and the second one looked like the first not having worked.
+
+   Escape, the backdrop and the drag are all "I am done here", and they close
+   the whole thing. Going back a step is its own control, drawn where a back
+   control belongs — at the head of the sheet, to the left of the title. */
+function Modal({ title, children, onClose, onBack, labelledBy, footer, eyebrow }) {
   const autoId = React.useId();
   const titleId = labelledBy || `fhj-modal-title-${autoId}`;
   const panelRef = useRef(null);
@@ -1739,7 +1750,14 @@ function Modal({ title, children, onClose, labelledBy, footer, eyebrow }) {
         <div className="fhj-sheet-grab" aria-hidden="true" {...dragHandlers} />
         {title ? (
           <div className="fhj-sheet-head" {...dragHandlers}>
-            <div className="min-w-0">
+            {onBack && (
+              <button type="button" onClick={() => { feedback("tap"); onBack(); }}
+                aria-label="Back" className="fhj-icon-btn shrink-0"
+                style={{ width: "2.5rem", height: "2.5rem" }}>
+                <Icon name="left" size={16} color={C.sub} />
+              </button>
+            )}
+            <div className="min-w-0 flex-1">
               {eyebrow && <div className="fhj-eyebrow mb-0.5">{eyebrow}</div>}
               <h2 id={titleId} className="font-display text-xl leading-snug">{title}</h2>
             </div>
@@ -1912,7 +1930,7 @@ function decimalsFor(field) {
 
 /** The pad itself. Draft is a string, so a half-typed "19" and "19." are both
     representable — a number can't tell you the user is mid-decimal. */
-function NumberPadSheet({ field, value, ghost, onCommit, onClose }) {
+function NumberPadSheet({ field, value, ghost, onCommit, onClose, onBack }) {
   const decimals = decimalsFor(field);
   const unit = field.unit || "";
   const min = field.min ?? -Infinity;
@@ -1991,7 +2009,7 @@ function NumberPadSheet({ field, value, ghost, onCommit, onClose }) {
   );
 
   return (
-    <Modal title={field.label} eyebrow={field.sec} onClose={onClose}
+    <Modal title={field.label} eyebrow={field.sec} onClose={onClose} onBack={onBack}
       footer={
         <>
           <Button variant="ghost" onClick={() => { setDraft(""); setFresh(false); feedback("clear"); }}>
@@ -4742,10 +4760,17 @@ function SummaryCard({ label, value, unit, detail, tone, trend }) {
   );
 }
 
-/** The flare controls, and what the year of them looks like. */
+/** The flare controls, and what the year of them looks like.
+
+    A flare is a thing that happened, marked on the day it happened — so the
+    control at the top of this section is a count and a button that adds to it,
+    not a stopwatch with two states. The one exception is a flare somebody has
+    explicitly left running: that still gets its own card, and the way to end
+    it, because a journal must never lose the ability to read what is already
+    in it. */
 function EpisodesSection({
   tpl, metricField, episodes, entries, today, viewer, range,
-  onStart, onEnd, onOpen, onFeedback,
+  onLog, onEnd, onOpen, onFeedback,
 }) {
   const [more, setMore] = useState(false);
   const dir = metricField.dir;
@@ -4765,6 +4790,14 @@ function EpisodesSection({
     [forMetric, entries, today, dir, year]
   );
   const y = compare.now;
+  const todayCount = useMemo(
+    () => flaresOn(forMetric, today).length,
+    [forMetric, today]
+  );
+  const monthCount = useMemo(
+    () => flareCount(forMetric, `${today.slice(0, 7)}-01`, today),
+    [forMetric, today]
+  );
 
   return (
     <>
@@ -4798,14 +4831,30 @@ function EpisodesSection({
         </Card>
       ) : (
         <Card>
-          <div className="text-sm leading-relaxed" style={{ color: C.sub }}>
-            {forMetric.length
-              ? "Nothing marked right now. When the next bad stretch starts, mark it."
-              : "Mark when a bad stretch starts and ends — the app does the rest: how long it ran, how bad it got, and how this year compares to last. Nothing is detected for you; a run of high scores is not always a flare, and you are the one who knows."}
-          </div>
+          {forMetric.length ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-[2rem] leading-none tabular-nums">{monthCount}</span>
+                <span className="text-sm" style={{ color: C.sub }}>
+                  this month{todayCount ? ` · ${todayCount} today` : ""}
+                </span>
+              </div>
+              <div className="text-[12.5px] leading-relaxed mt-2" style={{ color: C.subtle }}>
+                {todayCount
+                  ? "Marked. If it happens again today, mark it again — that is two flares, and the count is the point."
+                  : "Nothing marked today. Mark one the moment it happens; everything else about it can wait."}
+              </div>
+            </>
+          ) : (
+            <div className="text-sm leading-relaxed" style={{ color: C.sub }}>
+              Mark a flare the moment it happens and the app does the rest: how often they come, how
+              bad they get, and how this year compares to last. Nothing is detected for you — a run
+              of high scores is not always a flare, and you are the one who knows.
+            </div>
+          )}
           {!viewer && (
-            <Button variant="outline" block icon="plus" className="mt-4" onClick={onStart}>
-              Start a flare today
+            <Button variant="outline" block icon="plus" className="mt-4" onClick={onLog}>
+              {todayCount ? "Mark another one" : "Mark a flare now"}
             </Button>
           )}
         </Card>
@@ -4825,17 +4874,30 @@ function EpisodesSection({
                 <div className="fhj-eyebrow leading-snug">Flare days</div>
                 <div className="font-display text-[1.5rem] leading-none mt-1.5 tabular-nums">{y.flareDays}</div>
                 <div className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
-                  {Math.round((y.flareDays / daySpan(`${year}-01-01`, today)) * 100)}% of the year so far
+                  {/* A single bad day in a year rounds to 0%, and "0% of the
+                      year" printed under a "1" is the card arguing with
+                      itself. Anything real that rounds to nothing says so. */}
+                  {(() => {
+                    const share = (y.flareDays / daySpan(`${year}-01-01`, today)) * 100;
+                    return y.flareDays && share < 0.5 ? "under 1%" : `${Math.round(share)}%`;
+                  })()} of the year so far
                 </div>
               </div>
               <div className="fhj-dist-stat" style={{ background: C.faint }}>
-                <div className="fhj-eyebrow leading-snug">Average length</div>
+                <div className="fhj-eyebrow leading-snug">How often</div>
                 <div className="font-display text-[1.5rem] leading-none mt-1.5 tabular-nums">
-                  {y.avgDuration == null ? "–" : Math.round(y.avgDuration)}
-                  {y.avgDuration != null && <span className="text-[0.75rem] font-sans ml-1" style={{ color: C.subtle }}>days</span>}
+                  {y.count ? fmt1((daySpan(`${year}-01-01`, today) / y.count) / 7) : "–"}
+                  {y.count ? <span className="text-[0.75rem] font-sans ml-1" style={{ color: C.subtle }}>weeks apart</span> : null}
                 </div>
                 <div className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
-                  longest {y.longest ? durationLabel(y.longest.days) : "–"}
+                  {/* "Longest" only when one of them actually ran on. Under the
+                      counter model most flares are a single day, and "longest
+                      1 day" is a statistic about nothing. */}
+                  {y.longest && y.longest.days > 1
+                    ? `longest ran ${durationLabel(y.longest.days)}`
+                    : y.count
+                      ? `${y.count === 1 ? "one" : y.count} marked so far`
+                      : "nothing marked yet"}
                 </div>
               </div>
             </div>
@@ -4930,7 +4992,7 @@ function ContextSection({ entries, context = [], keyField, units, onHighlight })
   );
 }
 
-function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [], onStartFlare, onEndFlare, onOpenEpisode, onPinMetrics, onChartView, context = [], sun = [], labs = [], onHighlight, goSun, goLabs, goExperiments }) {
+function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, goGallery, goReport, reports, openSavedReport, deleteSavedReport, goSetup, goSettings, viewer, ai, setAi, aiAutoRun, food = [], bowel = [], routine = [], routineItems = [], onLogFlare, onEndFlare, onOpenEpisode, onPinMetrics, onChartView, context = [], sun = [], labs = [], onHighlight, goSun, goLabs, goExperiments }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
   const t0 = todayStr();
@@ -5282,7 +5344,7 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
       <EpisodesSection
         tpl={tpl} metricField={metricField} episodes={episodes} entries={chartEntries}
         today={t0} viewer={viewer} range={range}
-        onStart={onStartFlare} onEnd={onEndFlare} onOpen={onOpenEpisode}
+        onLog={onLogFlare} onEnd={onEndFlare} onOpen={onOpenEpisode}
         onFeedback={feedback} />
 
       {/* 6 — what does a year look like */}
@@ -5509,6 +5571,16 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
    flare drawn from its own first day to its own last day always looks like a
    flare; drawn with the fortnight before it, it looks like what happened. */
 
+/** The clock time a flare was marked at, when it carries one. Flares logged
+    before this app counted them, and any created by hand from a date, have no
+    moment on them — and "midnight" would be a fabrication, so they get null. */
+function flareTime(ep) {
+  if (!ep?.at) return null;
+  const d = new Date(ep.at);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 function EpisodeStat({ label, value, unit, detail, tone }) {
   return (
     <div className="fhj-dist-stat" style={{ background: C.faint }}>
@@ -5555,6 +5627,9 @@ function EpisodeDetailScreen({
   const chartData = seriesBetween(entries, ep.metric, ctxStart, ctxEnd);
   const bands = [{ id: ep.id, from: ep.start, to: end, open: episodeIsOpen(ep) }];
 
+  const isEventFlare = episodeIsEvent(ep);
+  const markedAt = flareTime(ep);
+
   const days = datesBetween(ep.start, end);
   const daySet = new Set(days);
   const rows = entries.filter((e) => daySet.has(e.date)).sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -5585,8 +5660,11 @@ function EpisodeDetailScreen({
           <div className="fhj-eyebrow">{field ? field.label : ep.metric}</div>
           <h1 className="font-display text-[1.625rem] leading-tight mt-1 break-words">{ep.title}</h1>
           <div className="text-[12px] mt-1.5" style={{ color: C.subtle }}>
-            {fmtNice(ep.start)} – {ep.end ? fmtNice(ep.end) : "now"} · {durationLabel(s.days)}
-            {s.open && " · ongoing"}
+            {/* A flare marked as it happened is one day and one moment, and
+                "30 Aug – 30 Aug · 1 day" is three ways of saying that badly. */}
+            {isEventFlare
+              ? `${fmtNice(ep.start)}${markedAt ? ` · ${markedAt}` : ""}`
+              : `${fmtNice(ep.start)} – ${ep.end ? fmtNice(ep.end) : "now"} · ${durationLabel(s.days)}${s.open ? " · ongoing" : ""}`}
           </div>
         </div>
         {s.open && (
@@ -5600,10 +5678,34 @@ function EpisodeDetailScreen({
         </Button>
       )}
 
+      {/* The one thing the counter cannot know at the moment of the tap: that
+          this was not a bad hour but the start of a bad fortnight. It is
+          offered rather than asked for — the record is already complete and
+          correct without it — and it is here rather than at the tap, because
+          on the day it happened nobody knows the answer yet. */}
+      {!viewer && isEventFlare && (
+        <Card className="mt-3">
+          <div className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
+            Logged as one day. If it did not stop there, say so and this becomes a stretch — the
+            days it covers, how far above your normal it ran, and everything below fills in for
+            the whole of it.
+          </div>
+          <Button variant="outline" block className="mt-3"
+            onClick={() => { feedback("select"); onUpdate(ep.id, { end: null }); }}>
+            This one ran on
+          </Button>
+        </Card>
+      )}
+
       {/* how it went */}
       <div className="fhj-dist-stats mt-3.5">
-        <EpisodeStat label="Length" value={s.days} unit="days"
-          detail={`${s.loggedDays} logged · ${Math.round(s.coverage * 100)}% covered`} />
+        {isEventFlare ? (
+          <EpisodeStat label="Marked" value={markedAt || "on the day"}
+            detail={s.loggedDays ? "the day is rated" : "the day is not rated yet"} />
+        ) : (
+          <EpisodeStat label="Length" value={s.days} unit="days"
+            detail={`${s.loggedDays} logged · ${Math.round(s.coverage * 100)}% covered`} />
+        )}
         <EpisodeStat label="Peak" value={s.peak ?? "–"}
           tone={s.peak != null ? colorFor(s.peak, dir) : undefined}
           detail={s.peakDate ? fmtNice(s.peakDate) : "nothing logged yet"} />
@@ -5620,8 +5722,10 @@ function EpisodeDetailScreen({
       {s.loggedDays === 0 && !viewer && (
         <Card className="mt-2.5" style={{ borderLeft: `3px solid ${C.accent}` }}>
           <p className="text-sm leading-relaxed" style={{ color: C.sub }}>
-            None of these days has a {field ? field.label.toLowerCase() : "rating"} yet, so there is
-            nothing to average. Rate {s.open ? "today" : "one of them"} and this fills in.
+            {s.days === 1
+              ? `That day has no ${field ? field.label.toLowerCase() : "rating"} on it yet, so there is nothing to say about how bad it was.`
+              : `None of these days carries a ${field ? field.label.toLowerCase() : "rating"} yet, so there is nothing to average.`}
+            {" "}Rate {s.open ? "today" : s.days === 1 ? "it" : "one of them"} and this fills in.
           </p>
           <Button variant="outline" block className="mt-3.5"
             onClick={() => openLog(s.open ? t0 : ep.start)}>
@@ -5652,8 +5756,10 @@ function EpisodeDetailScreen({
             )}
             {onHighlight && (
               <Button variant="outline" block className={weather.length > 3 ? "mt-3" : ""}
-                onClick={() => onHighlight(span, `${ep.title} — ${fmtNice(ep.start)} to ${fmtNice(end)}`)}>
-                Light these {span.length} days up
+                onClick={() => onHighlight(span, span.length === 1
+                  ? `${ep.title} — ${fmtNice(ep.start)}`
+                  : `${ep.title} — ${fmtNice(ep.start)} to ${fmtNice(end)}`)}>
+                {span.length === 1 ? "Light that day up" : `Light these ${span.length} days up`}
               </Button>
             )}
           </Card>
@@ -5732,8 +5838,9 @@ function EpisodeDetailScreen({
           </ResponsiveContainer>
         </div>
         <div className="fhj-caption mt-2">
-          Shaded: the flare. Either side of it, the fortnight before and after — so
-          how far above normal it ran is something you can see.
+          {s.days === 1
+            ? "Shaded: the day you marked. Either side of it, the fortnight before and after — so how far off your normal it was is something you can see."
+            : "Shaded: the flare. Either side of it, the fortnight before and after — so how far above normal it ran is something you can see."}
         </div>
       </Card>
 
@@ -5802,7 +5909,8 @@ function EpisodeDetailScreen({
               ))}
             </div>
             <div className="fhj-caption mt-2">
-              {photos.length} {photos.length === 1 ? "photo" : "photos"} taken during this flare
+              {photos.length} {photos.length === 1 ? "photo" : "photos"} taken
+              {s.days === 1 ? " that day" : " during this flare"}
               {photos.length > 9 && " · first nine shown"}
             </div>
           </Card>
@@ -5818,7 +5926,7 @@ function EpisodeDetailScreen({
                 style={{ borderTop: i > 0 ? `1px solid ${C.line}` : "none" }}>
                 <span className="text-[13.5px] font-medium truncate">{r.name}</span>
                 <span className="text-[11.5px] shrink-0 tabular-nums" style={{ color: C.subtle }}>
-                  {r.days.size} of {s.days} days
+                  {s.days === 1 ? "that day" : `${r.days.size} of ${s.days} days`}
                 </span>
               </div>
             ))}
@@ -5834,7 +5942,7 @@ function EpisodeDetailScreen({
       <Card className="!p-0" style={{ padding: 0 }}>
         {rows.length === 0 && (
           <div className="p-5 text-sm leading-relaxed" style={{ color: C.sub }}>
-            No days were logged during this flare.
+            {s.days === 1 ? "That day was never logged." : "No days were logged during this flare."}
           </div>
         )}
         {rows.map((e, i) => {
@@ -12229,14 +12337,20 @@ function dismissToast(id) {
 
 /** Raise a toast. `undo`, when given, draws the button and runs on press.
 
+    `action` is the other half of the same idea: `{ label, run }`, drawn beside
+    Undo, for the receipt that has somewhere to go. A flare logged in one tap
+    is complete, but the tap is also the only moment anybody is thinking about
+    it — so the way to name it, or say more about it, belongs on the receipt
+    rather than three screens away in a list.
+
     One at a time: a second toast replaces the first rather than stacking.
     Logging three foods in a row should leave one receipt for the last one, not
     a tower of them climbing the screen — and the Undo that matters is always
     the most recent. */
-function toast({ text, undo, icon = "check", cat = "fhj-cat-symptom", duration = 5000 }) {
+function toast({ text, undo, action, icon = "check", cat = "fhj-cat-symptom", duration = 5000 }) {
   for (const t of TOASTS.items) if (t.timer) clearTimeout(t.timer);
   const id = ++toastSeq;
-  const item = { id, text, undo, icon, cat, timer: null };
+  const item = { id, text, undo, action, icon, cat, timer: null };
   item.timer = setTimeout(() => dismissToast(id), duration);
   TOASTS.items = [item];
   emitToasts();
@@ -12273,6 +12387,12 @@ function ToastHost() {
             <Icon name={t.icon} size={13} color="currentColor" />
           </span>
           <span className="fhj-toast-text">{t.text}</span>
+          {t.action && (
+            <button type="button" className="fhj-toast-undo"
+              onClick={() => { feedback("tap"); dismissToast(t.id); t.action.run(); }}>
+              {t.action.label}
+            </button>
+          )}
           {t.undo && (
             <button type="button" className="fhj-toast-undo"
               onClick={() => { feedback("tap"); dismissToast(t.id); t.undo(); }}>
@@ -12732,11 +12852,12 @@ function FoodEstimatePanel({ result, onUse, onDiscard, onRerun, busy }) {
 
 /* ---------- the food sheet ---------- */
 
-function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTime, onSave, onDelete, onClose }) {
+function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTime, onConnectAi, onSave, onDelete, onClose }) {
   const [log, setLog] = useState(() => initial || newFoodLog({ date, meal: defaultMeal, time: defaultTime }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [confirm, setConfirm] = useState(null); // pending send, awaiting consent
+  const [connect, setConnect] = useState(false); // the guided connect sheet
   const conn = useAiConnection(aiEnabled);
   const abortRef = useRef(null);
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -12924,7 +13045,13 @@ function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTi
           </div>
         </Disclosure>
 
-        {/* AI estimate */}
+        {/* AI estimate — or, for somebody who has never connected one, the
+            offer to. This is the screen that earns it: they are looking at a
+            photograph of a plate and a list of fields nobody wants to fill in
+            by hand, which is a far better argument than anything Settings
+            could make on the feature's behalf. Once. Declining it leaves no
+            trace and it is never insisted on — the fields below are, and
+            always were, perfectly usable by hand. */}
         {aiEnabled && conn ? (
           log.ai ? (
             <FoodEstimatePanel
@@ -12949,7 +13076,23 @@ function FoodLogSheet({ initial, date, aiEnabled, aiAuto, defaultMeal, defaultTi
               </p>
             </div>
           )
+        ) : onConnectAi ? (
+          <div className="mt-1 mb-1">
+            <Button variant="outline" block icon="spark" onClick={() => { feedback("nav"); setConnect(true); }}>
+              Let AI read the plate for you
+            </Button>
+            <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: C.subtle }}>
+              Free, about a minute to set up, and undoable in Settings. Nothing changes here until
+              it is connected.
+            </p>
+          </div>
         ) : null}
+
+        {connect && (
+          <AiConnect Icon={Icon} copy={FIRST_RUN_AI_OFFERS.food}
+            onConnected={() => { setConnect(false); onConnectAi?.(); }}
+            onDismiss={() => setConnect(false)} />
+        )}
 
         {err && (
           <div className="text-xs mt-2 p-2.5 rounded-lg" style={{ background: C.dangerBg, color: C.dangerInk }}>{err}</div>
@@ -13934,7 +14077,7 @@ function DiaryScreen({
   food, foods, goals, onLog, onSaveLog, onDeleteLog, onUpdateLibrary,
   routine = [], routineItems = [], onSaveRoutine, onDeleteRoutine, onLogRoutineRows,
   onSaveRoutineItem, goRoutine,
-  onEditGoals, aiEnabled, aiAuto, viewer,
+  onEditGoals, aiEnabled, aiAuto, onConnectAi, viewer,
 }) {
   const [date, setDate] = useState(todayStr());
   const [picker, setPicker] = useState(null);        // meal id
@@ -14070,7 +14213,7 @@ function DiaryScreen({
           initial={sheet.id ? sheet : null}
           date={date}
           defaultMeal={sheet.meal} defaultTime={sheet.time}
-          aiEnabled={aiEnabled} aiAuto={aiAuto}
+          aiEnabled={aiEnabled} aiAuto={aiAuto} onConnectAi={onConnectAi}
           onSave={(log) => { onSaveLog(log); setSheet(null); }}
           onDelete={sheet.id ? (log) => { onDeleteLog(log); setSheet(null); } : null}
           onClose={() => setSheet(null)} />
@@ -14788,7 +14931,7 @@ const QUICK_ADD_TILES = [
      the row read as *their* app rather than a menu of features. */
   {
     id: "flare", cat: "fhj-cat-symptom", icon: "spark", label: "Flare",
-    sub: "Mark a bad stretch", desc: "Starts a flare today, and ends it when it's over",
+    sub: "Mark one now", desc: "Logs a flare on today — twice in a day is two flares",
     needs: "flare",
   },
   {
@@ -15969,10 +16112,14 @@ function NoteSheet({ initial, suggestions = [], onSave, onClose }) {
 function MeasurementSheet({ fields, answers, ghosts, date, onSave, onClose }) {
   const [picked, setPicked] = useState(() => (fields.length === 1 ? fields[0] : null));
   if (picked) {
+    /* Dismissing the keypad leaves the sheet entirely, even when a list of
+       other measurements is behind it. Backing up to that list is the arrow
+       in the corner — see the note on Modal's `onBack`. */
     return (
       <NumberPadSheet field={picked} value={answers[picked.k]} ghost={ghosts?.[picked.k]}
         onCommit={(v) => { onSave(picked.k, v); onClose(); }}
-        onClose={() => (fields.length === 1 ? onClose() : setPicked(null))} />
+        onBack={fields.length === 1 ? undefined : () => setPicked(null)}
+        onClose={onClose} />
     );
   }
   return (
@@ -16017,7 +16164,8 @@ function SymptomSheet({ fields, answers, date, onSave, onClose }) {
   if (picked) {
     return (
       <Modal title={picked.label} eyebrow={date === todayStr() ? "Today" : fmtNice(date)}
-        onClose={() => (fields.length === 1 ? onClose() : setPicked(null))}>
+        onBack={fields.length === 1 ? undefined : () => setPicked(null)}
+        onClose={onClose}>
         <div className="fhj-cat-symptom">
           <ScaleInput field={picked} hideLabel value={answers[picked.k] ?? null}
             onChange={(v) => { onSave(picked.k, v); if (v != null) onClose(); }} />
@@ -16294,10 +16442,20 @@ function PulseScale({ field, value, onSet, disabled }) {
    because a journal that permanently stops asking on the strength of one
    impatient tap has quietly started deciding what its owner tracks. */
 
+/** How long the confirmation holds the slot before the next question takes it.
+
+    Deliberately short. The pair of tweens either side of it (question out,
+    question in) cost about 340ms between them, so this is the only part of the
+    swap a waiting thumb can actually feel — and on a twenty-question morning
+    it is paid twenty times. A third of a second is enough for the tick to
+    arrive, be seen, and read as a receipt; anything past that is the app
+    admiring its own animation on somebody else's time. */
+const ANSWER_BEAT_MS = 300;
+
 /** What an answer says back: the value, set in bold, and — where the app has a
     word for it — the word. It has to be legible in one glance during a beat
-    under a second, which is the whole reason it is two short pieces and not a
-    sentence. Null when there is nothing to say back. */
+    well under a second, which is the whole reason it is two short pieces and
+    not a sentence. Null when there is nothing to say back. */
 function answerWords(field, value, dir) {
   if (value == null) return null;
   if (field.type === "scale") return { value: `${value}/10`, tail: scoreWord(value, dir ?? field.dir) };
@@ -16732,16 +16890,25 @@ function DailyPulse({
     setLanded({ k: keyField.k, n: ++beat.current });
   };
 
-  /* The beat. Long enough to read four words and feel the tap land, short
-     enough that nobody waiting to answer the next one notices waiting. Under
-     reduced motion the tween is a no-op and this is the whole transition,
-     which is why the confirmation still gets its full hold. */
+  /* The beat: how long the confirmation holds before the next question takes
+     the slot. It used to be 780ms, on top of a 240ms exit and a 440ms
+     entrance — nearly a second and a half of watching between one tap and the
+     next. That is fine on the demo and intolerable on the twentieth question
+     of a real morning, which is the only place it is ever actually spent.
+
+     So it is a beat rather than a pause: long enough for the tick and the
+     words under it to register as a receipt, short enough that a thumb
+     already moving to the next answer never has to wait for the screen. The
+     confirmation is still shown, still animated, and still the thing that
+     says the answer landed — it simply stops charging for it. Under reduced
+     motion the tweens are no-ops and this is the whole transition, which is
+     why it keeps a hold at all rather than swapping instantly. */
   useEffect(() => {
     if (!landed) return;
     const t = setTimeout(() => {
       if (!alive.current) return;
       leave(() => stepOn(onPulse ? null : landed.k));
-    }, 780);
+    }, ANSWER_BEAT_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [landed]);
@@ -17063,7 +17230,7 @@ function PinnedExperiment({ result, onOpen, onHighlight }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onStartFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], liveSun = null, pinnedExperiments = [], onHighlight }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onLogFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, onConnectAi, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], liveSun = null, pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
   /* Where to put the sun. A place set by hand wins over the last fetched one,
      and both are absent when daily context is off — in which case every sun
@@ -17115,11 +17282,19 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
      both heart rates gets the tile that subtracts them. */
   const qa = useMemo(() => quickAddContext(tpl), [tpl]);
   const { scaleFields, waterField, hr: hrFields, triggerField } = qa;
-  const caps = { ...qa.caps, flare: qa.caps.flare && !!onStartFlare, ai: aiEnabled };
-  /* One flare per metric can be open at a time; this is the one for the number
-     this journal is about, which is the one the tile starts and ends. */
+  const caps = { ...qa.caps, flare: qa.caps.flare && !!onLogFlare, ai: aiEnabled };
+  /* A flare left open by hand — either from before flares became a count, or
+     because somebody said out loud that this one is still running. It is not
+     the normal state any more, and while there is one the tile ends it rather
+     than logging another: two "current" flares of the same thing is a state
+     with no meaning. */
   const runningFlare = useMemo(
     () => (keyField ? (episodes || []).find((e) => e.metric === keyField.k && episodeIsOpen(e)) || null : null),
+    [episodes, keyField]
+  );
+  /* How many were marked today. The tile is a counter, so it counts. */
+  const flaresToday = useMemo(
+    () => (keyField ? flaresOn(episodes || [], todayStr(), keyField.k).length : 0),
     [episodes, keyField]
   );
 
@@ -17209,9 +17384,13 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     });
   };
 
-  const toggleFlare = () => {
+  /* One tap, one flare, on the day it happened. The only thing that diverts
+     it is an older flare somebody explicitly left running — that one gets
+     closed first, because a journal cannot hold "this is still going" and
+     "here is another one" about the same thing at the same time. */
+  const markFlare = () => {
     if (runningFlare) onEndFlare?.(runningFlare.id);
-    else onStartFlare?.();
+    else onLogFlare?.();
   };
 
   /* One map, both doors.
@@ -17227,7 +17406,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
     bowel: track("bowel", () => setBowelSheet({})),
     routine: track("routine", () => setRoutineListSheet(true)),
     photo: caps.photo ? track("photo", () => openLog(todayStr(), { photos: true })) : null,
-    flare: caps.flare ? track("flare", toggleFlare) : null,
+    flare: caps.flare ? track("flare", markFlare) : null,
     symptom: caps.scale ? track("symptom", () => setSymptomSheet(true)) : null,
     hr: caps.hr ? track("hr", () => setHrSheet(true)) : null,
     water: caps.water ? track("water", addWater) : null,
@@ -17248,10 +17427,12 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
         label: "End flare", icon: "check",
         sub: (() => {
           const days = daySpan(runningFlare.start, todayStr());
-          return days > 1 ? `Running · day ${days}` : "Running · started today";
+          return days > 1 ? `Still running · day ${days}` : "Still running · from today";
         })(),
       }
-      : null,
+      : flaresToday
+        ? { sub: flaresToday === 1 ? "1 logged today" : `${flaresToday} logged today` }
+        : null,
     water: waterField && typeof today?.answers?.[waterField.k] === "number"
       ? { sub: `${amountWithUnit(today.answers[waterField.k], waterField.unit)} so far` }
       : null,
@@ -17478,7 +17659,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
           initial={foodSheet.id ? foodSheet : null}
           defaultMeal={foodSheet.meal} defaultTime={foodSheet.time}
           date={todayStr()}
-          aiEnabled={aiEnabled} aiAuto={aiAuto}
+          aiEnabled={aiEnabled} aiAuto={aiAuto} onConnectAi={onConnectAi}
           onSave={(log) => { onSaveFood(log); setFoodSheet(null); }}
           onDelete={foodSheet.id ? (log) => { onDeleteFood(log); setFoodSheet(null); } : null}
           onClose={() => setFoodSheet(null)} />
@@ -17697,8 +17878,8 @@ const FIRST_RUN_EXTRAS = [
     suggest: ["ibs", "allergy", "carnivore", "migraine", "wellness"],
   },
   {
-    id: "flare", label: "Flares & bad stretches", icon: "spark",
-    blurb: "Mark when one starts and ends — how often, how long, how bad",
+    id: "flare", label: "Flares & bad days", icon: "spark",
+    blurb: "One tap the moment one happens — how often they come, and how bad",
     tile: { label: "Flare", icon: "spark" },
     suggest: ["eczema", "ibs", "migraine", "pots", "autoimmune", "fatigue", "joint", "allergy"],
   },
@@ -17793,6 +17974,54 @@ const PHOTO_SUBJECT_FIELDS = {
   swelling: { k: "c_photo_swelling", label: "Swelling", category: "skin", rated: true, required: false },
   healing: { k: "c_photo_healing", label: "Wound / healing", category: "skin", rated: true, required: false },
   anything: { k: "c_photo_any", label: "Photo of the day", category: "custom", rated: false, required: false },
+};
+
+/* Where an AI is worth offering during the first run, and what to say.
+
+   Not everywhere, and not as a feature. There is exactly one moment in this
+   flow where connecting a model is obviously in somebody's interest and
+   obviously about the thing they are already thinking about: the moment they
+   say yes to logging what they eat. A meal log is the one part of this journal
+   that is genuinely tedious by hand — a plate is four ingredients and a
+   portion size and thirty seconds of typing, three times a day, forever — and
+   it is also the one part a model does almost perfectly from a photograph.
+
+   Saying so here, in those terms, is worth ten times saying it in Settings a
+   fortnight later under a heading called "AI observations". So it is offered
+   once, right after that yes, phrased as what it does for them rather than
+   what it is, and a no is a complete answer that the flow never raises again.
+
+   Keyed by the id of the extra — or the photo subject — that was just kept.
+   The offer is made at most once per first run; see `offerAi` in FirstRun. */
+const FIRST_RUN_AI_OFFERS = {
+  food: {
+    eyebrow: "Meals & drinks",
+    title: "Let it read the plate for you",
+    blurb:
+      "A food diary is the one part of this that people give up on, and always for the same reason: "
+      + "typing out what was in it, three times a day, forever. It does not have to be that. Take the "
+      + "photo and the app fills the rest in — you check it and press save.",
+    points: [
+      "Photograph a meal and it writes down what was in it",
+      "Paste a menu, a recipe or a label and it reads that too",
+      "You see everything it wrote, and can change any of it before it is saved",
+    ],
+    done: "From now on, a photograph of the plate is most of the entry — check what it wrote and save it.",
+  },
+  meal: {
+    eyebrow: "Meal photographs",
+    title: "Let it read the plate for you",
+    blurb:
+      "You said the plate is worth a picture — and a picture is most of the work done already. "
+      + "With this on, the photograph becomes the entry: what was in it, written down, ready for you "
+      + "to check.",
+    points: [
+      "Photograph a meal and it writes down what was in it",
+      "Paste a menu, a recipe or a label and it reads that too",
+      "You see everything it wrote, and can change any of it before it is saved",
+    ],
+    done: "From now on, the photograph you take of a meal is most of the entry — check what it wrote and save it.",
+  },
 };
 
 /** What each extra turns on: the Quick Add buttons it lights up, and whether
@@ -19094,9 +19323,18 @@ export default function App({ viewer = false }) {
        the reminder all land together — the entry belongs to a profile that
        did not exist until this line, and a nudge for a journal that has not
        been created yet is a notification about nothing. */
-    const beginJournal = (profile, dest, firstEntry) => {
+    const beginJournal = (profile, dest, firstEntry, ai) => {
       setDb((prev) => {
         const next = { ...prev, profile, ack: true, onboarded: true };
+        /* Only ever true when a key actually reached the device during the
+           flow — the offer writes nothing on its own, and a "not now" leaves
+           this exactly as it was born: off. `auto` comes with it because the
+           thing that was agreed to *is* the auto-fill: the offer was made in
+           terms of photographing a plate and getting the entry back, and
+           connecting a key that then sat there doing nothing would be the app
+           not keeping the one promise it made. Both switches are in Settings,
+           side by side, with the plain-words description of each. */
+        if (ai) next.ai = { ...(prev.ai || DEFAULT_AI), enabled: true, auto: true };
         if (firstEntry && firstEntry.key && firstEntry.value != null) {
           const now = new Date().toISOString();
           next.entries = [...(prev.entries || []), {
@@ -19124,6 +19362,7 @@ export default function App({ viewer = false }) {
           packs={FIRST_RUN_PACKS()}
           extras={FIRST_RUN_EXTRAS}
           photoSubjects={FIRST_RUN_PHOTO_SUBJECTS}
+          aiOffers={FIRST_RUN_AI_OFFERS}
           promises={PROMISES}
           Icon={Icon}
           BodyMap={BodyMap}
@@ -19131,7 +19370,7 @@ export default function App({ viewer = false }) {
           appName={APP_NAME}
           disclaimer={DISCLAIMER}
           onLoadSample={() => { loadSampleData(setDb); setScreen("dashboard"); }}
-          onComplete={(choice) => beginJournal(...firstRunProfile(choice))}
+          onComplete={(choice) => beginJournal(...firstRunProfile(choice), !!choice.ai)}
         />
       </>
     );
@@ -19463,29 +19702,38 @@ export default function App({ viewer = false }) {
   };
 
   /* ---------- flares ----------
-     Marked by hand, never detected. `startFlare` refuses a second open flare
-     for the same metric and hands back the running one, so the button can only
-     ever produce a state that means something. */
-  const beginFlare = () => {
+
+     Marked by hand, never detected — and marked as a thing that *happened*
+     rather than as a stopwatch somebody has to remember to stop. See the
+     header of lib/episodes for why that changed. One tap writes one flare on
+     today, complete, with the moment on it. A second tap this afternoon writes
+     a second one, because that is what happened.
+
+     The receipt carries both ways out of it: Undo, for the tap that was not
+     meant, and Add details, for the only moment anybody is actually thinking
+     about this flare. Neither is required and the record is already whole
+     without them. */
+  const logFlareNow = () => {
     const metric = getProfileTemplate(db.profile).keyMetric;
-    let opened = null;
-    setDb((prev) => {
-      const r = startFlare(prev.episodes || [], { metric, start: todayStr() });
-      opened = r;
-      return r.refused ? prev : { ...prev, episodes: r.list };
-    });
-    if (opened?.refused) {
-      setEpisodeId(opened.episode.id);
-      setScreen("episode");
-      return;
-    }
+    const today = todayStr();
+    /* The flare is built here rather than inside the updater. An id and a
+       timestamp are values, not derived state, and the receipt needs both
+       *now* — a `setDb` updater has not run yet by the time the line below it
+       executes, so anything read out of one is read a render too early. */
+    const { episode } = logFlare([], { metric, start: today });
+    const count = flaresOn(db.episodes || [], today, metric).length + 1;
+    setDb((prev) => ({ ...prev, episodes: [...(prev.episodes || []), episode] }));
     feedback("save");
     toast({
-      text: "Flare started today",
+      text: count > 1 ? `Flare logged · ${count} today` : "Flare logged",
       cat: "fhj-cat-symptom",
+      action: {
+        label: "Add details",
+        run: () => { setEpisodeId(episode.id); setScreen("episode"); },
+      },
       undo: () => setDb((prev) => ({
         ...prev,
-        episodes: removeEpisode(prev.episodes || [], opened.episode.id),
+        episodes: removeEpisode(prev.episodes || [], episode.id),
       })),
     });
   };
@@ -19883,6 +20131,12 @@ export default function App({ viewer = false }) {
     onSaveBowel: upsertLog("bowel"), onDeleteBowel: removeLog("bowel"),
     onSaveRoutine: upsertLog("routine"), onDeleteRoutine: removeLog("routine"),
     onLogRoutineRows: saveRoutineRows,
+    /* The one place in the app where connecting an AI is obviously in the
+       person's interest at the moment they are looking at it: a meal sheet
+       with a photograph in it and eight fields under the photograph. Turning
+       it on turns on the thing that was offered — reading the plate — rather
+       than an abstract capability; both switches are in Settings. */
+    onConnectAi: viewer ? null : () => setAi({ enabled: true, auto: true }),
     rituals: db.rituals || [], ritualRuns: db.ritualRuns || [],
     onCompleteRitual: completeRitual, onClearRitual: clearRitual,
     onPlayRitual: (r) => setPlayingRitual(r.id),
@@ -19894,7 +20148,7 @@ export default function App({ viewer = false }) {
     /* Quick Add can start and end a flare, so Today needs the episodes and the
        two writers that Insights already had. Same functions — a flare started
        from a tile and one started from the chart are the same object. */
-    episodes: db.episodes || [], onStartFlare: beginFlare, onEndFlare: finishFlare,
+    episodes: db.episodes || [], onLogFlare: logFlareNow, onEndFlare: finishFlare,
     /* 1.21: the sun surface, the day's weather, and whichever experiments the
        person pinned. Today shows them; it does not own any of them. */
     sun: db.sun || [], context: db.context || [], labs: db.labs || [],
@@ -19920,7 +20174,7 @@ export default function App({ viewer = false }) {
     goReport, reports: db.reports, openSavedReport, deleteSavedReport,
     ai: db.ai, setAi, aiAutoRun,
     episodes: db.episodes || [],
-    onStartFlare: beginFlare, onEndFlare: finishFlare,
+    onLogFlare: logFlareNow, onEndFlare: finishFlare,
     onOpenEpisode: openEpisodeScreen, onPinMetrics: pinMetrics, onChartView: saveChartView,
     /* 1.21: the environment behind the days, and the three new destinations
        Insights can hand somebody off to. */
@@ -19967,6 +20221,7 @@ export default function App({ viewer = false }) {
         routine={db.routine || []} routineItems={db.routineItems || []}
         aiEnabled={!!db.ai?.enabled && !viewer}
         aiAuto={!!db.ai?.enabled && db.ai?.auto === true && !viewer}
+        onConnectAi={viewer ? null : () => setAi({ enabled: true, auto: true })}
         viewer={viewer}
         onLog={upsertLog("food")} onSaveLog={upsertLog("food")} onDeleteLog={removeLog("food")}
         onUpdateLibrary={setLibrary}
@@ -20131,8 +20386,27 @@ export default function App({ viewer = false }) {
         className={"fhj-shell relative" + (screen === "log" && logMode === "detailed" ? " is-wide" : "")
           + (reaching ? " is-reaching" : "")}
         /* Room for the bar, plus room for the Back pill above it when there
-           is one — without this the last card on a screen sits under it. */
-        style={{ paddingBottom: canBack ? "8.75rem" : "6rem", zIndex: 1 }}>
+           is one — without this the last card on a screen sits under it.
+
+           `position: relative` with no z-index of its own is load-bearing, and
+           the missing z-index is the point. This element used to carry
+           `zIndex: 1`, which put it above the ambient backdrop — correct — and
+           also made it a stacking context, which was not.
+
+           A stacking context is a ceiling. Everything inside it is confined to
+           the layer the context itself occupies, so a sheet at z-index 50
+           living inside a shell at z-index 1 sits, in the page, at 1 — under
+           the thumb bar at 30, which is a sibling of the shell rather than a
+           child of it. The result was that the bottom 80px of *every* sheet in
+           this app was painted over by the bar and, worse, taps in that strip
+           went to the bar rather than to the sheet. That strip is where every
+           sheet keeps Save.
+
+           Relative positioning without a z-index still paints above the
+           backdrop — same layer, later in the document — and creates no
+           ceiling, so the scrim's 50 means 50, the bar's 30 means 30, and the
+           fan and the tour still sit above both. */
+        style={{ paddingBottom: canBack ? "8.75rem" : "6rem" }}>
         {showHeader && (
           <header className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
             style={{

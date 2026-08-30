@@ -5,7 +5,8 @@ import { describe, it, expect } from "vitest";
 import {
   addDays, compareEpisodeYears, daySpan, datesBetween, daysInYear, durationLabel,
   endFlare, episodeBands, episodeOn, episodeStats, episodeWhen, episodeYear,
-  isOpen, lastDay, newEpisode, openEpisode, removeEpisode, sanitizeEpisodes,
+  flareCount, flareDates, flaresOn, isEvent, isOpen, lastDay, logFlare, newEpisode,
+  openEpisode, removeEpisode, sanitizeEpisodes,
   sortEpisodes, startFlare, updateEpisode,
   type HealthEpisode,
 } from "../src/lib/episodes";
@@ -144,6 +145,79 @@ describe("start and end", () => {
     expect(edited[0].id).toBe("a");
     expect(edited[0].title).toBe("Renamed");
     expect(removeEpisode(list, "a")).toEqual([]);
+  });
+});
+
+/* Marking one is a count, not a stopwatch.
+
+   The rule these pin is the one the whole change turns on: a flare is complete
+   on the tap. Nothing is left open for somebody to remember to close on a day
+   they are feeling fine, because that is the day they never come back on. */
+describe("logging one as it happens", () => {
+  it("writes a finished, single-day flare with the moment on it", () => {
+    const r = logFlare([], { metric: "itch", start: "2026-08-18" });
+    expect(r.list).toHaveLength(1);
+    expect(r.episode.start).toBe("2026-08-18");
+    expect(r.episode.end).toBe("2026-08-18");     // complete on the tap
+    expect(isOpen(r.episode)).toBe(false);
+    expect(isEvent(r.episode)).toBe(true);
+    expect(Date.parse(r.episode.at!)).not.toBeNaN();
+  });
+
+  it("never refuses, so twice in a day is two flares", () => {
+    const a = logFlare([], { metric: "itch", start: "2026-08-18" });
+    const b = logFlare(a.list, { metric: "itch", start: "2026-08-18" });
+    expect(b.list).toHaveLength(2);
+    expect(b.episode.id).not.toBe(a.episode.id);
+    expect(flaresOn(b.list, "2026-08-18", "itch")).toHaveLength(2);
+    expect(flaresOn(b.list, "2026-08-17", "itch")).toHaveLength(0);
+  });
+
+  it("counts by the day it was marked on, within a window and by metric", () => {
+    const list = [
+      ep({ id: "a", start: "2026-08-01", end: "2026-08-01" }),
+      ep({ id: "b", start: "2026-08-01", end: "2026-08-01" }),
+      ep({ id: "c", start: "2026-08-20", end: "2026-08-20" }),
+      ep({ id: "d", metric: "pain", start: "2026-08-02", end: "2026-08-02" }),
+    ];
+    expect(flareCount(list, "2026-08-01", "2026-08-31")).toBe(4);
+    expect(flareCount(list, "2026-08-01", "2026-08-31", "itch")).toBe(3);
+    expect(flareCount(list, "2026-08-02", "2026-08-19", "itch")).toBe(0);
+  });
+
+  it("counts a day once however many flares fell on it", () => {
+    const list = [
+      ep({ id: "a", start: "2026-08-01", end: "2026-08-01" }),
+      ep({ id: "b", start: "2026-08-01", end: "2026-08-01" }),
+      ep({ id: "c", start: "2026-08-03", end: "2026-08-04" }),
+    ];
+    expect([...flareDates(list, TODAY)].sort())
+      .toEqual(["2026-08-01", "2026-08-03", "2026-08-04"]);
+    /* And the year card reads the same way: three flares, three bad days —
+       never four, which is what summing their lengths used to give. */
+    const y = episodeYear(list, 2026, { entries: [], today: TODAY, dir: "sym" });
+    expect(y.count).toBe(3);
+    expect(y.flareDays).toBe(3);
+  });
+
+  it("says nothing about the length of a flare that lasted a day", () => {
+    expect(episodeWhen(ep({ start: "2026-08-01", end: "2026-08-01" }), TODAY))
+      .toBe("Marked on the day");
+    expect(episodeWhen(ep({ start: "2026-08-01", end: "2026-08-04" }), TODAY))
+      .toBe("4 days");
+    expect(episodeWhen(ep({ start: "2026-08-01", end: null }), TODAY))
+      .toMatch(/^Ongoing · day/);
+  });
+
+  it("keeps the moment through a save and a reload, and survives one without", () => {
+    const at = "2026-08-18T15:40:00.000Z";
+    const [kept, legacy] = sanitizeEpisodes([
+      { ...ep({ id: "a", start: "2026-08-18", end: "2026-08-18" }), at },
+      ep({ id: "b" }),
+    ]);
+    expect(kept.at).toBe(at);
+    expect(legacy.at).toBeUndefined();
+    expect(isEvent(legacy)).toBe(false);
   });
 });
 

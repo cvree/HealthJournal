@@ -1,5 +1,122 @@
 # Changelog
 
+## 1.31.0
+
+Stop waiting for the app.
+
+### A flare is a thing that happened, not a stopwatch you forgot to stop
+
+Marking a flare used to be two halves. You pressed **Start** on the bad day and
+you were expected to press **Stop** when it was over, and the app carried an "in
+progress" state between the two.
+
+That is the wrong shape for the moment it is used in. Marking a flare happens on
+the bad day, one-handed, in a hurry — and everything the stopwatch asked for
+after that first tap had to happen on some *later* day, when you feel fine and
+have stopped thinking about it. So the ends never got pressed. What the app
+accumulated instead was a list of flares that apparently never finished, a
+permanent red banner on the dashboard, and a *day 46* that meant nothing except
+that nobody had been back.
+
+**One tap now marks one flare, on today, complete**, with the time on it. Twice
+in an afternoon is two flares, which is the honest answer and the one the old
+model could not represent at all. The tile counts them — *2 logged today* — and
+Insights leads with *how many this month* rather than with a state.
+
+Everything past that first tap is offered rather than demanded. The receipt
+carries **Add details** beside Undo, because the tap is the only moment anybody
+is actually thinking about this flare; the flare's own screen takes a name and a
+note; and if it turned out to be the start of a bad fortnight rather than a bad
+hour, **This one ran on** turns it back into a stretch. A flare somebody
+deliberately left running still reads, still shows, and still ends — nothing
+already in your journal forgot how to be read.
+
+One number was quietly wrong and is now right: **flare days count days, not
+episodes.** Two flares on one afternoon are two flares and one bad day.
+
+### The check-in stopped making you watch it
+
+Answering a question on Today cost about a second and a half before the next one
+arrived: a 780ms hold on the confirmation, a 240ms exit, and a 440ms entrance.
+That is fine once and intolerable on the twentieth question of a real morning,
+which is the only place it was ever actually spent.
+
+The beat is 300ms now and the two tweens either side of it are roughly halved.
+The tick still arrives, is still animated, and still says the answer landed — it
+simply stops charging you to watch it. **Question to question is about 600ms,
+down from about 1,500.**
+
+The **+** opens its fan of destinations at 180ms rather than 240, and the fan
+itself arrives in 260ms with an 11ms stagger instead of 420ms with 26. The last
+of twelve items used to land the better part of a second after the press — long
+enough that people let go and tapped instead, which is the gesture failing.
+
+### Every sheet in the app was 80px shorter than it looked
+
+The app column carried a `z-index`, which made it a stacking context, which is a
+ceiling: everything inside it was confined to the layer the column occupied.
+A sheet at `z-index: 50` living inside a column at `z-index: 1` sat, in the page,
+at 1 — underneath the thumb bar, which is a sibling of the column rather than a
+child of it.
+
+So the bottom strip of **every sheet in the app** was painted over by the
+navigation bar, and taps in that strip went to the bar rather than to the sheet.
+That strip is where every sheet keeps **Save**. One line, and the whole app's
+action rows came back.
+
+### Getting off a keypad took two dismissals
+
+A measurement sheet is a list of numbers and then the keypad for the one you
+picked. Tapping outside the keypad stepped *back* to the list rather than
+leaving, so getting out took two dismissals — and the second one looked like the
+first not having worked, which is the most reliable way there is to make
+somebody think an app is broken.
+
+Escape, the backdrop and the drag now all mean the same thing they mean
+everywhere else: *I am done here*. Going back a step is its own control, at the
+head of the sheet, where a back control belongs. The same fix applies to rating a
+single symptom.
+
+### The tour could not be read past its first screenful
+
+The stop that lists what is behind the gear is a long card. On a phone it
+overflowed, and a wheel or a flick over it was claimed by the smooth-scroll
+driver and spent on the dashboard behind the dim — the card stood still, the app
+slid away underneath it, and the rest of the list was simply unreachable.
+
+The card now takes the height it actually has, scrolls inside itself, and every
+gesture that lands on the tour is answered by the tour. Nothing behind it moves
+unless the tour moves it.
+
+### "None of these" now means what it says
+
+In the first run, answering a whole group of questions with **None of these**
+left you sitting on the group you had just declined, with the way forward a
+second tap away at the foot of the screen. A decision that covers the whole card
+ends the card. So does **Ask me all**.
+
+### One offer, at the moment it is worth making
+
+There is exactly one point in the first run where connecting an AI is obviously
+in your interest and obviously about the thing you are already thinking about:
+the moment you say yes to logging what you eat. A meal log is the one part of
+this journal that is genuinely tedious by hand, and the one part a model does
+almost perfectly from a photograph.
+
+So that is where it is offered, once, phrased as what it does for you rather
+than what it is — and built for somebody who has never typed the word "API".
+Google's free key is the only option on the screen. The console opens in its own
+tab, and **the moment you come back, the key is lifted off your clipboard,
+checked, and saved with nothing pressed at all**. Browsers that will not read a
+clipboard unasked get one enormous *paste it for me* button that does the
+identical thing, and the text field is still there, third, for the one phone that
+refuses both.
+
+*Not now* is a complete answer, it is never raised twice, and refusing it leaves
+the journal exactly as it would have been: nothing is switched on without a key
+behind it. The same offer sits in the food sheet itself, under the photograph,
+for anybody who said no the first time and then met the form.
+
 ## 1.30.0
 
 Say it once, and let the shapes say the rest.

@@ -180,23 +180,74 @@ describe("a POTS journal", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("starts a flare, says so on the tile, and ends it on the next tap", async () => {
+  it("logs a flare on the day it happened, complete, and counts the next one", async () => {
     await mountFor(["pots"]);
     fireEvent.click(tile(/^Flare/));
     await waitFor(() => expect(saved().episodes.length).toBe(1));
-    expect(saved().episodes[0].metric).toBe("overall_symptom_severity");
-    expect(saved().episodes[0].end).toBeFalsy();
 
-    // The tile now describes today rather than naming a feature.
-    const running = await waitFor(() => {
-      const t = tile(/End flare/);
-      expect(t).toBeTruthy();
-      return t;
-    });
-    expect(running.textContent).toMatch(/started today/i);
+    // Marked as a thing that happened: today, finished, with the moment on it.
+    // Nothing is left open for the user to remember to come back and close.
+    const first = saved().episodes[0];
+    expect(first.metric).toBe("overall_symptom_severity");
+    expect(first.start).toBe(today());
+    expect(first.end).toBe(today());
+    expect(typeof first.at).toBe("string");
 
-    fireEvent.click(running);
-    await waitFor(() => expect(saved().episodes[0].end).toBe(today()));
+    // The tile describes today rather than naming a feature.
+    await waitFor(() => expect(tile(/^Flare/).textContent).toMatch(/1 logged today/i));
+
+    // Twice in a day is two flares — the count is the whole point of it.
+    fireEvent.click(tile(/^Flare/));
+    await waitFor(() => expect(saved().episodes.length).toBe(2));
+    await waitFor(() => expect(tile(/^Flare/).textContent).toMatch(/2 logged today/i));
+    expect(saved().episodes.every((e: any) => e.end === today())).toBe(true);
+  });
+});
+
+/* The keypad two screens deep.
+
+   A measurement sheet is a list of numbers and then the keypad for the one you
+   picked, and dismissing the keypad used to step *back* to the list rather
+   than leave. Two dismissals to get off one keypad, and the second one looked
+   like the first not having worked — which is the single most reliable way to
+   make somebody think an app is broken. */
+describe("getting out of a keypad", () => {
+  const mountWithNumbers = () => mountFor(["migraine"], (db: any) => {
+    db.profile.disabledFields = [];              // keep every question, so there are several numbers
+    db.profile.quickAdd = ["checkin", "measurement", "note"];
+  });
+
+  it("leaves the whole sheet on one dismissal, and still offers the way back", async () => {
+    await mountWithNumbers();
+    fireEvent.click(tile(/^Measurement/));
+    const list = await screen.findByRole("dialog");
+    expect(within(list).getByRole("heading", { name: "Measurement" })).toBeTruthy();
+
+    const rows = within(list).getAllByRole("button")
+      .filter((b) => !/close/i.test(b.getAttribute("aria-label") || ""));
+    expect(rows.length).toBeGreaterThan(1);       // a list, not a single number
+    fireEvent.click(rows[0]);
+
+    // The keypad, with a Back for the list it came from…
+    const pad = await screen.findByRole("dialog");
+    expect(within(pad).getByRole("group", { name: /keypad/i })).toBeTruthy();
+    expect(within(pad).getByRole("button", { name: "Back" })).toBeTruthy();
+
+    // …and Escape, the one gesture that means "I am done here", ends all of it.
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("goes back to the list when Back is what was pressed", async () => {
+    await mountWithNumbers();
+    fireEvent.click(tile(/^Measurement/));
+    const list = await screen.findByRole("dialog");
+    const rows = within(list).getAllByRole("button")
+      .filter((b) => !/close/i.test(b.getAttribute("aria-label") || ""));
+    fireEvent.click(rows[0]);
+    const pad = await screen.findByRole("dialog");
+    fireEvent.click(within(pad).getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("heading", { name: "Measurement" })).toBeTruthy();
   });
 });
 

@@ -9133,7 +9133,7 @@ button.fhj-section:disabled {
     var(--fhj-overlay, rgba(10, 11, 14, 0.72));
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
-  animation: fhjFanScrim 260ms var(--fhj-out) both;
+  animation: fhjFanScrim 150ms var(--fhj-out) both;
 }
 @keyframes fhjFanScrim {
   from { opacity: 0; }
@@ -9176,12 +9176,20 @@ button.fhj-section:disabled {
   color: var(--fhj-ink, #ecebe7);
   /* Every item starts stacked on the pivot and flies to its own place on the
      arc. The spring is the same one the rest of the app uses, and the stagger
-     is what turns twelve simultaneous arrivals into one gesture opening. */
+     is what turns twelve simultaneous arrivals into one gesture opening.
+
+     Both numbers are deliberately small. This fan is steered by a thumb that
+     is already pressing: the items have to be *there*, under it, before the
+     slide starts, or the first thing the gesture does is chase a moving
+     target. At 420ms with a 26ms stagger the twelfth item landed most of a
+     second after the press — long enough that people let go and tapped
+     instead, which is the gesture failing. The spring still overshoots and
+     still settles; it simply does it at the speed of the hand. */
   transform: translate3d(0, 0, 0) scale(0.4);
   opacity: 0;
   transition:
-    transform 420ms var(--fhj-spring) var(--fd, 0ms),
-    opacity 200ms ease var(--fd, 0ms);
+    transform 260ms var(--fhj-spring) var(--fd, 0ms),
+    opacity 130ms ease var(--fd, 0ms);
 }
 .fhj-fan-stage.is-in .fhj-fan-item {
   transform: translate3d(var(--fx, 0px), var(--fy, 0px), 0) scale(1);
@@ -9254,7 +9262,7 @@ button.fhj-section:disabled {
   gap: 0.3rem;
   text-align: center;
   pointer-events: none;
-  animation: fhjFanRead 380ms var(--fhj-out) both 100ms;
+  animation: fhjFanRead 220ms var(--fhj-out) both 60ms;
 }
 
 .fhj-fan-eyebrow {
@@ -10932,4 +10940,332 @@ button.fhj-section:disabled {
      finished positions rather than hidden. */
   .fhj-tour-arc { opacity: 1; }
   .fhj-tour-ripple { opacity: 0.5; transform: scale(1.6); }
+}
+
+/* ============================================================
+   Connecting an AI, offered rather than configured
+   ============================================================
+
+   src/components/AiConnect. This sits over whatever raised it — the first run,
+   or the extras act inside it — and it is deliberately not a `.fhj-sheet`: a
+   bottom sheet is the app's grammar for "a form you opened", and this is an
+   offer somebody did not go looking for. So it is a card in the middle of the
+   screen, it scrolls inside itself, and the whole of it fits on a phone with
+   the primary action reachable without a stretch.
+
+   Every control in it is at least 44px tall. The person this is drawn for has
+   never typed the word "API" and is doing this one-handed on a phone. */
+
+.fhj-aic-scrim {
+  position: fixed;
+  inset: 0;
+  bottom: var(--fhj-kb, 0px);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--fhj-overlay, rgba(10, 11, 14, 0.72));
+  backdrop-filter: blur(8px) saturate(115%);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+  animation: fhjFade 200ms ease;
+}
+
+.fhj-aic {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
+  max-height: min(88dvh, 44rem, 100%);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.375rem 1.25rem 1.125rem;
+  border-radius: var(--fhj-radius-lg);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw-strong) solid var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.55);
+  animation: fhjAicIn 300ms var(--fhj-spring) both;
+}
+.fhj-aic:focus { outline: none; }
+
+@keyframes fhjAicIn {
+  from { opacity: 0; transform: translateY(0.75rem) scale(0.98); }
+}
+
+.fhj-aic-x {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--fhj-radius-pill);
+  background: transparent;
+  cursor: pointer;
+}
+
+.fhj-aic-eyebrow {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fhj-accent-text, #a6c3ea);
+  margin-bottom: 0.4375rem;
+  padding-right: 2rem;
+}
+
+.fhj-aic-title {
+  font-family: var(--fhj-font-display);
+  font-size: 1.375rem;
+  line-height: 1.25;
+  margin: 0;
+  padding-right: 2rem;
+}
+
+.fhj-aic-body {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--fhj-sub, #adafb8);
+  margin: 0.625rem 0 0;
+}
+
+.fhj-aic-points {
+  list-style: none;
+  margin: 0.875rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.fhj-aic-points li {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.fhj-aic-tick {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.09375rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+}
+
+/* The two things somebody is owed before they are sent to another company's
+   site. Quiet, but above the button rather than below it. */
+.fhj-aic-facts {
+  margin-top: 0.875rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.fhj-aic-facts p {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-aic-facts b { color: var(--fhj-ink, #ecebe7); }
+
+.fhj-aic-go {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #121419);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms var(--fhj-out);
+}
+.fhj-aic-go:active { transform: scale(0.985); }
+
+/* The one that does the work: read the clipboard, verify, save. It is drawn
+   as a card rather than a button because it has to explain itself — "Paste"
+   on a screen with no visible field is a button with no consequence. */
+.fhj-aic-paste {
+  width: 100%;
+  min-height: 3.25rem;
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.75rem 0.875rem;
+  text-align: left;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  border: var(--fhj-bw-strong) solid var(--fhj-accent-line, rgba(143, 176, 227, 0.4));
+  color: var(--fhj-ink, #ecebe7);
+  cursor: pointer;
+}
+.fhj-aic-paste > :first-child { margin-top: 0.125rem; flex: none; }
+.fhj-aic-paste > span:last-child { min-width: 0; }
+.fhj-aic-paste b {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.fhj-aic-paste b + span {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-aic-paste:active { transform: scale(0.99); }
+
+.fhj-aic-steps {
+  list-style: none;
+  counter-reset: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+.fhj-aic-steps li {
+  display: flex;
+  gap: 0.625rem;
+}
+.fhj-aic-steps li > span:last-child { min-width: 0; }
+.fhj-aic-steps b {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.fhj-aic-steps b + span {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #adafb8);
+}
+.fhj-aic-num {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-accent-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-accent-text, #a6c3ea);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.fhj-aic-status {
+  min-height: 1.125rem;
+  margin-top: 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.fhj-aic-checking {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--fhj-accent-text, #a6c3ea);
+}
+.fhj-aic-bad {
+  display: block;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-danger-bg, rgba(224, 139, 133, 0.13));
+  color: var(--fhj-danger-ink, #e6a29d);
+}
+
+.fhj-aic-field { margin-top: 0.75rem; }
+.fhj-aic-field label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-aic-quiet {
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 0.375rem;
+  padding: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fhj-aic-quiet:hover { color: var(--fhj-ink, #ecebe7); }
+}
+
+.fhj-aic-foot {
+  margin: 0.5rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.55;
+  text-align: center;
+  color: var(--fhj-muted, #787b86);
+}
+
+.fhj-aic-done-mark {
+  width: 3.25rem;
+  height: 3.25rem;
+  margin: 0.25rem 0 0.875rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-good, #7fbe9e);
+  animation: fhjAicMark 420ms var(--fhj-spring) both;
+}
+@keyframes fhjAicMark {
+  from { transform: scale(0.5); opacity: 0; }
+}
+
+.fhj-aic-chip {
+  margin-top: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.6875rem 0.875rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-faint, #2a2d35);
+}
+.fhj-aic-chip > span:last-child { min-width: 0; }
+.fhj-aic-chip b {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.fhj-aic-chip b + span {
+  display: block;
+  margin-top: 0.0625rem;
+  font-size: 0.6875rem;
+  color: var(--fhj-subtle, #9a9ca6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-aic,
+  .fhj-aic-done-mark { animation: none; }
+  .fhj-aic-scrim { animation: none; }
+  .fhj-aic-go:active { transform: none; }
 }

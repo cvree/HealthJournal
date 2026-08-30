@@ -80,10 +80,13 @@ describe("one tap", () => {
 
   it("clears it again on a second tap of the same number, and stops claiming a save", async () => {
     await mountToday();
+    /* Both taps in one tick: the confirmation holds the slot for a beat and
+       then the card turns over to the next question, and that beat is short
+       on purpose — a morning is twenty of them. Correcting a number after the
+       card has moved on is what Back is for, and it is tested below. */
     fireEvent.click(rung(4));
-    await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(4));
+    fireEvent.click(rung(4));
 
-    fireEvent.click(rung(4));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBeNull());
     expect(screen.getByText(/One tap is a whole day logged/)).toBeTruthy();
   });

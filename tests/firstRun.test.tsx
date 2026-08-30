@@ -410,14 +410,29 @@ describe("choosing the questions, one group at a time", () => {
     expect(document.querySelector(".fhj-fr-sub")!.textContent).toMatch(/question(s)? here/i);
     expect(document.querySelectorAll(".fhj-fr-wq").length).toBeGreaterThan(0);
 
-    // All of them, then none of them — one tap each, and the running total
-    // under the thumb answers back both times.
+    // All of them: the running total under the thumb answers back, and the
+    // card turns over — an answer that covers the whole group ends the group.
     const start = countOnScreen();
     tap(/^Ask me all/);
     await waitFor(() => expect(countOnScreen()).toBeGreaterThan(start));
-    const all = countOnScreen();
+    await waitFor(() => expect(stepText()).toMatch(/group 2 of \d/i));
+  });
+
+  /* The one that used to strand people. "None of these" answered the card and
+     then left them on it, looking at eight rows they had just declined, with
+     the way forward a second tap away at the foot of the screen — which reads
+     as the button not having worked. */
+  it("moves on when the answer to a whole group is none of them", async () => {
+    await mountFresh();
+    await toTune();
+    expect(stepText()).toMatch(/group 1 of \d/i);
+    const before = countOnScreen();
+
     fireEvent.click(exact("None of these")!);
-    await waitFor(() => expect(countOnScreen()).toBeLessThan(all));
+
+    await waitFor(() => expect(stepText()).not.toMatch(/group 1 of \d/i));
+    // Nothing was switched on by declining them, and nothing was lost either.
+    expect(countOnScreen()).toBe(before);
   });
 
   /* The whole reason the presets are gone. A check-in that arrives with four
@@ -592,6 +607,64 @@ describe("what else the journal keeps", () => {
     expect(cardTitle()).toMatch(/Bathroom/);
     fireEvent.click(exact("Yes — keep this")!);
     await waitFor(() => expect(row()).toMatch(/Bowel/));
+  });
+
+  /* The one offer this flow makes on the app's own behalf.
+
+     Three things have to hold, and the third is the one that matters: it is
+     made at the moment it is obviously in somebody's interest, it is refusable
+     with one tap, and refusing it leaves the journal exactly as it would have
+     been. An AI that arrives switched on because somebody said yes to logging
+     their dinner is the opposite of what this app promises on its first
+     screen. */
+  it("offers the AI at the yes it is actually about, and takes no for an answer", async () => {
+    await mountFresh();
+    await toExtras();
+    for (let i = 0; i < 20 && !/Meals/.test(cardTitle()); i++) {
+      const no = exact("Not this one");
+      if (!no) break;
+      fireEvent.click(no);
+    }
+    expect(cardTitle()).toMatch(/Meals/);
+    // Nothing has been offered up to this point.
+    expect(document.querySelector(".fhj-aic")).toBeNull();
+
+    fireEvent.click(exact("Yes — keep this")!);
+
+    const offer = await waitFor(() => {
+      const el = document.querySelector(".fhj-aic");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(offer.textContent).toMatch(/read the plate/i);
+    // Said as what it does, with the cost and the privacy fact before the button.
+    expect(offer.textContent).toMatch(/free/i);
+    expect(offer.textContent).toMatch(/never your name/i);
+
+    // One tap past it, and the card underneath has already moved on.
+    fireEvent.click(screen.getByRole("button", { name: /Not now/i }));
+    await waitFor(() => expect(document.querySelector(".fhj-aic")).toBeNull());
+    expect(cardTitle()).not.toMatch(/Meals/);
+
+    // …and it is not asked again for the rest of the flow.
+    await throughExtras();
+    expect(document.querySelector(".fhj-aic")).toBeNull();
+  });
+
+  it("leaves the AI off in the journal it hands over, when no key was given", async () => {
+    await mountFresh();
+    /* Kept the meal log, was offered the AI, never connected one — which is
+       the path almost everybody takes. The journal that arrives has to be the
+       journal they would have had without the offer at all. */
+    await toEntry(undefined, [], [/Meals/]);
+    fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 6 out of 10/ }));
+    tap(/Save my first entry/);
+    await screen.findByText("Your journal has begun.");
+    tap(/Open my journal/);
+    await waitFor(() => expect(saved().onboarded).toBe(true), { timeout: 10000 });
+    expect(saved().profile.quickAdd).toContain("food");   // the yes did land
+    expect(saved().ai?.enabled).toBe(false);
+    expect(saved().ai?.auto).toBe(false);
   });
 
   it("asks how often before it asks about a nudge, and demands neither", async () => {

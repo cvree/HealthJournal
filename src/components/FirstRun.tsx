@@ -106,6 +106,7 @@ import {
   actIn, bloom, buildTimeline, countUp, heroIn, heroOut, landCard, liftCard, railAdvance,
   readoutSwap, rungPop, type CardFlight,
 } from "../lib/intro";
+import AiConnect, { type AiConnectCopy } from "./AiConnect";
 
 export interface FirstRunScale {
   k: string;
@@ -217,6 +218,10 @@ export interface FirstRunChoice {
   /** How often the check-in should ask, as a preset id from lib/cadence.
       "daily" unless somebody says otherwise — see the note by CADENCES. */
   cadence: string;
+  /** An AI was connected during the flow, so the feature it was connected
+      *for* should arrive switched on. False for everybody else, which is
+      almost everybody — nothing here turns this on without a key behind it. */
+  ai: boolean;
 }
 
 type Props = {
@@ -240,6 +245,14 @@ type Props = {
   /** The checkable facts about this build. Shown on the hero, before
       anything has been typed. */
   promises?: [string, string][];
+  /** Which yes, during the flow, is worth offering an AI connection after —
+      keyed by the id of the extra or the photo subject that was just kept.
+
+      This is the app's own opinion, held in the app rather than in here: a
+      journal that logs meals gets a great deal out of a model that can read a
+      photograph of a plate, and saying so at the moment somebody asks for a
+      meal log is worth ten times saying it in Settings a fortnight later. */
+  aiOffers?: Record<string, AiConnectCopy>;
 };
 
 type Act = "hero" | "you" | "focus" | "tune" | "photos" | "extras" | "entry" | "born";
@@ -726,7 +739,7 @@ function AgeDial({ value, onChange, onClear }: {
 /* ---------- the component ---------- */
 
 export default function FirstRun({
-  packs, extras, photoSubjects = [], onComplete, onLoadSample, Icon, BodyMap, spotLabel,
+  packs, extras, photoSubjects = [], aiOffers, onComplete, onLoadSample, Icon, BodyMap, spotLabel,
   appName, disclaimer, promises = [],
 }: Props) {
   const [act, setAct] = useState<Act>("hero");
@@ -742,6 +755,24 @@ export default function FirstRun({
   const [noteOpen, setNoteOpen] = useState(false);
   const [showAllPacks, setShowAllPacks] = useState(false);
   const [openPromises, setOpenPromises] = useState(false);
+
+  /* The AI offer. Which one is on the screen, which ones have already had
+     their answer, and whether a key ended up on the device.
+
+     `aiAsked` is what stops this becoming a nag: an offer is made once, for
+     one yes, and a no is remembered for the rest of the flow. Somebody who
+     says yes to meals and yes to meal photographs is asked once, not twice. */
+  const [aiOffer, setAiOffer] = useState<string | null>(null);
+  const [aiAsked, setAiAsked] = useState(false);
+  const [aiOn, setAiOn] = useState(false);
+
+  /** Offer the connection after a yes, if this yes is one the app has an
+      opinion about and the question has not already been answered once. */
+  const offerAi = (id: string) => {
+    if (aiOn || aiAsked || !aiOffers?.[id]) return;
+    setAiAsked(true);
+    setAiOffer(id);
+  };
 
   /* Act three: the questions somebody has actually said yes to. `null` is
      "nobody has touched this yet", which means *nothing but the daily number*
@@ -1099,8 +1130,16 @@ export default function FirstRun({
     setWalk(Math.max(0, Math.min(i, walkLast)));
   };
 
-  /** Every question in one section, on or off together. A group somebody has
-      already decided about should cost one tap, not five. */
+  /** Every question in one section, on or off together, and then on to the
+      next group.
+
+      Both of these are whole answers to the card, not edits to it. "None of
+      these" in particular used to leave somebody exactly where they were,
+      looking at eight rows they had just declined, with the real way forward
+      a second tap away at the foot of the screen — which reads as the button
+      not having worked, and is the one impression a first run cannot afford.
+      A decision that covers the whole card ends the card. The tally underneath
+      still updates on the way past, and Back still walks in. */
   const setSection = (qs: FirstRunQuestion[], on: boolean) => {
     feedback(on ? "select" : "erase");
     setHand(() => {
@@ -1112,6 +1151,7 @@ export default function FirstRun({
       }
       return next;
     });
+    setWalk(Math.min(walkAt + 1, walkLast));
   };
 
   const addCustom = () => {
@@ -1168,6 +1208,7 @@ export default function FirstRun({
     /* Not clamped to `photoLast`: a yes on the body map grows the deck by a
        card, and that card does not exist until this state lands. */
     setPhotoWalk(at + 1);
+    if (yes) offerAi(id);
   };
 
   const toggleAngle = (a: string) => {
@@ -1215,7 +1256,24 @@ export default function FirstRun({
       return next;
     });
     setExtraWalk(Math.min(at + 1, extraLast));
+    /* The card has already moved on underneath. That is deliberate: the offer
+       is about the answer just given, not a condition of giving it, so it sits
+       over a flow that has already accepted the yes. Closing it lands on the
+       next card either way. */
+    if (yes) offerAi(id);
   };
+
+  /* The offer itself, drawn once and dropped into the two acts that can raise
+     it. It is an overlay rather than a card in the flow because the flow has
+     already moved on: the yes it is about is recorded, the next question is
+     behind it, and closing this — connected or not — lands on that question. */
+  const aiSheet = aiOffer && aiOffers?.[aiOffer] ? (
+    <AiConnect
+      Icon={Icon}
+      copy={aiOffers[aiOffer]}
+      onConnected={() => { setAiOn(true); setAiOffer(null); }}
+      onDismiss={() => setAiOffer(null)} />
+  ) : null;
 
   const toggleSpot = (s: FirstRunSpot) => {
     feedback("select");
@@ -1262,6 +1320,7 @@ export default function FirstRun({
       spots: wantsSpots ? spots : [],
       reminder,
       cadence,
+      ai: aiOn,
     });
   };
 
@@ -1933,6 +1992,7 @@ export default function FirstRun({
             )}
           </div>
         </div>
+        {aiSheet}
       </div>
     );
   }
@@ -2096,6 +2156,7 @@ export default function FirstRun({
             )}
           </div>
         </div>
+        {aiSheet}
       </div>
     );
   }

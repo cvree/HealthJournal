@@ -151,7 +151,7 @@ function Fan({ destinations, active, hand, pivot, Icon, steerRef, commitRef, onG
                   top: `${Math.round(pivot.y)}px`,
                   ["--fx" as string]: `${Math.round(p.x)}px`,
                   ["--fy" as string]: `${Math.round(p.y)}px`,
-                  ["--fd" as string]: `${i * 26}ms`,
+                  ["--fd" as string]: `${i * 11}ms`,
                 }}>
                 <button type="button"
                   className={"fhj-fan-item" + (isHot ? " is-hot" : "") + (d.id === active ? " is-here" : "")}

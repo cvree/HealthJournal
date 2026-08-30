@@ -440,8 +440,16 @@ export const EDGE_ZONE = 32;
 export const BACK_COMPLETE = 0.3;
 /** …or this fast, at any distance. A flick is an answer too. */
 export const BACK_FLING = 0.5; // px/ms
-/** Hold the bar this long and the fan opens under the thumb. */
-export const LONG_PRESS_MS = 240;
+/** Hold the bar this long and the fan opens under the thumb.
+
+    Short on purpose. The whole promise of this gesture is that going anywhere
+    costs one thumb and no journey, and every millisecond before the fan
+    appears is spent staring at a button wondering whether the press took. It
+    has to stay clear of a tap — a deliberate tap-and-release is under ~120ms
+    on a phone — and nothing else. 180 is the far side of that with room to
+    spare, and it is the difference between a menu that opens and a menu you
+    wait for. */
+export const LONG_PRESS_MS = 180;
 /** …or push up off the bar this far, which is the same intent, stated faster. */
 export const ARC_OPEN_DY = 24;
 /** Pull down on the bar this far and the screen comes to the thumb. */

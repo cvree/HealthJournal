@@ -211,8 +211,8 @@ export function animateStepIn(el: HTMLElement | null) {
 export function questionOut(el: HTMLElement | null, onDone: () => void) {
   if (!el || prefersReducedMotion()) { onDone(); return; }
   gsap.to(el, {
-    autoAlpha: 0, y: -18, scale: 0.975,
-    duration: 0.24, ease: "power2.in",
+    autoAlpha: 0, y: -14, scale: 0.985,
+    duration: 0.12, ease: "power2.in",
     onComplete: () => { gsap.set(el, { clearProps: "all" }); onDone(); },
   });
 }
@@ -221,8 +221,8 @@ export function questionIn(el: HTMLElement | null) {
   if (!el || prefersReducedMotion()) return;
   gsap.fromTo(
     el,
-    { autoAlpha: 0, y: 18, scale: 0.98 },
-    { autoAlpha: 1, y: 0, scale: 1, duration: 0.44, ease: "back.out(1.3)", clearProps: "all" }
+    { autoAlpha: 0, y: 14, scale: 0.985 },
+    { autoAlpha: 1, y: 0, scale: 1, duration: 0.22, ease: "back.out(1.6)", clearProps: "all" }
   );
 }
 
@@ -234,7 +234,7 @@ export function answerLanded(el: HTMLElement | null) {
   gsap.fromTo(
     el,
     { scale: 0.9, autoAlpha: 0 },
-    { scale: 1, autoAlpha: 1, duration: 0.32, ease: "back.out(2.2)", clearProps: "all" }
+    { scale: 1, autoAlpha: 1, duration: 0.2, ease: "back.out(2.4)", clearProps: "all" }
   );
 }
 
