@@ -1,5 +1,96 @@
 # Changelog
 
+## 1.30.0
+
+Say it once, and let the shapes say the rest.
+
+### The card stops narrating itself
+
+The pulse card carried four lines of chrome under one question. *One tap and it
+moves on* described the control directly above it. *Skip this one* said "this
+one" only because *Done for now* sat beside it and the two had to be told apart.
+*Back to the question before* spelled out a stack nobody is holding in their
+head. And the row of chips underneath was introduced by *Anything else? — all
+optional*, which called them optional twice in five words, over hints reading
+*what happened?* and *worth seeing again later* — the app prompting itself out
+loud.
+
+Underneath all that, the same number was on the screen four times: the count in
+the corner, the bar, the ring on the check-in card, and the card's own line
+reading *7 of 20 in. 13 to go.*
+
+The words come out and the layout does the work. Back on the left, Skip on the
+right, and leaving is the **×** in the corner, which is what × has meant on a
+card for forty years. Three controls, four words between them, and the only one
+with a label is the one you press on purpose.
+
+The "all done" banner goes too. It announced *All 20 of today's questions are
+answered* an inch above a card whose ring had gone to a tick and whose line said
+the same thing.
+
+### Rituals were a feature the rest of the app had not been told about
+
+A ritual — the shower and the three minutes after, the morning in its order —
+turned out to be missing from three places it should always have been in.
+
+**They never synced.** A ritual built on your phone never reached your tablet, a
+lab result filed on your laptop stayed there, and sun sessions and experiments
+crossed no wire at all. Deleting any of them was worse than silent: the deletion
+was written down correctly and then dropped, so the next sync brought the thing
+back. Everything you write now travels — rituals, their daily runs, their weekly
+tune-ups, sun, labs, experiments, and the weather behind your days.
+
+A day's attempt at a ritual is now identified by *which ritual, on which day*.
+Tick this morning's shower on two devices and it is one morning, not two — which
+is what stops a week reading as fourteen days and doubling its own streak.
+
+**Today's check-in did not count them.** A check-in counts what the day asked
+for and you set the denominator on, which is exactly what a scheduled ritual is.
+Without it, a morning built as a five-step ritual could be left entirely
+untouched and the day would still be called fully on the record. Rituals are in
+the ring now, with their own run of marks.
+
+**The routine reminder could not see them,** and this got worse the better you
+had set the app up. Move your morning into a ritual — the whole reason rituals
+exist — and the reminder had no checklist rows left to find, so it could never
+call anything finished. It fired every morning, forever, however completely you
+had done the thing. It now reads both halves of your day, counts *not today* as
+dealt with on either side, and stays quiet on a day that asks for nothing.
+
+### The welcome stops telling you where you are four times
+
+Every numbered screen of first run drew its position twice and printed it twice
+more: the rail across the top, a line reading *Step 2 of 5 · group 1 of 4*, a
+second bar drawing the inner half again, and — on the first screen — a four-item
+list headed *What happens next* whose four items were the rail's four remaining
+segments written out as paragraphs.
+
+The bars stay, because a bar is seen rather than read. The words go. What
+survives of them is the half no bar can draw — what this screen is about to ask
+of you — and it hangs on the rail now, one line, same place every time. The wall
+dissolves into those five lines, each delivered on the screen it is actually
+about.
+
+Those printed counters were also the only thing telling a screen reader where it
+was, since both bars are decorative. The position moved onto the rail itself as
+its name, so it is now drawn once *and* announced once, instead of drawn once
+and written twice.
+
+### The hero draws its own line, and then gets out of the way
+
+The collage on the first screen hangs off a rail down the left — the same shape
+the last screen draws for real, out of your own first entry. That rail was meant
+to draw itself downward and never did: the animation was written for a shape it
+was not, so it quietly faded in instead. It draws now.
+
+And the first screen leaves rather than being cut away. Pressing **Start my
+journal** used to replace a full-bleed collage and display type with a plain
+column between one frame and the next — the biggest change of register in the
+app's first minute, made as a jump cut. Now the buttons go first, the headline
+unsets itself back behind the edges it rose from, and the collage lifts away
+last. Under four tenths of a second, and nothing at all if you have asked for
+reduced motion.
+
 ## 1.29.0
 
 You choose it, one card at a time — and then it shows you around.
