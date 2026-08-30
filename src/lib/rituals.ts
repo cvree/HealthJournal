@@ -829,7 +829,13 @@ export function tuneUpCards(report: RitualReport): TuneUpCard[] {
     { id: "felt", kind: "faces", question: `How did ${name} go this week?`, sub: weekLine(report) },
   ];
   if ((report.rate ?? 1) < 1) {
-    cards.push({ id: "friction", kind: "chips", question: "What got in the way?", sub: "Tap one, or skip it" });
+    /* The sub is what the answer is *for*, never how to give one. A card with
+       a row of taps on it and a Skip under it has already said both of those
+       twice over. */
+    cards.push({
+      id: "friction", kind: "chips", question: "What got in the way?",
+      sub: "This only shapes what gets suggested next.",
+    });
   }
   return cards;
 }

@@ -90,8 +90,9 @@ export interface FollowUp {
   /** Present for `field`: which question this answers. */
   key?: string;
   label: string;
-  /** One short line under the label. Never an instruction. */
-  hint: string;
+  /** One short line under the label — a *fact* about this offer, or nothing.
+      Never an instruction: see the note in `followUps`. */
+  hint: string | null;
   icon: string;
 }
 
@@ -293,11 +294,10 @@ function answered_(ctx: FollowUpContext, f: PulseField): boolean {
 const iconFor = (f: PulseField): string =>
   f.type === "toggle" ? "check" : f.type === "chips" ? "star" : f.type === "number" ? "target" : "spark";
 
-const hintFor = (f: PulseField): string =>
-  f.type === "scale" ? "1–10, one tap"
-    : f.type === "toggle" ? "yes or no"
-      : f.type === "chips" ? "pick any that apply"
-        : f.unit ? `a number in ${f.unit}` : "a number";
+/* The unit, where there is one — the single thing about a question the label
+   does not already say. "1–10, one tap" and "yes or no" describe the control
+   somebody is about to be shown, which they will see for themselves. */
+const hintFor = (f: PulseField): string | null => (f.type === "number" && f.unit ? f.unit : null);
 
 /**
  * Three to five optional details, chosen for today.
@@ -324,7 +324,7 @@ export function followUps(ctx: FollowUpContext): FollowUp[] {
     const n = ctx.routineDue!;
     out.push({
       id: "routine", kind: "routine", label: "Routine",
-      hint: `${n} still to tick off`, icon: "pill",
+      hint: `${n} left`, icon: "pill",
     });
   }
 
@@ -333,24 +333,23 @@ export function followUps(ctx: FollowUpContext): FollowUp[] {
     || ctx.daysSincePhoto == null
     || ctx.daysSincePhoto >= PHOTO_GAP_DAYS
   );
+  /* A hint only ever carries a *fact* — a count, a gap in days, the unit a
+     number wants. It never carries a prompt. "Note — what happened?" and
+     "Photo — worth seeing again later" are the app filling its own silence:
+     the icon and the word already say what the chip does, and a second line
+     under each one turns a row of three offers into a paragraph to read. So
+     where there is no fact, there is no hint. */
   if (photoWorthIt) {
     out.push({
       id: "photo", kind: "photo", label: "Photo",
-      hint: kind === "hard" ? "worth seeing again later"
-        : ctx.daysSincePhoto == null ? "your first progress shot"
-          : `${ctx.daysSincePhoto} days since the last one`,
+      hint: ctx.daysSincePhoto == null || kind === "hard" ? null
+        : `${ctx.daysSincePhoto}d since the last`,
       icon: "camera",
     });
   }
 
   if (!ctx.hasNote) {
-    out.push({
-      id: "note", kind: "note", label: "Note",
-      hint: kind === "calm" ? "what was different today?"
-        : kind === "hard" ? "what happened?"
-          : "anything worth remembering",
-      icon: "note",
-    });
+    out.push({ id: "note", kind: "note", label: "Note", hint: null, icon: "note" });
   }
 
   return out.slice(0, max);

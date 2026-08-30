@@ -100,8 +100,11 @@ describe("the optional follow-ups", () => {
     expect(followUps(ctx({ score: 9, answers: { severity: 9 }, daysSincePhoto: 1 })).some((f) => f.kind === "photo")).toBe(true);
     expect(followUps(ctx({ score: 2, answers: { severity: 2 }, daysSincePhoto: 1 })).some((f) => f.kind === "photo")).toBe(false);
     expect(followUps(ctx({ score: 2, answers: { severity: 2 }, daysSincePhoto: 9 })).some((f) => f.kind === "photo")).toBe(true);
-    expect(followUps(ctx({ daysSincePhoto: null })).find((f) => f.kind === "photo")!.hint)
-      .toMatch(/first progress shot/);
+    /* A hint is a fact or it is nothing. There is no fact about a first photo
+       beyond "there isn't one", which the offer itself already says. */
+    expect(followUps(ctx({ daysSincePhoto: null })).find((f) => f.kind === "photo")!.hint).toBeNull();
+    expect(followUps(ctx({ score: 2, answers: { severity: 2 }, daysSincePhoto: 9 }))
+      .find((f) => f.kind === "photo")!.hint).toBe("9d since the last");
   });
 
   it("never asks for a photo when the setup has no photo question, or one is already taken", () => {
@@ -112,7 +115,18 @@ describe("the optional follow-ups", () => {
   it("offers the routine only while something is still owed, and counts it", () => {
     expect(followUps(ctx()).some((f) => f.kind === "routine")).toBe(false);
     const due = followUps(ctx({ routineDue: 3 })).find((f) => f.kind === "routine")!;
-    expect(due.hint).toBe("3 still to tick off");
+    expect(due.hint).toBe("3 left");
+  });
+
+  /* The chip row is three offers, each one word and an icon. It used to carry
+     a second line under every one of them — "what happened?", "worth seeing
+     again later" — which is the app prompting itself out loud. A hint survives
+     only where it says something the label cannot. */
+  it("carries no hint on an offer that has no fact to add", () => {
+    const out = followUps(ctx({ score: 9, answers: { severity: 9 }, daysSincePhoto: 1 }));
+    expect(out.find((f) => f.kind === "note")!.hint).toBeNull();
+    expect(out.find((f) => f.kind === "photo")!.hint).toBeNull();
+    for (const f of out) if (f.hint) expect(f.hint).not.toMatch(/\?$/);
   });
 
   it("puts the note last and drops it once there is one", () => {

@@ -198,7 +198,7 @@ describe("the weekly tune-up", () => {
     fireEvent.click(await within(dialog).findByRole("button", { name: "Good" }));
 
     // The friction card only appears on a week something got in the way of.
-    const skip = within(dialog).queryByRole("button", { name: "Skip this" });
+    const skip = within(dialog).queryByRole("button", { name: "Skip" });
     if (skip) fireEvent.click(skip);
 
     const keep = await within(dialog).findByRole("button", { name: /leave it/i });
@@ -216,7 +216,7 @@ describe("the weekly tune-up", () => {
     const dialog = await screen.findByRole("dialog", { name: /Weekly tune-up/ });
     fireEvent.click(within(dialog).getByRole("button", { name: /quick questions|Nice/ }));
     fireEvent.click(await within(dialog).findByRole("button", { name: "Good" }));
-    const skip = within(dialog).queryByRole("button", { name: "Skip this" });
+    const skip = within(dialog).queryByRole("button", { name: "Skip" });
     if (skip) fireEvent.click(skip);
     fireEvent.click(await within(dialog).findByRole("button", { name: /leave it/i }));
     fireEvent.click(await within(dialog).findByRole("button", { name: "Done" }));
@@ -256,7 +256,7 @@ describe("the weekly tune-up", () => {
     const dialog = await screen.findByRole("dialog", { name: /Weekly tune-up/ });
     fireEvent.click(within(dialog).getByRole("button", { name: /quick questions|Nice/ }));
     fireEvent.click(await within(dialog).findByRole("button", { name: "Patchy" }));
-    const skip = within(dialog).queryByRole("button", { name: "Skip this" });
+    const skip = within(dialog).queryByRole("button", { name: "Skip" });
     if (skip) fireEvent.click(skip);
 
     // The suggestion is written from the week: the step that never happened.

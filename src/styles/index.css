@@ -1946,7 +1946,7 @@ button.fhj-section:disabled {
    in the app because the screen they live on is one somebody opens with wet
    hands. */
 
-/* Small text button — "Manage", "Skip this", "Edit steps". */
+/* Small text button — "Manage", "Skip", "Edit steps". */
 .fhj-link-btn {
   display: inline-flex;
   align-items: center;
@@ -6793,8 +6793,8 @@ button.fhj-section:disabled {
 
    `min-height` is what stops the card jumping between a 1–10 and a yes/no.
    Without it the buttons under the slot walk up and down the screen as the
-   queue advances, which is how a thumb ends up tapping "Done for now" while
-   aiming at an answer. */
+   queue advances, which is how a thumb ends up tapping Skip while aiming at an
+   answer. */
 .fhj-pulse-stage {
   margin-top: 0.25rem;
   min-height: 9.5rem;
@@ -6818,25 +6818,37 @@ button.fhj-section:disabled {
 }
 .fhj-pulse-said b { color: var(--fhj-ink, #ecebe7); }
 
-/* The way back out of the queue, all the way to the number. Quiet, because
-   almost nobody needs it and the ones who do are looking for it. */
-.fhj-pulse-back {
+/* The count and the way out, riding together at the end of the eyebrow row.
+   The × is the only control on this card with no word on it, which is exactly
+   why it is here rather than down in the foot: a wordless button belongs in
+   the corner a wordless button is always in. */
+.fhj-pulse-top-end {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 0.3125rem;
-  min-height: 2.25rem;
-  padding: 0 0.625rem;
-  margin: 0.25rem 0 0 -0.625rem;
-  border-radius: var(--fhj-radius-sm);
-  font-size: 0.75rem;
-  font-weight: 650;
+  gap: 0.375rem;
+}
+
+.fhj-pulse-stop {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.25rem -0.375rem -0.25rem 0;
+  border-radius: var(--fhj-radius-pill);
   color: var(--fhj-subtle, #9a9ca6);
   background: transparent;
   border: 0;
   cursor: pointer;
+  transition: color var(--fhj-quick) ease, background var(--fhj-quick) ease;
 }
 @media (hover: hover) {
-  .fhj-pulse-back:hover { color: var(--fhj-ink, #ecebe7); }
+  .fhj-pulse-stop:hover {
+    color: var(--fhj-ink, #ecebe7);
+    background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
+  }
 }
 
 .fhj-next-unit {
@@ -6877,21 +6889,6 @@ button.fhj-section:disabled {
   .fhj-next-btn:hover {
     color: var(--fhj-ink, #ecebe7);
   }
-}
-
-/* The end of the queue. Said once, quietly, and gone tomorrow — a permanent
-   "all done" banner is a badge for having used an app. */
-.fhj-next-done {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.875rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: var(--fhj-radius);
-  font-size: 0.8125rem;
-  color: var(--fhj-sub, #b9bac2);
-  background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--fhj-line, rgba(255, 255, 255, 0.08));
 }
 
 /* ---------- importing somebody's own notes ----------

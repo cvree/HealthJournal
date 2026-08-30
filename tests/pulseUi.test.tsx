@@ -66,7 +66,7 @@ describe("one tap", () => {
 
   it("says nothing is recorded until something is, and then says what", async () => {
     await mountToday();
-    expect(screen.getByText(/Nothing recorded yet/)).toBeTruthy();
+    expect(screen.getByText(/One tap is a whole day logged/)).toBeTruthy();
     expect(screen.queryByText(/saved for today/)).toBeNull();
 
     fireEvent.click(rung(8));
@@ -75,7 +75,7 @@ describe("one tap", () => {
     const state = await screen.findByText(/saved for today/);
     expect(state.textContent).toMatch(/8\/10/);
     expect(state.textContent).toMatch(/a hard day/);
-    expect(screen.queryByText(/Nothing recorded yet/)).toBeNull();
+    expect(screen.queryByText(/One tap is a whole day logged/)).toBeNull();
   });
 
   it("clears it again on a second tap of the same number, and stops claiming a save", async () => {
@@ -85,20 +85,20 @@ describe("one tap", () => {
 
     fireEvent.click(rung(4));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBeNull());
-    expect(screen.getByText(/Nothing recorded yet/)).toBeTruthy();
+    expect(screen.getByText(/One tap is a whole day logged/)).toBeTruthy();
   });
 });
 
 describe("the optional detail after it", () => {
   it("offers nothing until the day is rated", async () => {
     await mountToday();
-    expect(screen.queryByText(/all optional/i)).toBeNull();
+    expect(document.querySelectorAll(".fhj-pulse-chip")).toHaveLength(0);
   });
 
   it("keeps the chips for the things a question cannot be, and asks the questions itself", async () => {
     await mountToday();
     fireEvent.click(rung(9));
-    await screen.findByText(/all optional/i);
+    await waitFor(() => expect(document.querySelectorAll(".fhj-pulse-chip").length).toBeGreaterThan(0));
     const chips = [...document.querySelectorAll(".fhj-pulse-chip")];
     expect(chips.length).toBeGreaterThanOrEqual(1);
     expect(chips.length).toBeLessThanOrEqual(5);
@@ -144,14 +144,14 @@ describe("today's check-in, on Today", () => {
     const before = line();
     fireEvent.click(rung(5));
     await waitFor(() => expect(line()).not.toBe(before));
-    expect(line()).toMatch(/^1 of \d+ in\./);
+    expect(line()).toMatch(/^\d+ to go\.$/);
     expect(card().querySelector(".fhj-ring-mid")!.textContent).toBe("1");
   });
 
   it("moves again for a question answered in the queue, without opening a form", async () => {
     await mountToday();
     fireEvent.click(rung(5));
-    await waitFor(() => expect(line()).toMatch(/^1 of/));
+    await waitFor(() => expect(line()).toMatch(/to go\.$/));
     const marks = filledPips();
 
     /* The slot has turned over to the next question by now — same place, same
@@ -161,7 +161,7 @@ describe("today's check-in, on Today", () => {
     expect(rungs.length).toBeGreaterThan(0);
     fireEvent.click(rungs[3]);
 
-    await waitFor(() => expect(line()).toMatch(/^2 of/));
+    await waitFor(() => expect(line()).toMatch(/to go\.$/));
     expect(filledPips()).toBe(marks + 1);
     // Still on Today. Nothing was opened to make that number move.
     expect(screen.getByRole("button", { name: "Today" })).toHaveProperty("ariaCurrent", "page");
@@ -170,7 +170,7 @@ describe("today's check-in, on Today", () => {
   it("goes back down when an answer is cleared — the marks read the journal", async () => {
     await mountToday();
     fireEvent.click(rung(5));
-    await waitFor(() => expect(line()).toMatch(/^1 of/));
+    await waitFor(() => expect(line()).toMatch(/to go\.$/));
     fireEvent.click(rung(5));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBeNull());
     expect(line()).toMatch(/to answer, about a minute\.$/);
@@ -215,7 +215,8 @@ describe("one question, in one place", () => {
   it("counts the pulse itself as answered, so the progress never lies about what just happened", async () => {
     await mountToday();
     fireEvent.click(rung(5));
-    const count = await screen.findByText(/of \d+ answered/);
+    const count = document.querySelector(".fhj-next-count")!;
+    await waitFor(() => expect(count.textContent).toMatch(/^\d+ of \d+$/));
     const [answered, total] = (count.textContent || "").match(/\d+/g)!.map(Number);
     expect(answered).toBeGreaterThanOrEqual(1);
     expect(total).toBeGreaterThan(answered);
@@ -245,7 +246,7 @@ describe("one question, in one place", () => {
     await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
 
     const first = asked();
-    fireEvent.click(screen.getByRole("button", { name: /Skip this one/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Skip this question/ }));
     await waitFor(() => expect(asked()).not.toBe(first), { timeout: 4000 });
     expect(asked()).not.toBe(first);
   });
@@ -255,7 +256,7 @@ describe("one question, in one place", () => {
     fireEvent.click(rung(6));
     await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
 
-    fireEvent.click(screen.getByRole("button", { name: /Back to the question before/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Back to the previous question/ }));
     await waitFor(() => expect(asked()).toBe("Overall skin severity"), { timeout: 4000 });
     // And it is still clearable from there, which is the point of going back.
     expect(screen.getByText(/Tap it again to clear/)).toBeTruthy();
@@ -266,8 +267,8 @@ describe("one question, in one place", () => {
     fireEvent.click(rung(6));
     await waitFor(() => expect(asked()).not.toBe("Overall skin severity"), { timeout: 4000 });
 
-    fireEvent.click(screen.getByRole("button", { name: /Done for now/ }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Done for now/ })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /Stop asking for now/ }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Stop asking for now/ })).toBeNull());
     // The slot falls back to the number, untouched by leaving the queue.
     expect(asked()).toBe("Overall skin severity");
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBe(6));

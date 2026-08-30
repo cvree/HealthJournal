@@ -154,12 +154,25 @@ describe("the words", () => {
   it("changes with the state and says nothing about the person", () => {
     expect(checkinLine(checkinStatus(src()))).toBe("5 to answer, about a minute.");
     expect(checkinLine(checkinStatus(src({ answers: { severity: 5, itch: 1 } }))))
-      .toBe("2 of 5 in. 3 to go.");
+      .toBe("3 to go.");
     expect(checkinLine(checkinStatus(src({ answers: { severity: 5, itch: 1, sleep: 7, flared: true } }))))
-      .toBe("4 of 5 in. One left.");
+      .toBe("One left.");
     expect(checkinLine(checkinStatus(src({
       answers: { severity: 5, itch: 1, sleep: 7, flared: true, triggers: ["dust"] },
-    })))).toBe("All 5 answered. Today is fully on the record.");
+    })))).toBe("Today is fully on the record.");
+  });
+
+  /* The line is never drawn on its own: every caller puts a ring showing the
+     fraction and a row of pips showing which pieces right beside it. So the
+     line saying the fraction too would be the same number three times in one
+     card, and the two that are shapes are the two worth keeping. */
+  it("does not repeat the fraction the ring beside it is already drawing", () => {
+    const part = checkinLine(checkinStatus(src({ answers: { severity: 5, itch: 1 } })));
+    expect(part).not.toMatch(/\bof\b/);
+    expect(part).not.toMatch(/\b2\b/);
+    expect(checkinLine(checkinStatus(src({
+      answers: { severity: 5, itch: 1, sleep: 7, flared: true, triggers: ["dust"] },
+    })))).not.toMatch(/\d/);
   });
 
   it("never says 'questions' on a setup where some of them are doses", () => {

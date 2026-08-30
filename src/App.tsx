@@ -16287,8 +16287,8 @@ function PulseScale({ field, value, onSet, disabled }) {
    all the way to the daily number — which is how "tap it again to clear" is
    still true five questions later.
 
-   **It is always leaveable.** Skip moves past this one; "Done for now" closes
-   the queue for the sitting. Neither is remembered: tomorrow it asks again,
+   **It is always leaveable.** Skip moves past the question; the × closes the
+   queue for the sitting. Neither is remembered: tomorrow it asks again,
    because a journal that permanently stops asking on the strength of one
    impatient tap has quietly started deciding what its owner tracks. */
 
@@ -16577,7 +16577,8 @@ function DailyPulse({
 
      `skipped` and `stopped` are session state on purpose. Neither is written to
      the journal: a question waved past this morning is a fair question again
-     tonight, and "Done for now" means for now. */
+     tonight, and closing the queue closes it for the sitting and nothing
+     longer. */
   const [skipped, setSkipped] = useState([]);
   const [stopped, setStopped] = useState(false);
   /* Which question is on the stage. Null is the daily number, which is where
@@ -16621,9 +16622,6 @@ function DailyPulse({
   const pinned = cursor ? tpl.fields.find((f) => f.k === cursor) : null;
   const asking = pinned || keyField;
   const onPulse = !pinned;
-  /* The queue is spent when the slot has fallen back to the number of its own
-     accord and there is nothing left behind it. */
-  const queueDone = !cursor && !stopped && value != null && !queue.length;
   /* The freshest ranking, for the callbacks that fire after an answer has
      landed: the queue a handler closed over was computed before the answer it
      is reacting to, and would hand back the question just answered. Written in
@@ -16771,17 +16769,36 @@ function DailyPulse({
   const stageAnswered = stageValue != null && !(Array.isArray(stageValue) && stageValue.length === 0);
   const pct = progress.total ? Math.round((progress.answered / progress.total) * 100) : 0;
   /* The foot belongs to the queue, not to the number: nothing is offered for
-     skipping until there is something after it to skip to. */
+     skipping until there is something after it to skip to. Back is the one
+     thing that outlives the queue — somebody who closed it can still walk back
+     to what they were asked. */
   const inQueue = !viewer && !stopped && !onPulse;
   const canGoBack = !viewer && !landed && (trail.length > 0 || !onPulse);
 
   return (
     <Card className="fhj-pulse-card mt-4">
       <div className="fhj-pulse-top">
-        <span className="fhj-eyebrow">{recorded ? "Today, recorded" : "Today, in one tap"}</span>
-        {!viewer && progress.total > 1 && (
-          <span className="fhj-next-count">{progress.answered} of {progress.total} answered</span>
-        )}
+        {/* "Today, in one tap" was an instruction, and the same instruction is
+            said again eight lines down under an empty scale. One of them had to
+            go, and the eyebrow is the one that cannot choose its moment. */}
+        <span className="fhj-eyebrow">Today</span>
+        <span className="fhj-pulse-top-end">
+          {!viewer && progress.total > 1 && (
+            <span className="fhj-next-count">{progress.answered} of {progress.total}</span>
+          )}
+          {/* Leaving the queue, with no sentence for it. It is still only for
+              the sitting — tomorrow it asks again — but "for now" was never
+              something the button had to say out loud: nothing in this app
+              remembers a dismissal, so there is no other kind of leaving to
+              tell it apart from. */}
+          {inQueue && (
+            <button type="button" className="fhj-pulse-stop" aria-label="Stop asking for now"
+              title="Stop asking for now"
+              onClick={() => { feedback("tap"); leave(() => { setStopped(true); setCursor(null); setTrail([]); }); }}>
+              <Icon name="x" size={13} color="currentColor" />
+            </button>
+          )}
+        </span>
       </div>
       {!viewer && progress.total > 1 && (
         <div className="fhj-next-bar" aria-hidden="true">
@@ -16833,60 +16850,57 @@ function DailyPulse({
                 {" "}<span style={{ color: C.subtle }}>Tap it again to clear.</span>
               </span>
             </>
-          ) : onPulse ? (
+          ) : onPulse && !recorded ? (
             <span style={{ color: C.subtle }}>
-              {viewer ? "Read-only — nothing is saved here." : "Nothing recorded yet. One tap is a whole day logged."}
+              {viewer ? "Read-only — nothing is saved here." : "One tap is a whole day logged."}
             </span>
-          ) : stageAnswered ? (
-            <span style={{ color: C.subtle }}>Answered — change it, or move on.</span>
-          ) : (
-            <span style={{ color: C.subtle }}>
-              {isOneTap(asking) ? "One tap and it moves on." : "Answer it, then Next."}
-            </span>
-          )}
+          ) : null}
         </div>
 
-        {inQueue && (
+        {/* One row of chrome under the question, where there used to be three.
+
+            "Skip this one" said "this one" because it sat beside "Done for
+            now" and had to distinguish itself from it; "Back to the question
+            before" spelled out a stack nobody is holding in their head. The
+            words were doing the work the layout should have been doing. So the
+            layout does it: Back on the left, forward on the right, and leaving
+            is the × in the corner — which is what × has meant on a card since
+            long before this app. Three controls, four words between them, and
+            the only one with a label is the one somebody presses on purpose. */}
+        {(inQueue || canGoBack) && (
           <div className="fhj-next-foot">
-            <button type="button"
-              className={"fhj-next-btn" + (stageAnswered && !isOneTap(asking) ? " is-forward" : "")}
-              onClick={() => (stageAnswered && !isOneTap(asking) ? handOver(asking) : advance(asking))}>
-              {stageAnswered && !isOneTap(asking) ? "Next" : "Skip this one"}
-              {stageAnswered && !isOneTap(asking) && <Icon name="right" size={12} color="currentColor" />}
-            </button>
-            <button type="button" className="fhj-next-btn"
-              onClick={() => { feedback("tap"); leave(() => { setStopped(true); setCursor(null); setTrail([]); }); }}>
-              Done for now
-            </button>
+            {canGoBack ? (
+              <button type="button" className="fhj-next-btn" onClick={stepBack}
+                aria-label="Back to the previous question">
+                <Icon name="left" size={12} color="currentColor" />
+                <span>Back</span>
+              </button>
+            ) : <span />}
+            {inQueue && (
+              <button type="button"
+                className={"fhj-next-btn" + (stageAnswered && !isOneTap(asking) ? " is-forward" : "")}
+                onClick={() => (stageAnswered && !isOneTap(asking) ? handOver(asking) : advance(asking))}
+                aria-label={stageAnswered && !isOneTap(asking) ? "Next question" : "Skip this question"}>
+                <span>{stageAnswered && !isOneTap(asking) ? "Next" : "Skip"}</span>
+                <Icon name="right" size={12} color="currentColor" />
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* The way back to the number, and to anything walked past on the way
-          here. Outside the slot, because it is about the stack rather than
-          about the question — and quiet, because almost nobody needs it. */}
-      {canGoBack && (
-        <button type="button" className="fhj-pulse-back" onClick={stepBack}>
-          <Icon name="left" size={12} color="currentColor" />
-          <span>Back to the question before</span>
-        </button>
-      )}
-
-      {/* The end of it, said once. Only for somebody who actually got there —
-          a setup with nothing left to ask on the very first tap has not
-          finished anything. */}
-      {!viewer && queueDone && progress.total > 1 && progress.left === 0 && (
-        <div className="fhj-next-done">
-          <span className="fhj-pulse-mark" style={{ background: colorFor(value, keyField.dir) }}>
-            <Icon name="check" size={13} color={readableInk(colorFor(value, keyField.dir))} />
-          </span>
-          <span>All {progress.total} of today's questions are answered.</span>
-        </div>
-      )}
-
+      {/* There is no banner here any more. Finishing the queue used to raise a
+          panel reading "All 20 of today's questions are answered." directly
+          above a card whose ring had gone to a tick and whose line read "Today
+          is fully on the record." — the same news, twice, an inch apart. The
+          count in the corner reaching 20 of 20 and the bar reaching its end
+          are the third and fourth tellings, and those two cost no words at
+          all. So the card below says it, once, and this says nothing. */}
       {recorded && !viewer && items.length > 0 && (
         <div className="mt-3">
-          <div className="fhj-eyebrow mb-1.5">Anything else? — all optional</div>
+          {/* No eyebrow. "Anything else? — all optional" labelled a row of
+              three chips that are visibly a row of three chips, and called
+              them optional twice in five words. */}
           <div className="fhj-pulse-chips">
             {items.map((item) => (
               <button key={item.id} type="button" onClick={() => openItem(item)}
@@ -16895,7 +16909,7 @@ function DailyPulse({
                 <Icon name={item.icon} size={14} color="currentColor" />
                 <span>
                   <span className="fhj-pulse-chip-label">{item.label}</span>
-                  <span className="fhj-pulse-chip-hint">{item.hint}</span>
+                  {item.hint && <span className="fhj-pulse-chip-hint">{item.hint}</span>}
                 </span>
               </button>
             ))}

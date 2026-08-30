@@ -217,20 +217,24 @@ export function checkinStatus(src: CheckinSource): CheckinStatus {
 /**
  * What the card says under its own name.
  *
- * Four states, four sentences, and the differences between them are
- * deliberate. It never says "well done", it never counts a streak at somebody,
- * and the finished one is a statement about the record rather than about the
- * person: the thing being celebrated is that a day is fully written down, which
- * is the only thing here worth celebrating.
+ * It never says "well done", it never counts a streak at somebody, and the
+ * finished one is a statement about the record rather than about the person:
+ * the thing being celebrated is that a day is fully written down, which is the
+ * only thing here worth celebrating.
+ *
+ * It also never repeats the ring. Every caller draws this line beside a ring
+ * showing how many are in and a row of pips showing which — so a line reading
+ * "7 of 20 in. 13 to go." says the same number three times and adds nothing to
+ * the two that are already shapes. What the shapes cannot say is what is
+ * *left*, so that is the only thing left here.
  */
 export function checkinLine(s: CheckinStatus): string {
-  if (!s.total) return "Answer what applies — everything is optional.";
-  if (s.complete) return `All ${s.total} answered. Today is fully on the record.`;
+  if (!s.total) return "Everything in it is optional.";
+  if (s.complete) return "Today is fully on the record.";
   /* "Questions" would be a lie on a setup with a routine in it: some of these
      are doses to tick rather than questions to answer. */
   if (s.untouched) return `${s.total} to answer, about a minute.`;
-  if (s.left === 1) return `${s.done} of ${s.total} in. One left.`;
-  return `${s.done} of ${s.total} in. ${s.left} to go.`;
+  return s.left === 1 ? "One left." : `${s.left} to go.`;
 }
 
 /** The name of the action, which changes with the state and nothing else. */

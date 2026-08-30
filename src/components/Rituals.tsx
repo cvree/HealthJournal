@@ -588,7 +588,7 @@ export function RitualTuneUp({ ritual, runs, date, onFinish, onSnooze }: RitualT
           {stage === "friction" && (
             <div className="fhj-tune-stage">
               <h3 className="fhj-tune-q">What got in the way?</h3>
-              <p className="fhj-tune-sub">One tap, or skip it — this only ever shapes what gets suggested next.</p>
+              <p className="fhj-tune-sub">{cards.find((c) => c.id === "friction")?.sub}</p>
               <div className="fhj-chip-wrap">
                 {FRICTIONS.map((f) => (
                   <button key={f.v} type="button" className="fhj-chip fhj-pop"
@@ -598,7 +598,7 @@ export function RitualTuneUp({ ritual, runs, date, onFinish, onSnooze }: RitualT
                 ))}
               </div>
               <button type="button" className="fhj-link-btn mt-3"
-                onClick={() => { feedback("tap"); advance(); }}>Skip this</button>
+                onClick={() => { feedback("tap"); advance(); }}>Skip</button>
             </div>
           )}
 
