@@ -303,3 +303,166 @@ describe("switching a whole day off", () => {
     await screen.findByRole("button", { name: /Add 3 rows to my journal/ });
   });
 });
+
+/* ---------- a paragraph, not a log ----------
+
+   The half of this feature 1.33 added: somebody who never kept a dated log,
+   who arrives and describes how the last fortnight went in three sentences.
+   Every promise below is about *not* making that person do more work than the
+   person with the tidy log file. */
+
+/** Dates relative to today, so a stretch is never accidentally in the future
+    or three years adrift on a machine whose clock is not the author's. */
+const back = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const readWith = async (notes: string) => {
+  await openImport();
+  fireEvent.change(screen.getByLabelText(/Your notes/), { target: { value: notes } });
+  fireEvent.click(screen.getByRole("button", { name: /Read my notes/ }));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /Send and read/ }));
+  await screen.findByText(/Nothing is written yet/);
+};
+
+describe("a course that ran for days", () => {
+  const COURSE = {
+    items: [{
+      kind: "routine", date: back(4), until: back(0), name: "Amitriptyline", dose: "10 mg",
+      routineKind: "med", time: "22:00",
+      source: "started 10mg amitriptyline on Tuesday, every night since", confidence: "high",
+    }],
+  };
+
+  it("stays one row to approve, and says how many days it covers", async () => {
+    stubProvider(COURSE);
+    await mountApp();
+    await readWith("started 10mg amitriptyline on Tuesday, every night since");
+    const rows = [...document.querySelectorAll(".fhj-import-row")];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("5 days");
+    /* And the button counts what the tap actually writes. */
+    expect(screen.getByRole("button", { name: /Add 5 rows to my journal/ })).toBeTruthy();
+  });
+
+  it("writes one dose per day when it is approved", async () => {
+    stubProvider(COURSE);
+    await mountApp();
+    await readWith("started 10mg amitriptyline on Tuesday, every night since");
+    fireEvent.click(screen.getByRole("button", { name: /Add 5 rows to my journal/ }));
+    await waitFor(() => {
+      const rows = saved().routine.filter((r: any) => r.name === "Amitriptyline");
+      expect(rows).toHaveLength(5);
+      expect(new Set(rows.map((r: any) => r.date)).size).toBe(5);
+    });
+  });
+});
+
+describe("what it had to decide", () => {
+  const AMBIGUOUS = {
+    items: [{
+      kind: "routine", date: back(1), name: "Cetirizine", dose: "10 mg", routineKind: "med",
+      source: "took the antihistamine", confidence: "medium",
+    }],
+    questions: [{
+      ask: "Which antihistamine did you mean?",
+      why: "There is more than one it could be.",
+      options: ["Cetirizine", "Loratadine"],
+      assumed: "Cetirizine",
+    }],
+  };
+
+  it("asks, and answers itself — the plan under the question is already complete", async () => {
+    stubProvider(AMBIGUOUS);
+    await mountApp();
+    await readWith("took the antihistamine yesterday");
+    expect(screen.getByText(/Which antihistamine did you mean\?/)).toBeTruthy();
+    /* The option it used is marked, and the rows are already built on it. */
+    const chosen = screen.getByRole("button", { name: /Cetirizine/ });
+    expect(chosen.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector(".fhj-import-row")!.textContent).toContain("Cetirizine");
+    /* Nothing is blocked: the commit button is live without answering. */
+    expect((screen.getByRole("button", { name: /Add 1 row to my journal/ }) as HTMLButtonElement).disabled)
+      .toBe(false);
+  });
+
+  it("offers a re-read only once an answer differs, and asks before sending again", async () => {
+    const sent = stubProvider(AMBIGUOUS);
+    await mountApp();
+    await readWith("took the antihistamine yesterday");
+    expect(screen.queryByRole("button", { name: /Read it again/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Loratadine/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Read it again with these answers/ }));
+
+    /* Still a second request, so still the sheet — and it names the answers. */
+    const sheet = await screen.findByRole("dialog", { name: /This sends your notes/ });
+    expect(sheet.textContent).toMatch(/answer to what it asked last time/);
+    expect(sent).toHaveLength(1);
+
+    fireEvent.click(within(sheet).getByRole("button", { name: /Send and read/ }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    const wire = JSON.stringify(sent[1]);
+    expect(wire).toContain("Loratadine");
+    expect(wire).toContain("took the antihistamine yesterday");
+  });
+});
+
+describe("what is already there, and what has nowhere to go", () => {
+  it("marks a row the journal already has, before the button rather than after it", async () => {
+    const MEAL = {
+      items: [{
+        kind: "food", date: back(1), time: "12:30", description: "Porridge",
+        source: "porridge at half twelve", confidence: "high",
+      }],
+    };
+    stubProvider(MEAL);
+    await mountApp();
+    await readWith("porridge at half twelve");
+    /* First time through, nothing is already there. */
+    expect(screen.queryByText(/Already in your journal/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Add 1 row to my journal/ }));
+    await waitFor(() => expect(saved().food.some((f: any) => f.description === "Porridge")).toBe(true));
+
+    /* Run the same notes again — which is what everybody does, because the
+       first run is a test. */
+    fireEvent.click(await screen.findByRole("button", { name: /Import more/ }));
+    fireEvent.change(await screen.findByLabelText(/Your notes/), { target: { value: "porridge at half twelve" } });
+    fireEvent.click(screen.getByRole("button", { name: /Read my notes/ }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /Send and read/ }));
+    await screen.findByText(/Nothing is written yet/);
+
+    expect(await screen.findByText(/Already in your journal/)).toBeTruthy();
+    expect(screen.getByText(/would be skipped rather than doubled up/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Switch it off/ }));
+    await screen.findByRole("button", { name: /Nothing selected/ });
+  });
+
+  it("says what this journal had nowhere to put, rather than being quietly shorter", async () => {
+    stubProvider({
+      items: [
+        { kind: "answer", key: "blood_pressure", number: 120, date: back(1),
+          source: "bp 120/80", confidence: "high" },
+        { kind: "note", text: "Felt rough.", date: back(1), source: "felt rough", confidence: "high" },
+      ],
+    });
+    await mountApp();
+    await readWith("bp 120/80, felt rough");
+    expect(screen.getByText(/nowhere to put/)).toBeTruthy();
+    expect(screen.getByText(/bp 120\/80/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Add 1 row to my journal/ })).toBeTruthy();
+  });
+});
+
+describe("saying what can be pasted", () => {
+  it("names both shapes of notes, behind a disclosure so neither is in the way", async () => {
+    await mountApp();
+    await openImport();
+    expect(screen.queryByText(/how things have been, in sentences/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /What can I paste\?/ }));
+    expect(await screen.findByText(/A log you already keep/i)).toBeTruthy();
+    expect(screen.getByText(/how things have been, in sentences/i)).toBeTruthy();
+  });
+});

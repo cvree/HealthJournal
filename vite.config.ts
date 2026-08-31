@@ -72,6 +72,10 @@ export default defineConfig({
         shortcuts: [
           { name: "Log today", short_name: "Log", url: `${base}?screen=log` },
           { name: "This week's report", short_name: "Report", url: `${base}?screen=report` },
+          /* Third rather than first: the shortcut menu is for the two things
+             done every day. Search is the one you reach for when you are
+             already holding a question, which is rarer and never urgent. */
+          { name: "Search your journal", short_name: "Search", url: `${base}?screen=search` },
         ],
       },
     }),

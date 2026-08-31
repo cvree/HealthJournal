@@ -1,5 +1,125 @@
 # Changelog
 
+## 1.33.0
+
+One box that finds anything, and an import that reads a paragraph.
+
+### A year of a journal you could not open a drawer of
+
+A journal kept for a year is a filing cabinet, and until now this app gave you
+no way into it. *When did I last take the antihistamine? What did I eat the week
+of the flare? Which days was the itch a 9?* Every one of those questions had the
+same answer, which was to scroll History with your thumb and hope.
+
+**Search** is one field over everything: every note you have written, every meal,
+dose, bowel entry, ritual, flare, lab result and hour outside, plus the questions
+your survey asks and the screens themselves. It answers on the first keystroke —
+the index is built once from the journal already in memory, so there is no button
+to press and nothing to wait for — and every result opens the thing it found, on
+the day it happened. A meal from March opens the Diary *in March*.
+
+It is one tap from Today, one tap from History, in the header of every screen
+that has one, and in the fan.
+
+**The query language is five things people already type into search boxes**, and
+none of them is in the way — plain words are the overwhelming majority of
+searches and always work:
+
+- `"woke at 4"` — that exact phrase
+- `-coffee` — leave out anything that mentions it
+- `is:meals`, `is:doses`, `is:flares` — one kind only
+- `on:yesterday`, `after:2026-08-01`, `last:30d` — a day or a stretch
+- `pain>7` — **days where a question you are asked went over a number**
+
+That last one is the one a symptom journal actually needed. `itch>=8 -dairy`
+is a real question with a real answer, and it took a spreadsheet export to ask
+it before.
+
+Nothing is rejected: a token that looks like a filter and is not one is treated
+as a word, so a stray colon never costs you your search. Every filter that *did*
+parse is said back to you as a chip, because the commonest failed search is one
+with a filter somebody forgot was on — and "no results" cannot tell you that.
+A comparison against a question your journal does not ask says so by name rather
+than quietly returning nothing.
+
+Every term has to match. `havarti cheese` finds the hamburger; it does not find
+every meal containing either word.
+
+The empty screen is not a shrug — it is five searches somebody would actually
+run, each one tap from being run, with the operator reference folded behind a
+disclosure underneath. And the whole thing is local: an index built in memory
+over data already on the phone, thrown away when you close the screen. It is
+the exact opposite of the import path, and it sends nothing.
+
+### The import stops needing you to have kept a tidy log
+
+Import was built for the person with a notes file full of dated shorthand. That
+person exists. So does the one who never kept one and would describe the last
+fortnight in three sentences if asked — and until now the feature quietly was
+not for them.
+
+**It reads a paragraph now.** *"Started 10mg amitriptyline last Tuesday, every
+night since. Sleep has been about a 4 most nights. Cut dairy on the 12th and the
+itch is better — a 3 today, was a 7."* That is a course of a medication, a
+rating, a change, and a rating today, and all four come back as rows on the days
+they belong to.
+
+**A stretch of days is one row that writes many.** "Every night since Tuesday"
+is eight doses, and a journal that files it as one dose on Tuesday disagrees with
+the notes it was handed. So it stays **one row in the review** — a fortnight of a
+nightly tablet taking fourteen lines would make the list unreadable — marked with
+how many days it covers, and writes one record per day when you approve it.
+Correcting its first date moves the whole stretch, because the length is what
+your notes said and only the position was wrong.
+
+It will never do that to a rating or a bowel movement. "About a 4 most nights"
+is *one* answer with a caveat saying so — six invented fours would be six points
+your charts then draw.
+
+**It asks, and it answers itself.** Real notes are ambiguous: two things with the
+same short name, a course with no stated end. A reader that stopped and asked
+would have turned a paste into an interrogation. So it decides, files every row
+under the decision, and hands back the question *with the answer it used already
+marked*. Ignore it entirely and you still get a complete, honest plan. Change one
+and the notes are read again around your answer — which is a second request, so
+it asks before it sends, exactly like the first.
+
+**"Already in your journal" now appears before the button, not in the receipt.**
+The review runs the same pure function the commit will run, against your real
+journal, and marks the rows that would be skipped — with one tap to switch them
+all off. Running the same notes twice is what everybody does, because the first
+run is a test.
+
+**And what this journal had nowhere to put is named.** A blood pressure reading
+with no blood pressure question used to vanish between the notes and the review.
+It is listed now, in the words it came from, with what to do about it. A list
+that is quietly shorter than the notes it was made from is the one outcome that
+makes somebody stop trusting the whole feature.
+
+The rules that were not negotiable are still not negotiable. The model never
+writes; `applyImport` is a pure function of the rows you approved and has never
+heard of a model. Nothing leaves until a sheet listing the entire payload has
+been accepted, every time. Your words are copied, never improved. A guess is
+labelled as one.
+
+### Under it
+
+- **New module `src/lib/search.ts`** (typed, pure, no React): `buildIndex` over
+  eleven data shapes, `parseQuery` (never fails), `runSearch` (AND semantics,
+  absolute filters, field-weighted scoring with a recency nudge too small to
+  outrank relevance), `resolveField`, `snippetFor` (excerpts around the hit, not
+  from the top of the note), `highlight` (merged spans), `describeSearch`.
+- **New component `src/components/SearchScreen.tsx`**, plus `search` as a screen,
+  a nav destination, a `?screen=search` deep link, and `DiaryScreen`'s new
+  `startDate` so a meal result opens the day it was eaten.
+- **`src/lib/import.ts`**: `ImportedItem.span`, `resolveSpan` (capped at
+  `MAX_SPAN_DAYS`), `spanLabel`, `shiftItemDate`, `ImportQuestion` +
+  `normaliseQuestions`, `ImportAnswer` on `ImportInput`, `ImportPlan.unplaced`,
+  and `applyImport` returning `duplicateIds` so the review can dry-run itself.
+- **Tests: 1894 across 73 suites** (was 1821/71). New `tests/search.test.ts` (36)
+  and `tests/searchUi.test.tsx` (15); `tests/import.test.ts` 33 → 48 and
+  `tests/importUi.test.tsx` 13 → 20.
+
 ## 1.32.0
 
 The setup asks what you came for, and then tells you when it can answer.

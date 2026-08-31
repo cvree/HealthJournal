@@ -16,8 +16,9 @@
 */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
-  MAX_IMPORT_IMAGES, applyImport, countKinds, describeAdded, groupByDate, imagesOf,
-  normaliseImportPlan, readNotes, resolveDate, summariseImportRequest,
+  MAX_IMPORT_IMAGES, MAX_SPAN_DAYS, applyImport, countKinds, describeAdded, groupByDate,
+  imagesOf, normaliseImportPlan, normaliseQuestions, readNotes, resolveDate, resolveSpan,
+  shiftItemDate, summariseImportRequest,
   type ImportTargets, type ImportVocabulary, type ImportedItem,
 } from "../src/lib/import";
 
@@ -257,6 +258,175 @@ describe("the review's own shape", () => {
   });
 });
 
+
+/* ---------- a row that covers a stretch of days ----------
+
+   "10 mg every night since Tuesday" is eight doses. The three things that
+   matter: it stays one row in the review (a list of forty proposals is
+   unreadable if a fortnight of a nightly tablet takes fourteen lines of it),
+   it writes eight records, and it may never manufacture a rating nobody
+   made. */
+describe("something that ran for days", () => {
+  it("expands a course into one row per day, still as one proposal", () => {
+    const out = plan([{
+      kind: "routine", date: "2026-08-15", until: "2026-08-19", name: "Trazodone",
+      dose: "50 mg", routineKind: "med", time: "22:00",
+      source: "50mg every night since the 15th", confidence: "high",
+    }]);
+    expect(out).toHaveLength(1);
+    expect(out[0].span!.days).toEqual([
+      "2026-08-15", "2026-08-16", "2026-08-17", "2026-08-18", "2026-08-19",
+    ]);
+    expect(out[0].detail).toContain("every day for 5 days");
+    /* And the sentence in front of the button counts rows, not proposals. */
+    expect(countKinds(out).routine).toBe(5);
+    expect(describeAdded(countKinds(out))).toBe("5 doses");
+  });
+
+  it("writes one record per day in the stretch", () => {
+    const rows = plan([{
+      kind: "routine", date: "2026-08-19", until: "2026-08-21", name: "Vitamin D3",
+      dose: "2000 IU", routineKind: "supplement", time: "07:40",
+      source: "vit d every morning", confidence: "high",
+    }]);
+    const { next, added } = applyImport(blank(), rows);
+    expect(added.routine).toBe(3);
+    expect(next.routine.map((r) => r.date)).toEqual(["2026-08-19", "2026-08-20", "2026-08-21"]);
+    /* One item, three uses — not three items. */
+    expect(next.routineItems).toHaveLength(1);
+  });
+
+  it("fills only the days that are missing when part of it is already logged", () => {
+    const rows = plan([{
+      kind: "routine", date: "2026-08-19", until: "2026-08-21", name: "Vitamin D3",
+      dose: "2000 IU", routineKind: "supplement", time: "07:40", source: "s", confidence: "high",
+    }]);
+    const first = applyImport(blank(), rows);
+    const again = applyImport(first.next, rows);
+    expect(again.added.routine).toBe(0);
+    expect(again.duplicates).toBe(3);
+    expect(again.duplicateIds).toEqual(rows.map((r) => r.id));
+    expect(again.next.routine).toHaveLength(3);
+  });
+
+  it("refuses to repeat a rating or a bowel movement across days", () => {
+    /* Six invented answers of 4 would be six points the charts then draw. */
+    const rating = plan([{
+      kind: "answer", key: "overall", number: 4, date: "2026-08-15", until: "2026-08-21",
+      source: "about a 4 most nights", confidence: "low",
+    }]);
+    expect(rating[0].span).toBeUndefined();
+    const bm = plan([{
+      kind: "bowel", bristol: 4, date: "2026-08-15", until: "2026-08-21",
+      source: "regular all week", confidence: "low",
+    }]);
+    expect(bm[0].span).toBeUndefined();
+  });
+
+  it("ignores a stretch that runs backwards, into the future, or nowhere", () => {
+    const one = (until: unknown) => plan([{
+      kind: "routine", date: "2026-08-19", until, name: "Creatine",
+      source: "s", confidence: "high",
+    }])[0];
+    expect(one("2026-08-18").span).toBeUndefined(); // backwards
+    expect(one("2026-09-30").span).toBeUndefined(); // the future
+    expect(one("next week").span).toBeUndefined(); // unreadable
+    expect(one("2026-08-19").span).toBeUndefined(); // the same day is not a stretch
+    /* And the row itself survives every one of those — a dose is still a dose
+       when the "until" beside it was nonsense. */
+    expect(one("next week").routine!.name).toBe("Creatine");
+  });
+
+  it("caps a stretch rather than letting one line write a thousand rows", () => {
+    const out = resolveSpan("routine", "2020-01-01", "2026-08-21", TODAY);
+    expect(out!.days).toHaveLength(MAX_SPAN_DAYS);
+    expect(out!.from).toBe("2020-01-01");
+  });
+
+  it("moves the whole stretch when its first day is corrected", () => {
+    const row = plan([{
+      kind: "routine", date: "2026-08-19", until: "2026-08-21", name: "Creatine",
+      source: "s", confidence: "high",
+    }])[0];
+    const moved = shiftItemDate(row, "2026-08-16");
+    /* Three days, still — the length is what the notes said; only the
+       position was wrong. */
+    expect(moved.span!.days).toEqual(["2026-08-16", "2026-08-17", "2026-08-18"]);
+    expect(moved.dateGuessed).toBeUndefined();
+    /* A date it cannot use changes nothing at all. */
+    expect(shiftItemDate(row, "not a date")).toBe(row);
+  });
+});
+
+/* ---------- the questions it asks itself ---------- */
+
+describe("what it had to decide", () => {
+  const q = (over: Partial<any> = {}) => ({
+    ask: "Which antihistamine did you mean?",
+    why: "There are two in your routine.",
+    options: ["Cetirizine", "Loratadine"],
+    assumed: "Cetirizine",
+    ...over,
+  });
+
+  it("keeps a question, and the answer the plan was actually built on", () => {
+    const [out] = normaliseQuestions([q()]);
+    expect(out).toMatchObject({
+      ask: "Which antihistamine did you mean?", options: ["Cetirizine", "Loratadine"],
+      assumed: "Cetirizine",
+    });
+    expect(out.id).toBeTruthy();
+  });
+
+  it("never leaves an assumption pointing at an option that is not offered", () => {
+    expect(normaliseQuestions([q({ assumed: "Fexofenadine" })])[0].assumed).toBe("Cetirizine");
+    expect(normaliseQuestions([q({ assumed: "" })])[0].assumed).toBe("Cetirizine");
+    /* Matched case-insensitively, stored in the option's own spelling. */
+    expect(normaliseQuestions([q({ assumed: "loratadine" })])[0].assumed).toBe("Loratadine");
+  });
+
+  it("drops anything that is not a choice, or that strayed into diagnosis", () => {
+    expect(normaliseQuestions([q({ options: ["Only one"] })])).toEqual([]);
+    expect(normaliseQuestions([q({ options: [] })])).toEqual([]);
+    expect(normaliseQuestions([q({ ask: "" })])).toEqual([]);
+    expect(normaliseQuestions([q({ ask: "Does this suggest irritable bowel syndrome?" })])).toEqual([]);
+    expect(normaliseQuestions("questions" as never)).toEqual([]);
+  });
+
+  it("asks at most three things, and offers at most four answers", () => {
+    expect(normaliseQuestions(Array.from({ length: 8 }, () => q()))).toHaveLength(3);
+    expect(normaliseQuestions([q({ options: ["a", "b", "c", "d", "e", "f"] })])[0].options)
+      .toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("rides back on the plan alongside the rows it was already applied to", () => {
+    const out = normaliseImportPlan({ items: [item()], questions: [q()] }, vocab);
+    expect(out.items).toHaveLength(1);
+    expect(out.questions).toHaveLength(1);
+  });
+});
+
+/* ---------- what this app refused ---------- */
+
+describe("saying what was dropped", () => {
+  it("names the fragments it had nowhere to put", () => {
+    const out = normaliseImportPlan({
+      items: [
+        { ...item(), kind: "answer", key: "blood_pressure", number: 120, source: "8.21 bp 120/80" },
+        { ...item(), kind: "answer", key: "overall", number: 47, source: "8.21 severity 47" },
+        { ...item(), kind: "haircut", source: "8.21 haircut" },
+        { ...item(), text: "kept" , source: "8.21 kept" },
+      ],
+    }, vocab);
+    expect(out.items).toHaveLength(1);
+    expect(out.unplaced).toEqual(["8.21 bp 120/80", "8.21 severity 47", "8.21 haircut"]);
+  });
+
+  it("says nothing when nothing was dropped", () => {
+    expect(normaliseImportPlan({ items: [item()] }, vocab).unplaced).toBeUndefined();
+  });
+});
+
 /* ---------- the wire ---------- */
 
 function mockGemini(reply: unknown) {
@@ -350,6 +520,24 @@ describe("what actually leaves the device", () => {
     const bare = summariseImportRequest({ text: "x" }, vocab);
     expect(bare.sendsImage).toBe(false);
     expect(bare.lines.join(" ")).not.toMatch(/screenshot/i);
+  });
+
+  it("sends an answer back as settled fact, with the notes unchanged", async () => {
+    const bodies = mockGemini({ items: [] });
+    await readNotes(CONN, {
+      text: "8.21 took the antihistamine",
+      answers: [{ ask: "Which antihistamine?", answer: "Loratadine" }],
+    }, vocab);
+    const wire = JSON.stringify(bodies[0]);
+    expect(wire).toContain("Which antihistamine?");
+    expect(wire).toContain("Loratadine");
+    /* The notes go again, whole: an answer settles an ambiguity, it does not
+       replace the text. */
+    expect(wire).toContain("8.21 took the antihistamine");
+    /* And the sheet that has to be accepted first counts them. */
+    expect(summariseImportRequest(
+      { text: "x", answers: [{ ask: "a", answer: "b" }] }, vocab
+    ).lines.join(" ")).toContain("answer to what it asked last time");
   });
 
   it("turns a reply that is not JSON into something the screen can say", async () => {

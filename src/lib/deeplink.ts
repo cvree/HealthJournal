@@ -7,7 +7,7 @@
  * the screen router.
  */
 
-export const DEEP_LINK_SCREENS = ["log", "food", "calendar", "export", "report", "gallery"] as const;
+export const DEEP_LINK_SCREENS = ["log", "food", "calendar", "export", "report", "gallery", "search"] as const;
 export type DeepLinkScreen = (typeof DEEP_LINK_SCREENS)[number];
 
 /**

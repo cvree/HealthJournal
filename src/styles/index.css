@@ -11651,3 +11651,402 @@ button.fhj-section:disabled {
   background: var(--fhj-accent, #8fb0e3);
   transition: width var(--fhj-ease, 220ms) ease;
 }
+
+/* ---------- search ----------
+
+   One box over the whole journal. The layout problem this block solves is that
+   a result row has four things to say — what it is, what it says, what kind of
+   record it is and when it happened — and only one of them can have the width.
+   So the title and the excerpt take the column, the kind and the date sit in a
+   narrow right-hand rail, and the icon is a fixed chip on the left that gives
+   the eye something to scan down instead of reading every row. */
+
+.fhj-sr-box {
+  position: sticky;
+  top: 3.75rem; /* under the app header, which is sticky above it */
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  min-height: var(--fhj-tap);
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: var(--fhj-bw) solid var(--fhj-line, #31343d);
+  transition: border-color var(--fhj-quick) ease;
+}
+.fhj-sr-box:focus-within {
+  border-width: var(--fhj-bw-strong);
+  border-color: var(--fhj-accent, #8fb0e3);
+  padding: 0 calc(0.75rem - (var(--fhj-bw-strong) - var(--fhj-bw)));
+}
+.fhj-sr-box input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--fhj-ink, #ecebe7);
+  font-size: 0.9375rem;
+  padding: 0.6875rem 0;
+}
+.fhj-sr-box input::-webkit-search-cancel-button {
+  display: none;
+}
+.fhj-sr-clear {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--fhj-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-faint, #2a2d35);
+}
+
+/* The filters that parsed, said back in the app's own words. A query is
+   allowed to look like nothing anybody taught you; this row is where it
+   confirms it understood. */
+.fhj-sr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+.fhj-sr-filter {
+  padding: 0.1875rem 0.5rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-tint-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-tint-text, #a6c3ea);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.fhj-sr-summary {
+  margin-top: 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-sr-compared {
+  color: var(--fhj-tint-text, #a6c3ea);
+}
+
+.fhj-sr-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.625rem;
+}
+.fhj-sr-kind-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  min-height: 2rem;
+  padding: 0 0.6875rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+  color: var(--fhj-sub, #b9bac2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.fhj-sr-kind-chip > span {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.fhj-sr-kind-chip.is-on {
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #12131a);
+}
+.fhj-sr-kind-chip.is-on > span {
+  opacity: 0.85;
+}
+
+.fhj-sr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.fhj-sr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, #31343d);
+  transition: border-color var(--fhj-quick) ease, transform var(--fhj-quick) ease;
+}
+.fhj-sr-row:active {
+  transform: translateY(1px);
+}
+.fhj-sr-row.is-active {
+  border-color: var(--fhj-accent, #8fb0e3);
+}
+.fhj-sr-icon {
+  flex: none;
+  width: 1.625rem;
+  height: 1.625rem;
+  margin-top: 0.0625rem;
+  border-radius: var(--fhj-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fhj-faint, #2a2d35);
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-sr-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.fhj-sr-title {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--fhj-ink, #ecebe7);
+  overflow-wrap: anywhere;
+}
+.fhj-sr-sub,
+.fhj-sr-snip {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+  overflow-wrap: anywhere;
+}
+.fhj-sr-snip {
+  color: var(--fhj-sub, #b9bac2);
+}
+.fhj-sr-meta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+  max-width: 6.5rem;
+  text-align: right;
+}
+.fhj-sr-kind {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-sr-date {
+  font-size: 0.6875rem;
+  color: var(--fhj-sub, #b9bac2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mark itself. A background wash rather than a highlighter block: the
+   results list is mostly text, and forty yellow rectangles is not a list. */
+.fhj-sr-hit {
+  background: var(--fhj-tint-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-tint-text, #a6c3ea);
+  border-radius: 0.1875rem;
+  padding: 0 0.0625rem;
+  font-weight: 700;
+}
+
+.fhj-sr-more {
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+/* The empty state, which is the teaching surface. */
+.fhj-sr-example {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5625rem 0.75rem;
+  border-radius: var(--fhj-radius);
+  background: var(--fhj-card, #1e2026);
+  border: 1px solid var(--fhj-line, #31343d);
+}
+.fhj-sr-example code {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--fhj-tint-text, #a6c3ea);
+  overflow-wrap: anywhere;
+}
+.fhj-sr-example span {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+
+.fhj-sr-helptoggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 2.5rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--fhj-sub, #b9bac2);
+}
+.fhj-sr-syntax {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr;
+  gap: 0.375rem 0.75rem;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+.fhj-sr-syntax dt code {
+  color: var(--fhj-tint-text, #a6c3ea);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.fhj-sr-syntax dd {
+  color: var(--fhj-subtle, #9a9ca6);
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-sr-row:active { transform: none; }
+}
+
+/* ---------- import: what it had to decide, and what it covers ----------
+
+   Three additions to the review, and each one answers a question somebody was
+   previously left to work out for themselves: what does this row actually
+   write (a day, or a fortnight of them), is this already here, and what did it
+   assume when the notes were ambiguous. */
+
+/* A row covering a stretch of days. Stated beside the label rather than in the
+   detail line, because it is the one fact that changes how much gets written. */
+.fhj-import-span {
+  flex: none;
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-tint-soft, rgba(143, 176, 227, 0.15));
+  color: var(--fhj-tint-text, #a6c3ea);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.fhj-import-through {
+  color: var(--fhj-sub, #b9bac2);
+}
+
+/* Already in the journal — found by a dry run before anything is written. The
+   row stays on and stays readable: it is not an error, it is a row that will
+   be skipped, and dimming it to the point of illegibility would hide the very
+   thing somebody needs to check. */
+.fhj-import-dupe {
+  flex: none;
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, #2a2d35);
+  color: var(--fhj-subtle, #9a9ca6);
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+.fhj-import-row.is-dupe {
+  border-style: dashed;
+}
+
+.fhj-import-dupes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem 0.625rem;
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fhj-sub, #b9bac2);
+}
+.fhj-import-dupes > span {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+/* The questions the reading asked itself. */
+.fhj-import-q {
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--fhj-line, #31343d);
+}
+.fhj-import-q-ask {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--fhj-ink, #ecebe7);
+}
+.fhj-import-q-why {
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--fhj-subtle, #9a9ca6);
+}
+.fhj-import-q-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+.fhj-import-q-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0 0.6875rem;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-faint, #2a2d35);
+  border: 1px solid var(--fhj-line, #31343d);
+  color: var(--fhj-sub, #b9bac2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+}
+.fhj-import-q-opt.is-on {
+  background: var(--fhj-accent, #8fb0e3);
+  border-color: var(--fhj-accent, #8fb0e3);
+  color: var(--fhj-on-accent, #12131a);
+}
+.fhj-import-q-mark {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* What can I paste — the two shapes, side by side, behind a disclosure. */
+.fhj-import-kinds {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fhj-sub, #b9bac2);
+}
+.fhj-import-kinds code {
+  display: block;
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--fhj-radius-sm);
+  background: var(--fhj-faint, #2a2d35);
+  color: var(--fhj-subtle, #9a9ca6);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

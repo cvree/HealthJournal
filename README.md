@@ -8,11 +8,18 @@ the trends come out over weeks. When you have an appointment, you print a summar
 with you.
 
 **And you don't start from nothing.** Almost everybody who tracks anything seriously was already
-tracking it somewhere — a notes file, a chat with themselves, a photo of a page. Paste it in, or
-hand over a screenshot, and [**Import your notes**](#import-your-own-notes) reads it into meals,
-doses, numbers, bowel entries and notes *on the dates and times your own notes give*. Months of
-shorthand become a journal in about a minute, and you approve every single row before one word
-of it is written.
+tracking it somewhere — a notes file, a chat with themselves, a photo of a page, or just an
+account of how the last fortnight went. Paste it in, or hand over a screenshot, and
+[**Import your notes**](#import-your-own-notes) reads it into meals, doses, numbers, bowel
+entries and notes *on the dates and times your own notes give*. Months of shorthand — or three
+sentences of prose — become a journal in about a minute, and you approve every single row before
+one word of it is written.
+
+**And once it is a year deep, you can open a drawer of it.** [**Search**](#search) is one box
+over every note, meal, dose, bowel entry, ritual, flare, lab result and hour outside — plus the
+questions your survey asks and the screens themselves. It answers on the first keystroke, every
+result opens the thing it found on the day it happened, and `itch>=8 -dairy` is a question you
+can actually ask.
 
 There is no account, no backend holding your journal, and no tracking. Out of the box, after
 the app has loaded once it makes **no network requests at all** — it installs to a phone's Home
@@ -747,6 +754,48 @@ nothing behind it is left out with its reason shown in the app rather than print
 Nothing is chosen for you: which notes a doctor reads, and which photos, are decisions the app
 declines to make on your behalf.
 
+<a id="search"></a>
+
+**Search — one box over the whole journal.** A journal kept for a year is a filing cabinet, and
+for a long time this app gave you no way into it. *When did I last take the antihistamine? What
+did I eat the week of the flare? Which days was the itch a 9?* All three had the same answer,
+which was to scroll History with your thumb and hope.
+
+One field, and everything is in it: every note you have written, every meal, dose, bowel entry,
+ritual, flare, lab result and hour outside, the saved foods and routine items themselves, the
+questions your survey asks, and the screens — because *"where is the backup button"* is a search
+somebody makes, and `backup` finds Export. It answers on the **first keystroke** (the index is
+built once from the journal already in memory, so there is nothing to wait for), and **every
+result opens the thing it found, on the day it happened** — a meal from March opens the Diary in
+March. It is one tap from Today, one tap from History, in the header of every screen that has
+one, and in the fan.
+
+Plain words are the overwhelming majority of searches and always work. On top of them sit five
+things people already type into search boxes elsewhere:
+
+| | |
+|---|---|
+| `"woke at 4"` | that exact phrase |
+| `-coffee` | leave out anything that mentions it |
+| `is:meals` | one kind only — days, meals, doses, bowel, rituals, flares, labs, sun, questions, screens |
+| `on:yesterday` `after:2026-08-01` `last:30d` | a day, or a stretch |
+| `pain>7` | **days where a question you are asked went over a number** |
+
+That last one is the one a symptom journal actually needed — `itch>=8 -dairy` is a real question
+with a real answer, and asking it used to mean exporting a spreadsheet.
+
+Nothing is ever rejected: a token that looks like a filter and is not one is treated as a word, so
+a stray colon never costs you your search. Every filter that *did* parse is shown back to you as a
+chip, because the commonest failed search is one with a filter you forgot was on and "no results"
+cannot tell you that. A comparison against a question your journal does not ask says so by name
+rather than quietly returning nothing. And every term has to match — `havarti cheese` finds the
+hamburger, not every meal containing either word.
+
+The empty screen is five searches you might actually want to run, each one tap from running, with
+the operator reference folded underneath. All of it is local: an index built in memory over data
+already on your device and thrown away when you close the screen. This is the exact opposite of
+the import path — it sends nothing, ever.
+
 **Get your data out.** CSV, multi-sheet Excel, and JSON — with date-range filters — plus a full
 JSON backup including photos that restores on any device.
 
@@ -1007,6 +1056,28 @@ Shorthand dates are resolved against today; a line with no date of its own belon
 above it; a time is only set when the note actually gives one. A dose matches something already
 in your routine where it can, and creates it where it cannot.
 
+**And it reads a paragraph just as carefully as a log.** The person with the tidy dated file
+exists; so does the one who never kept one and would describe the last fortnight in three
+sentences if asked. *"Started 10mg amitriptyline last Tuesday, every night since. Sleep has been
+about a 4 most nights. Cut dairy on the 12th and the itch is better — a 3 today, was a 7."* is a
+course of a medication, a rating, a change and a rating today, and all four come back as rows on
+the days they belong to.
+
+- **A stretch of days is one row that writes many.** "Every night since Tuesday" is eight doses,
+  and filing it as one dose on Tuesday would disagree with the notes it was handed. It stays
+  **one row in the review** — a fortnight of a nightly tablet taking fourteen lines would make
+  the list unreadable — marked with how many days it covers, and writes one record per day when
+  you approve it. Correcting its first date moves the whole stretch, because the length is what
+  your notes said and only the position was wrong.
+- **It will never do that to a rating or a bowel movement.** "About a 4 most nights" is *one*
+  answer with a caveat saying so. Six invented fours would be six points your charts then draw.
+- **It asks, and it answers itself.** Real notes are ambiguous — two things with the same short
+  name, a course with no stated end. A reader that stopped and asked would have turned a paste
+  into an interrogation, so it decides, files every row under the decision, and hands back the
+  question *with the answer it used already marked*. Ignore it entirely and you still get a
+  complete, honest plan. Change one and the notes are read again around your answer — which is a
+  second request, so it asks before it sends, exactly like the first.
+
 **Getting your notes in** is deliberately whatever is nearest to hand:
 
 - **Paste them** into the box. Shorthand is fine — that is the point.
@@ -1043,6 +1114,15 @@ Three steps, and the shape of them is the safety argument:
    date can be corrected on the row, and anything the model was genuinely unsure of is flagged —
    only that, because a badge on every row is a badge on nothing. Then one button writes what is
    left, with an Undo in the toast and a link straight to the earliest day it just filled in.
+
+   Two things the review learned to say **before** the button rather than in the receipt after
+   it. **"Already in your journal"** — it runs the exact function the commit will run against
+   your real journal and marks the rows that would be skipped, with one tap to switch them all
+   off, because running the same notes twice is what everybody does when the first run was a
+   test. And **what this journal had nowhere to put**: a blood pressure reading with no blood
+   pressure question used to vanish silently between your notes and the review. It is listed
+   now, in the words it came from. A list that is quietly shorter than the notes it was made
+   from is the one outcome that makes somebody stop trusting the whole feature.
 
 The model never writes. `applyImport` is a pure function of the rows you approved and has never
 heard of a model; `normaliseImportPlan` is the boundary in front of it and drops anything it
@@ -1113,6 +1193,7 @@ bellwether/
 │   │                           #   ai connect (the three-tap guided way to a
 │   │                           #     free key, offered where it earns it),
 │   │                           #   rail (the one horizontal scroller),
+│   │                           #   search (one box over the whole journal),
 │   │                           #   rituals (the day's card, the step player,
 │   │                           #     the weekly tune-up, the manage screen)
 │   ├── lib/
@@ -1138,8 +1219,14 @@ bellwether/
 │   │   ├── tour.ts             # the stops of the one-off tour, what is behind
 │   │   │                       #   the gear, and where each card sits
 │   │   ├── import.ts           # reading somebody's own notes into rows (AI-only):
-│   │   │                       #   prompt, boundary, and a pure writer. The one
+│   │   │                       #   prompt, boundary, and a pure writer. Reads a
+│   │   │                       #   log or a paragraph; a stretch of days is one
+│   │   │                       #   row that writes many; it decides rather than
+│   │   │                       #   asking, and hands back the decision. The one
 │   │   │                       #   outbound path whose payload is your writing
+│   │   ├── search.ts           # one box over the whole journal: the index, a
+│   │   │                       #   query language that never fails, the ranking.
+│   │   │                       #   Pure, local, sends nothing
 │   │   ├── quickActions.ts     # learned ordering + one-tap repeats, scored
 │   │   ├── longterm.ts         # monthly averages, year-over-year, seasons, floors
 │   │   ├── relationships.ts    # Spearman with ties, lag, coverage, sample floors

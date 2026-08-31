@@ -41,9 +41,22 @@
       marked unsure, with the assumption it made. A date it could not read
       falls back to today and says so rather than inventing one.
 
+   5. **It never asks instead of answering.** Real notes are ambiguous — two
+      things with the same short name, a course with no stated end, a number
+      with no unit. A reader that stopped and asked would have turned a paste
+      into an interrogation, so it decides, files everything under the decision,
+      and hands back the decision *and* the question as one `ImportQuestion`.
+      Answer it and the notes are re-read around the answer; ignore it and the
+      plan is still complete and still honest about what it assumed.
+
    What it never does: diagnose, interpret, rate, advise, or invent a row that
    no part of the text supports. Those are prompt rules *and* checks on the way
-   back in, the same belt-and-braces as the rest of ./ai. */
+   back in, the same belt-and-braces as the rest of ./ai.
+
+   One thing it deliberately *will* do is read a paragraph. "I started 10 mg
+   amitriptyline last Tuesday and have taken it every night since" is not
+   shorthand and has no dates in it, and it is still eight doses, a start date
+   and a note. See the prompt's "Two shapes of notes" and `resolveSpan`. */
 
 import { AiError, isDiagnosticText, scrubCausalLanguage } from "./ai";
 import type { ChatImage, Connection } from "./aiProviders";
@@ -98,6 +111,15 @@ export interface ImportInput {
       is told they are one continuous set, so a date at the top of the second
       shot still governs the lines under it. */
   images?: ChatImage[] | null;
+  /** Answers to the questions the last reading asked. Sending them re-reads
+      the same notes with the ambiguity settled — see `ImportQuestion`. */
+  answers?: ImportAnswer[] | null;
+}
+
+/** One of the reading's own questions, answered. */
+export interface ImportAnswer {
+  ask: string;
+  answer: string;
 }
 
 /** Every image in one input, in reading order, capped. */
@@ -148,6 +170,40 @@ export interface ImportedItem {
 
   /* kind === "note" */
   text?: string;
+
+  /** A row that describes a stretch of days rather than one.
+
+      "10 mg of the antihistamine every night since Tuesday" is eight doses,
+      not one, and a journal that files it as one dose on Tuesday is a journal
+      that quietly disagrees with the notes it was given. So the row stays one
+      row in the review — a list of forty proposals is unreadable if a fortnight
+      of a nightly tablet takes fourteen lines of it — and writes one record per
+      day when it is approved. `days` is the resolved, capped, sorted list, and
+      it is what `applyImport` iterates: the two ends are for the label. */
+  span?: { from: string; to: string; days: string[] };
+}
+
+/**
+ * Something the reading was genuinely unsure of, with the reading it used.
+ *
+ * The rule this shape exists to enforce: **a question never stops the import.**
+ * A model that asked "which antihistamine did you mean?" and returned no rows
+ * would have turned a paste into an interrogation. So it picks the likeliest
+ * reading, files everything under it, and hands back the question *and* the
+ * assumption it already made — which means somebody who reads none of this
+ * still gets a complete, honest plan, and somebody who reads it can correct
+ * one thing and have the whole reading redone around the correction.
+ */
+export interface ImportQuestion {
+  id: string;
+  /** The question, in plain words. */
+  ask: string;
+  /** What it changes about the rows. One short sentence. */
+  why?: string;
+  /** Two to four concrete answers, one of which is `assumed`. */
+  options: string[];
+  /** The option the plan in front of you was actually built on. */
+  assumed: string;
 }
 
 export interface ImportPlan {
@@ -157,6 +213,13 @@ export interface ImportPlan {
   /** What the model could read but could not place, in its own words. Empty is
       the norm, and a full one is the honest half of the feature. */
   unreadable?: string;
+  /** What it had to decide for itself, each with the decision it made. */
+  questions?: ImportQuestion[];
+  /** Rows this app refused on the way in — a question it does not ask, a value
+      the question cannot hold, a row with nothing behind it. Their source
+      fragments, so the review can say what was dropped instead of silently
+      being shorter than the notes. */
+  unplaced?: string[];
 }
 
 /* ---------- what leaves the device ---------- */
@@ -188,6 +251,9 @@ export function summariseImportRequest(input: ImportInput, vocab: ImportVocabula
   }
   if (vocab.foods.length) lines.push(`The names of your ${vocab.foods.length} saved foods`);
   lines.push("Today's date, so a note that says “yesterday” means something");
+  if (input.answers?.length) {
+    lines.push(`Your ${input.answers.length === 1 ? "answer" : `${input.answers.length} answers`} to what it asked last time`);
+  }
   return { sendsImage: shots.length > 0, characters: body.length, lines };
 }
 
@@ -198,6 +264,14 @@ const IMPORT_SYSTEM = `You are reading someone's own health notes and turning ea
 You will be given: today's date, the list of questions this person's journal asks, the list of things already in their routine, the names of foods they have already saved, and their notes as text and/or as an image of text.
 
 Return one item per distinct thing the notes record. One line often holds several: "8.21 food, 2.5 hamburger, havarti cheese" is a meal; "2acv premeal + 2 pepsin combo 12:30pm" is two doses at the same time.
+
+## Two shapes of notes, one job
+
+Some notes are a log — dated shorthand, one thing per line. Read those line by line.
+
+Others are somebody describing how things have been, in sentences, to you: "I started 10mg amitriptyline last Tuesday for sleep, taking it every night since. Sleep has been maybe a 4 out of 10 most nights, worse at the weekend. Cut out dairy on the 12th and the itch has been better since — I'd say a 3 today, was a 7 before." That is a paragraph, and it is still a pile of rows: a course of a medication over a stretch of days, a rating on a question, a change of diet, a rating today. Read it exactly as carefully as the log. Pull out every fact that is a row and leave the rest as a note, in their words.
+
+Do not invent precision the prose did not have. "Maybe a 4 most nights" is one answer of 4 with low confidence and a caveat that says so — not seven answers of 4.
 
 ## The kinds
 
@@ -215,6 +289,14 @@ Never return a date in the future.
 
 Set "time" as HH:MM in 24-hour form when the note gives one ("12pm" is 12:00, "1:20pm" is 13:20, "10:54 PM" is 22:54). Leave it out when the note does not — do not invent one.
 
+## Something that happened over a stretch of days
+
+When the notes say something ran across days rather than happening once — "every night since Tuesday", "twice a day for five days", "took it all last week", "porridge every morning this week" — set "date" to the first day and "until" to the last day it covers, as YYYY-MM-DD. The app writes one row per day between them.
+
+"until" is only for a medication, supplement, product or food that genuinely repeated. Never use it for a bowel movement, for a note, or for a rating: repeating one number across a week that was never rated seven times would be inventing six answers. A course still running today ends today.
+
+If a stretch has no clear end in the notes, end it today and say so in "note".
+
 ## Rules
 
 - Copy the person's own words. Never rewrite, summarise, correct, tidy, translate or improve them. Their spelling of a medication is their spelling. This is a record, not a draft.
@@ -223,13 +305,27 @@ Set "time" as HH:MM in 24-hour form when the note gives one ("12pm" is 12:00, "1
 - "source" must be the exact fragment of their notes this row came from, so they can check your reading against their own words. Copy it verbatim, at most 200 characters.
 - "confidence": "high" when the line plainly says this; "medium" when you had to interpret shorthand or infer a category; "low" when you are guessing at the date, the amount, or what a word means.
 - "note": only when you had to assume something — which date you picked and why, an amount you guessed at, an abbreviation you read one way rather than another. One short sentence. Leave it empty otherwise.
-- Put anything you could read but could not place into "unreadable", in their words, so they can see what was dropped.`;
+- Put anything you could read but could not place into "unreadable", in their words, so they can see what was dropped.
+
+## When you are not sure
+
+Never stop, never ask instead of answering, and never leave a row out because you were unsure of it. Pick the most likely reading, file every row under it, and then — for at most three things, and only the ones that genuinely change what gets written — add an entry to "questions":
+
+- "ask": the question in plain words, as you would ask a person. One sentence.
+- "why": what it changes about the rows. One short sentence.
+- "options": two to four concrete answers. Real ones, in their words where you have them.
+- "assumed": the option you actually used, copied exactly from "options".
+
+The rows you return must already be built on "assumed". Somebody who reads none of your questions must still get a complete, honest plan.
+
+Ask only about things you could not settle from the notes: which of two things a name refers to, whether a stretch of days ended, whether a number is the unit you assumed. Do not ask which question something belongs to when the list of questions answers it, do not ask them to confirm something the notes plainly say, and never ask anything clinical.`;
 
 const IMPORT_ITEM_SCHEMA = {
   type: "object",
   properties: {
     kind: { type: "string", enum: ["answer", "food", "bowel", "routine", "note"] },
     date: { type: "string" },
+    until: { type: "string" },
     time: { type: "string" },
     source: { type: "string" },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
@@ -260,24 +356,38 @@ const IMPORT_ITEM_SCHEMA = {
   required: ["kind", "date", "source", "confidence"],
 };
 
+const IMPORT_QUESTION_SCHEMA = {
+  type: "object",
+  properties: {
+    ask: { type: "string" },
+    why: { type: "string" },
+    options: { type: "array", items: { type: "string" } },
+    assumed: { type: "string" },
+  },
+  required: ["ask", "options", "assumed"],
+};
+
 const IMPORT_SCHEMA = {
   type: "object",
   properties: {
     items: { type: "array", items: IMPORT_ITEM_SCHEMA },
     unreadable: { type: "string" },
+    questions: { type: "array", items: IMPORT_QUESTION_SCHEMA },
   },
   required: ["items"],
 };
 
 const IMPORT_JSON_HINT =
   "\n\nReply with JSON only — no prose, no markdown fence — matching: " +
-  '{"items":[{"kind":"answer"|"food"|"bowel"|"routine"|"note","date":"YYYY-MM-DD","time":"HH:MM",' +
+  '{"items":[{"kind":"answer"|"food"|"bowel"|"routine"|"note","date":"YYYY-MM-DD",' +
+  '"until":"YYYY-MM-DD","time":"HH:MM",' +
   '"source":string,"confidence":"low"|"medium"|"high","note":string,"key":string,"number":number,' +
   '"yes":boolean,"choices":[string],"description":string,' +
   '"meal":"breakfast"|"lunch"|"dinner"|"snack"|"drink","serving":string,"bristol":number,' +
   '"amount":"small"|"medium"|"large","color":string,"consistency":string,"itemId":string,' +
   '"name":string,"routineKind":"med"|"supplement"|"topical"|"product"|"food"|"other","dose":string,' +
-  '"skipped":boolean,"text":string}],"unreadable":string}';
+  '"skipped":boolean,"text":string}],"unreadable":string,' +
+  '"questions":[{"ask":string,"why":string,"options":[string],"assumed":string}]}';
 
 /** The journal, written out for the model. A readable list rather than a wall
     of schema: the task is filing text against names, and names are what a
@@ -344,6 +454,50 @@ export const resolveTime = (raw: unknown): string | undefined => {
   return TIME_RE.test(s) ? s : undefined;
 };
 
+/** The longest stretch one row may write. A quarter is longer than any course
+    somebody describes in a paste and short enough that a misread "until" can
+    never turn one line into a thousand rows. */
+export const MAX_SPAN_DAYS = 92;
+
+const isoOf = (n: number): string => new Date(n * 86400000).toISOString().slice(0, 10);
+
+/** Which kinds may describe a stretch of days at all.
+
+    A rating and a bowel movement are deliberately not on this list, and for
+    the same reason: repeating either across a week manufactures records
+    nobody made. "About a 4 most nights" is one answer with a caveat — six
+    invented fours would be six data points the charts would then draw. */
+const SPANNABLE = new Set<ImportKind>(["routine", "food"]);
+
+/**
+ * A row's days: one, or the stretch it covers.
+ *
+ * Returns null when there is no stretch — which is the overwhelmingly common
+ * case, and the one that costs nothing. Everything questionable collapses back
+ * to the single date rather than being dropped: a dose is still a dose when the
+ * "until" beside it was nonsense.
+ */
+export function resolveSpan(
+  kind: ImportKind, date: string, raw: unknown, today: string
+): { from: string; to: string; days: string[] } | null {
+  if (!SPANNABLE.has(kind)) return null;
+  const end = resolveDate(raw, today);
+  if (end.guessed) return null; // unreadable, or the future — treat as no span
+  const from = dayNumber(date);
+  const to = dayNumber(end.date);
+  if (!isFinite(from) || !isFinite(to) || to <= from) return null;
+  const last = Math.min(to, from + MAX_SPAN_DAYS - 1);
+  const days: string[] = [];
+  for (let d = from; d <= last; d++) days.push(isoOf(d));
+  return { from: days[0], to: days[days.length - 1], days };
+}
+
+/** "every day, 12–19 Aug (8 days)", in the app's own words. */
+export function spanLabel(span: { days: string[] }): string {
+  const n = span.days.length;
+  return `every day for ${n} day${n === 1 ? "" : "s"}`;
+}
+
 /* ---------- normalising what came back ---------- */
 
 /* Control characters are stripped rather than escaped: they cannot mean
@@ -368,6 +522,44 @@ const MEAL_KINDS = new Set(["breakfast", "lunch", "dinner", "snack", "drink"]);
 const AMOUNTS = new Set(["small", "medium", "large"]);
 
 /**
+ * The reading's own questions, with the assumption each one was answered by.
+ *
+ * A question the app cannot present is worse than no question: two options or
+ * it is not a choice, and an `assumed` that is not one of them would put a
+ * review on screen claiming the plan was built on something it was not. Both
+ * are repaired where repair is honest (an absent `assumed` becomes the first
+ * option, which is what the prompt asks for anyway) and dropped where it is
+ * not.
+ */
+export function normaliseQuestions(raw: unknown): ImportQuestion[] {
+  const rows: any[] = Array.isArray(raw) ? raw.slice(0, 3) : [];
+  const out: ImportQuestion[] = [];
+  rows.forEach((r, i) => {
+    if (!r || typeof r !== "object") return;
+    const ask = text(r.ask, 160);
+    if (!ask || isDiagnosticText(ask)) return;
+    const options: string[] = [];
+    for (const o of Array.isArray(r.options) ? r.options : []) {
+      const label = text(o, 80);
+      if (label && !options.includes(label)) options.push(label);
+      if (options.length === 4) break;
+    }
+    if (options.length < 2) return;
+    const wanted = text(r.assumed, 80);
+    const assumed = options.find((o) => o.toLowerCase() === wanted.toLowerCase()) || options[0];
+    const why = text(r.why, 160);
+    out.push({
+      id: `imq_${i}`,
+      ask,
+      why: why && !isDiagnosticText(why) ? scrubCausalLanguage(why) || undefined : undefined,
+      options,
+      assumed,
+    });
+  });
+  return out;
+}
+
+/**
  * Turn a model's reply into rows this app would accept, or into nothing.
  *
  * This is the boundary. Everything past it is treated as the app's own data,
@@ -386,14 +578,26 @@ export function normaliseImportPlan(parsed: any, vocab: ImportVocabulary, model 
   const byItemName = new Map(vocab.routineItems.map((r) => [r.name.trim().toLowerCase(), r]));
   const raw: any[] = Array.isArray(parsed?.items) ? parsed.items.slice(0, 300) : [];
   const items: ImportedItem[] = [];
+  /* What was refused, in the words it came from. A shorter list than the notes
+     with no explanation is the one outcome that makes somebody distrust the
+     whole feature — so every drop is accounted for on the review screen. */
+  const unplaced: string[] = [];
+  const refuse = (r: any) => {
+    const fragment = text(r?.source, 200) || text(r?.text, 200) || text(r?.description, 200);
+    if (fragment && !unplaced.includes(fragment) && unplaced.length < 20) unplaced.push(fragment);
+  };
 
   raw.forEach((r, i) => {
     if (!r || typeof r !== "object") return;
     const kind = r.kind;
-    if (kind !== "answer" && kind !== "food" && kind !== "bowel" && kind !== "routine" && kind !== "note") return;
+    if (kind !== "answer" && kind !== "food" && kind !== "bowel" && kind !== "routine" && kind !== "note") {
+      refuse(r);
+      return;
+    }
 
     const { date, guessed } = resolveDate(r.date, vocab.today);
     const time = resolveTime(r.time);
+    const span = resolveSpan(kind, date, r.until, vocab.today);
     /* The caveat is the one string here the model wrote rather than copied, so
        it gets what the rest of the app gives model prose: softened for causal
        language, dropped outright if it reads as a diagnosis. */
@@ -411,20 +615,25 @@ export function normaliseImportPlan(parsed: any, vocab: ImportVocabulary, model 
       confidence: asConfidence(r.confidence),
       note: caveat,
       dateGuessed: guessed || undefined,
+      span: span || undefined,
     };
+    /* A stretch of days is the row's headline detail, not a footnote: it is
+       the difference between one tablet and fourteen, and the review is where
+       somebody has to be able to see which they are approving. */
+    const over = span ? spanLabel(span) : null;
 
     if (kind === "answer") {
       const f = byKey.get(text(r.key, 80));
-      if (!f) return; // a question this journal does not ask is not an answer
+      if (!f) { refuse(r); return; } // a question this journal does not ask is not an answer
       const value = coerceAnswer(f, r);
-      if (value == null) return;
+      if (value == null) { refuse(r); return; }
       items.push({ ...base, kind, key: f.k, value, label: f.label, detail: describeAnswer(f, value) });
       return;
     }
 
     if (kind === "food") {
       const description = text(r.description, 200);
-      if (!description) return;
+      if (!description) { refuse(r); return; }
       const meal = (MEAL_KINDS.has(r.meal) ? r.meal : mealForTime(time || "12:00")) as MealCategory;
       const serving = text(r.serving, 60) || undefined;
       items.push({
@@ -432,7 +641,7 @@ export function normaliseImportPlan(parsed: any, vocab: ImportVocabulary, model 
         kind,
         food: { description, meal, serving },
         label: description,
-        detail: [mealLabel(meal), serving, time && prettyTime(time)].filter(Boolean).join(" · "),
+        detail: [mealLabel(meal), serving, time && prettyTime(time), over].filter(Boolean).join(" · "),
       });
       return;
     }
@@ -464,7 +673,7 @@ export function normaliseImportPlan(parsed: any, vocab: ImportVocabulary, model 
       const existing = byItemId.get(text(r.itemId, 60))
         || byItemName.get(text(r.name, 80).toLowerCase());
       const name = existing ? existing.name : text(r.name, 80);
-      if (!name) return;
+      if (!name) { refuse(r); return; }
       const routineKind = (existing
         ? existing.kind
         : ROUTINE_KINDS.has(r.routineKind) ? r.routineKind : "supplement") as RoutineKind;
@@ -477,6 +686,7 @@ export function normaliseImportPlan(parsed: any, vocab: ImportVocabulary, model 
         label: name,
         detail: [
           dose, kindLabel(routineKind), time ? prettyTime(time) : null,
+          over,
           existing ? null : "new to your routine",
           skipped ? "skipped" : null,
         ].filter(Boolean).join(" · ") || undefined,
@@ -485,11 +695,18 @@ export function normaliseImportPlan(parsed: any, vocab: ImportVocabulary, model 
     }
 
     const body = prose(r.text, 2000);
-    if (!body) return;
+    if (!body) { refuse(r); return; }
     items.push({ ...base, kind, text: body, label: "Note", detail: body });
   });
 
-  return { items, model, unreadable: prose(parsed?.unreadable, 600) || undefined };
+  const questions = normaliseQuestions(parsed?.questions);
+  return {
+    items,
+    model,
+    unreadable: prose(parsed?.unreadable, 600) || undefined,
+    questions: questions.length ? questions : undefined,
+    unplaced: unplaced.length ? unplaced : undefined,
+  };
 }
 
 /** The value for one question, in the type that question stores — or null when
@@ -560,8 +777,24 @@ export async function readNotes(
         ? `Their notes are below, and there are also ${shots.length} images. The images are consecutive screenshots of one continuous set of notes, in order — read them as one document.`
         : `Their notes are in the ${shots.length} images. They are consecutive screenshots of one continuous set of notes, in order — read them as one document, so a date near the top of one still applies to the lines below it in the next.`);
 
+  /* A second pass. The notes are sent again unchanged — the answers settle an
+     ambiguity, they do not replace the text — and the questions are quoted
+     back so the model can see which of its own it is being answered on. */
+  const answered = (input.answers || [])
+    .filter((a) => a && a.ask && a.answer)
+    .slice(0, 3);
+  const answerBlock = answered.length
+    ? [
+      "",
+      "You read these notes once already and asked about a few things. Here are their answers — take each as settled fact, apply it, and re-read the whole notes under it:",
+      ...answered.map((a) => `  ${a.ask} → ${a.answer}`),
+      "Do not ask these again.",
+    ].join("\n")
+    : "";
+
   const user = [
     describeVocabulary(vocab),
+    answerBlock,
     "",
     shotLine,
     body ? "\n" + body.slice(0, 40000) : "",
@@ -634,6 +867,12 @@ export interface ImportResult {
   added: Record<ImportKind, number>;
   /** Rows skipped because that thing was already in the journal. */
   duplicates: number;
+  /** Which proposals landed on nothing at all, by id — every day they cover
+      was already in the journal. The review runs this function against the
+      real journal before anything is written and marks them, so "6 of these
+      are already here" is something somebody learns *before* they commit
+      rather than in the receipt afterwards. */
+  duplicateIds: string[];
 }
 
 const stamp = () => new Date().toISOString();
@@ -659,6 +898,11 @@ const norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
  * invented here is created as-needed rather than daily: a line in a note is
  * evidence somebody took something once, not evidence the checklist should
  * start chasing them for it every morning.
+ *
+ * A row carrying a `span` writes one record per day in it, under all three
+ * rules above — so re-importing "every night since Tuesday" a second time
+ * adds nothing, and a course that overlaps days somebody logged by hand fills
+ * only the gaps.
  */
 export function applyImport(cur: ImportTargets, items: readonly ImportedItem[]): ImportResult {
   const entries = cur.entries.slice();
@@ -669,6 +913,7 @@ export function applyImport(cur: ImportTargets, items: readonly ImportedItem[]):
   let routineItems = cur.routineItems.slice();
   const added: Record<ImportKind, number> = { answer: 0, food: 0, bowel: 0, routine: 0, note: 0 };
   let duplicates = 0;
+  const duplicateIds: string[] = [];
 
   const entryFor = (date: string): DailyEntry => {
     const i = entries.findIndex((e) => e.date === date);
@@ -688,96 +933,119 @@ export function applyImport(cur: ImportTargets, items: readonly ImportedItem[]):
     return fresh;
   };
 
-  for (const it of items) {
-    if (it.kind === "answer" && it.key) {
-      const e = entryFor(it.date);
-      if (e.answers[it.key] != null) { duplicates++; continue; }
-      e.answers[it.key] = it.value as never;
-      e.updatedAt = stamp();
-      added.answer++;
-      continue;
-    }
+  /* One proposal, one row — except for a stretch of days, which is one
+     proposal and one row *per day*. `datesOf` is the whole of that difference,
+     and keeping it here rather than in the review means the list somebody
+     approves stays the length of the notes rather than the length of the
+     calendar. */
+  const datesOf = (it: ImportedItem): string[] =>
+    (it.span?.days?.length ? it.span.days : [it.date]);
 
-    if (it.kind === "note" && it.text) {
-      const e = entryFor(it.date);
-      const had = (e.notes || "").trim();
-      const line = it.text.trim();
-      if (had.includes(line)) { duplicates++; continue; }
-      e.notes = had ? `${had}\n${line}` : line;
-      e.updatedAt = stamp();
-      added.note++;
-      continue;
-    }
-
-    if (it.kind === "food" && it.food) {
-      const time = it.time || localTime();
-      const dupe = food.some((f) =>
-        f.date === it.date && f.time === time && norm(f.description) === norm(it.food!.description));
-      if (dupe) { duplicates++; continue; }
-      const log = newFoodLog({
-        date: it.date,
-        time,
-        meal: it.food.meal,
-        description: it.food.description,
-        serving: it.food.serving,
-      });
-      food.push(log);
-      foods = rememberFood(foods, log);
-      added.food++;
-      continue;
-    }
-
-    if (it.kind === "bowel" && it.bowel) {
-      const time = it.time || localTime();
-      if (bowel.some((b) => b.date === it.date && b.time === time)) { duplicates++; continue; }
-      bowel.push(newBowelLog({
-        date: it.date,
-        time,
-        bristol: it.bowel.bristol,
-        amount: it.bowel.amount,
-        color: it.bowel.color,
-        consistency: it.bowel.consistency,
-        notes: it.bowel.notes,
-      }));
-      added.bowel++;
-      continue;
-    }
-
-    if (it.kind === "routine" && it.routine) {
-      const time = it.time || localTime();
-      const want = it.routine;
-      let item = want.itemId ? routineItems.find((r) => r.id === want.itemId) : undefined;
-      if (!item) item = routineItems.find((r) => norm(r.name) === norm(want.name));
-      if (!item) {
-        item = newRoutineItem({ name: want.name, kind: want.kind, dose: want.dose, daily: false });
-        routineItems = [...routineItems, item];
-      }
-      const named = item.name;
-      if (routine.some((r) => r.date === it.date && r.time === time && norm(r.name) === norm(named))) {
-        duplicates++;
+  for (const proposal of items) {
+    /* A row that covers eight days and lands on none of them is a duplicate;
+       one that lands on six of eight is not. The count is per row written, the
+       id is per proposal entirely refused. */
+    let landed = 0;
+    for (const on of datesOf(proposal)) {
+      const it: ImportedItem = on === proposal.date ? proposal : { ...proposal, date: on };
+      if (it.kind === "answer" && it.key) {
+        const e = entryFor(it.date);
+        if (e.answers[it.key] != null) { duplicates++; continue; }
+        e.answers[it.key] = it.value as never;
+        e.updatedAt = stamp();
+        added.answer++; landed++;
         continue;
       }
-      routine.push(logFromItem(item, {
-        date: it.date,
-        time,
-        slot: slotForTime(time),
-        dose: want.dose,
-        skipped: want.skipped,
-      }));
-      routineItems = bumpItemUse(routineItems, item.id);
-      added.routine++;
+
+      if (it.kind === "note" && it.text) {
+        const e = entryFor(it.date);
+        const had = (e.notes || "").trim();
+        const line = it.text.trim();
+        if (had.includes(line)) { duplicates++; continue; }
+        e.notes = had ? `${had}\n${line}` : line;
+        e.updatedAt = stamp();
+        added.note++; landed++;
+        continue;
+      }
+
+      if (it.kind === "food" && it.food) {
+        const time = it.time || localTime();
+        const dupe = food.some((f) =>
+          f.date === it.date && f.time === time && norm(f.description) === norm(it.food!.description));
+        if (dupe) { duplicates++; continue; }
+        const log = newFoodLog({
+          date: it.date,
+          time,
+          meal: it.food.meal,
+          description: it.food.description,
+          serving: it.food.serving,
+        });
+        food.push(log);
+        foods = rememberFood(foods, log);
+        added.food++; landed++;
+        continue;
+      }
+
+      if (it.kind === "bowel" && it.bowel) {
+        const time = it.time || localTime();
+        if (bowel.some((b) => b.date === it.date && b.time === time)) { duplicates++; continue; }
+        bowel.push(newBowelLog({
+          date: it.date,
+          time,
+          bristol: it.bowel.bristol,
+          amount: it.bowel.amount,
+          color: it.bowel.color,
+          consistency: it.bowel.consistency,
+          notes: it.bowel.notes,
+        }));
+        added.bowel++; landed++;
+        continue;
+      }
+
+      if (it.kind === "routine" && it.routine) {
+        const time = it.time || localTime();
+        const want = it.routine;
+        let item = want.itemId ? routineItems.find((r) => r.id === want.itemId) : undefined;
+        if (!item) item = routineItems.find((r) => norm(r.name) === norm(want.name));
+        if (!item) {
+          item = newRoutineItem({ name: want.name, kind: want.kind, dose: want.dose, daily: false });
+          routineItems = [...routineItems, item];
+        }
+        const named = item.name;
+        if (routine.some((r) => r.date === it.date && r.time === time && norm(r.name) === norm(named))) {
+          duplicates++;
+          continue;
+        }
+        routine.push(logFromItem(item, {
+          date: it.date,
+          time,
+          slot: slotForTime(time),
+          dose: want.dose,
+          skipped: want.skipped,
+        }));
+        routineItems = bumpItemUse(routineItems, item.id);
+        added.routine++; landed++;
+      }
     }
+    if (!landed) duplicateIds.push(proposal.id);
   }
 
-  return { next: { entries, food, foods, bowel, routine, routineItems }, added, duplicates };
+  return {
+    next: { entries, food, foods, bowel, routine, routineItems },
+    added, duplicates, duplicateIds,
+  };
 }
 
 /** How many rows of each kind are in a list. Used for the receipt after a
     commit and for the "what it found" line before one, so both sentences come
-    out of the same counter and cannot disagree. */
+    out of the same counter and cannot disagree.
+
+    A row covering a stretch of days counts as the days it covers, not as one:
+    the sentence is about what will be written, and "1 dose" in front of a
+    fortnight of a nightly tablet would be the wrong number. */
 export function countKinds(items: readonly ImportedItem[]): Record<ImportKind, number> {
   const out: Record<ImportKind, number> = { answer: 0, food: 0, bowel: 0, routine: 0, note: 0 };
-  for (const it of items) out[it.kind]++;
+  for (const it of items) out[it.kind] += it.span?.days?.length || 1;
   return out;
 }
 
@@ -793,6 +1061,27 @@ export function describeAdded(added: Record<ImportKind, number>): string {
   if (!bits.length) return "Nothing added";
   if (bits.length === 1) return bits[0];
   return `${bits.slice(0, -1).join(", ")} and ${bits[bits.length - 1]}`;
+}
+
+/**
+ * A row moved to a different day, taking its stretch with it.
+ *
+ * The review lets any date be corrected, and a row covering eight days has to
+ * move as eight days: correcting the start of a course to a day earlier means
+ * the course started a day earlier, not that it now runs nine days. The length
+ * is what the notes said; only the position was wrong.
+ */
+export function shiftItemDate(item: ImportedItem, date: string): ImportedItem {
+  if (!DATE_RE.test(date) || date === item.date) return item;
+  /* `undefined` rather than `false`, like everywhere else in this module: a
+     date somebody corrected by hand was not guessed at all. */
+  const moved: ImportedItem = { ...item, date, dateGuessed: undefined };
+  if (!item.span?.days?.length) return moved;
+  const delta = dayNumber(date) - dayNumber(item.date);
+  if (!isFinite(delta)) return moved;
+  const days = item.span.days.map((d) => isoOf(dayNumber(d) + delta));
+  moved.span = { from: days[0], to: days[days.length - 1], days };
+  return moved;
 }
 
 /** Rows grouped by the day they belong to, newest day first — which is how the

@@ -56,9 +56,11 @@ import { IDLE_STATUS } from "./lib/sync/types";
 import { C, readableInk, getTheme, onThemeChange, setBackdrop } from "./lib/theme";
 import MetricPicker from "./components/MetricPicker";
 import Rail from "./components/Rail";
+import SearchScreen from "./components/SearchScreen";
+import { buildIndex } from "./lib/search";
 import {
   MAX_IMPORT_IMAGES, applyImport, countKinds, describeAdded, groupByDate, readNotes,
-  summariseImportRequest,
+  shiftItemDate, summariseImportRequest,
 } from "./lib/import";
 import YearHeatmap from "./components/YearHeatmap";
 import ScoreDistribution from "./components/ScoreDistribution";
@@ -6321,7 +6323,7 @@ function HistoryScreen({
   profile, entries, food = [], bowel = [], routine = [], routineItems = [],
   rituals = [], ritualRuns = [],
   openLog, goInsights, goDiary, goExport, goGallery, goSettings, goSetup, goSun, goLabs,
-  goExperiments, viewer, syncStatus, context = [], sun = [], labs = [], lit, onClearLit,
+  goExperiments, goSearch, viewer, syncStatus, context = [], sun = [], labs = [], lit, onClearLit,
 }) {
   const tpl = getProfileTemplate(profile);
   const keyField = getField(tpl, tpl.keyMetric);
@@ -6387,6 +6389,14 @@ function HistoryScreen({
         </div>
         <div className="flex items-center gap-2 shrink-0 mt-1">
           <SyncAlert status={syncStatus} onOpen={goSettings} />
+          {/* The screen people arrive on to *find a day*. The box that does it
+              in one go belongs at the top of it. */}
+          {goSearch && (
+            <button onClick={() => { feedback("nav"); goSearch(); }} aria-label="search your journal"
+              className="fhj-icon-btn">
+              <Icon name="search" size={18} color={C.sub} />
+            </button>
+          )}
           <button onClick={goSetup} aria-label="edit survey setup" className="fhj-icon-btn">
             <Icon name="sliders" size={18} color={C.sub} />
           </button>
@@ -7529,9 +7539,11 @@ const IMPORT_ROW_CAT = {
 };
 
 /** One proposed row: what it would write, where it came from, and a switch. */
-function ImportRow({ item, on, onToggle, onDate }) {
+function ImportRow({ item, on, onToggle, onDate, already }) {
+  const span = item.span?.days?.length > 1 ? item.span : null;
   return (
-    <div className={"fhj-import-row " + IMPORT_ROW_CAT[item.kind] + (on ? "" : " is-off")}>
+    <div className={"fhj-import-row " + IMPORT_ROW_CAT[item.kind] + (on ? "" : " is-off")
+      + (already ? " is-dupe" : "")}>
       <button type="button" role="switch" aria-checked={on} onClick={onToggle}
         aria-label={`${on ? "Don't add" : "Add"} ${item.label}`}
         className="fhj-import-check">
@@ -7546,6 +7558,17 @@ function ImportRow({ item, on, onToggle, onDate }) {
               on everything is a badge on nothing — what the model assumed is
               said in words underneath instead. */}
           {item.confidence === "low" && <span className="fhj-ai-badge">Unsure</span>}
+          {/* A stretch of days is the one thing on a row that changes how much
+              it writes, so it is stated where the eye already is rather than
+              in the detail line under it. */}
+          {span && (
+            <span className="fhj-import-span">{span.days.length} days</span>
+          )}
+          {/* Found before anything is written, by running the same pure
+              function the commit will run. See the dry run in
+              NoteImportScreen — "already here" belongs before the button, not
+              in the receipt afterwards. */}
+          {already && <span className="fhj-import-dupe">Already in your journal</span>}
         </div>
         {item.detail && <div className="fhj-import-detail">{item.detail}</div>}
         {/* The receipt. A wrong reading is obvious the moment it sits next to
@@ -7553,9 +7576,12 @@ function ImportRow({ item, on, onToggle, onDate }) {
         {item.source && <div className="fhj-import-src">“{item.source}”</div>}
         {item.note && <div className="fhj-import-note">{item.note}</div>}
         <label className="fhj-import-date">
-          <span>Date</span>
+          <span>{span ? "From" : "Date"}</span>
           <input type="date" value={item.date} max={todayStr()}
             onChange={(e) => e.target.value && onDate(e.target.value)} />
+          {/* The whole stretch moves with its start: the length is what the
+              notes said, only the position was wrong. */}
+          {span && <span className="fhj-import-through">through {fmtNice(span.to)}</span>}
           {item.dateGuessed && <span className="fhj-import-guess">assumed — the notes didn't say</span>}
         </label>
       </div>
@@ -7576,6 +7602,54 @@ function ImportShot({ shot, index, total, onRemove }) {
   );
 }
 
+/** What the reading had to decide for itself, and the way to decide it
+    differently.
+
+    The card is not a blocker and never becomes one: the plan underneath it is
+    already built on the assumed answer, so somebody can ignore this entirely
+    and still commit a complete import. Changing an answer arms one button —
+    the notes are read again with the ambiguity settled, which is a second
+    request and says so. */
+function ImportQuestions({ questions, picked, onPick, onRerun, busy, changed }) {
+  return (
+    <Card className="mt-3">
+      <div className="fhj-eyebrow mb-1">
+        {questions.length === 1 ? "One thing it had to decide" : `${questions.length} things it had to decide`}
+      </div>
+      <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
+        The rows below already use the answer marked. Leave them as they are, or change one and
+        have the notes read again around it.
+      </p>
+      {questions.map((q) => (
+        <div key={q.id} className="fhj-import-q">
+          <div className="fhj-import-q-ask">{q.ask}</div>
+          {q.why && <div className="fhj-import-q-why">{q.why}</div>}
+          <div className="fhj-import-q-opts">
+            {q.options.map((opt) => {
+              const on = (picked[q.id] || q.assumed) === opt;
+              return (
+                <button key={opt} type="button"
+                  className={"fhj-import-q-opt" + (on ? " is-on" : "")}
+                  aria-pressed={on}
+                  onClick={() => { feedback("select"); onPick(q.id, opt); }}>
+                  {opt}
+                  {opt === q.assumed && <span className="fhj-import-q-mark">assumed</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {changed && (
+        <Button className="mt-3" block variant="secondary" icon="refresh" disabled={busy}
+          onClick={onRerun}>
+          {busy ? "Reading again…" : "Read it again with these answers"}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
 function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog }) {
   const conn = useAiConnection(aiEnabled);
   const tpl = getProfileTemplate(db.profile);
@@ -7589,6 +7663,10 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
   const [confirm, setConfirm] = useState(false);
   const [done, setDone] = useState(null);
   const [dragging, setDragging] = useState(false);
+  /* Answers to the reading's own questions, by question id. Absent means "the
+     one it assumed", which is what the plan on screen is already built on. */
+  const [picked, setPicked] = useState({});
+  const [showKinds, setShowKinds] = useState(false);
   const fileRef = useRef(null);
 
   /* Structure only — see ImportVocabulary. The journal's *answers* are not in
@@ -7604,9 +7682,23 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
     foods: (db.foods || []).map((f) => f.name).filter(Boolean),
   }), [tpl, db.routineItems, db.foods]);
 
+  /* Which of the reading's questions have been answered differently from the
+     way it assumed. Nothing else about the plan changes until these are sent:
+     a second reading is a second request, and it asks before it goes. */
+  const answers = useMemo(
+    () => (plan?.questions || [])
+      .filter((q) => picked[q.id] && picked[q.id] !== q.assumed)
+      .map((q) => ({ ask: q.ask, answer: picked[q.id] })),
+    [plan, picked]
+  );
+
   const input = useMemo(
-    () => ({ text, images: shots.map((s) => dataUrlToImage(s.full)).filter(Boolean) }),
-    [text, shots]
+    () => ({
+      text,
+      images: shots.map((s) => dataUrlToImage(s.full)).filter(Boolean),
+      answers,
+    }),
+    [text, shots, answers]
   );
   const outgoing = useMemo(() => summariseImportRequest(input, vocab), [input, vocab]);
   const ready = !!(text.trim() || shots.length);
@@ -7664,6 +7756,9 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
       setPlan(result);
       setOff([]);
       setDates({});
+      /* A re-read answers the old questions and may ask new ones; carrying the
+         old picks over would tick answers to questions nobody was asked. */
+      setPicked({});
       if (!result.items.length) {
         setError(result.unreadable
           ? "Nothing in there mapped onto a row this journal can hold."
@@ -7680,21 +7775,41 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
 
   /* What would actually be written: the rows still switched on, carrying any
      date the person corrected. Nothing else in the plan matters from here. */
-  const approved = useMemo(
-    () => (plan?.items || [])
-      .filter((it) => !off.includes(it.id))
-      .map((it) => (dates[it.id] ? { ...it, date: dates[it.id], dateGuessed: false } : it)),
-    [plan, off, dates]
-  );
   /* The list is drawn from every row the model proposed, switched on or not —
      a row that vanished when you switched it off would be a row you could not
-     switch back on. */
+     switch back on. A corrected date goes through `shiftItemDate` rather than
+     being assigned, because a row covering a fortnight has to move as a
+     fortnight. */
   const shown = useMemo(
-    () => (plan?.items || []).map((it) => (dates[it.id] ? { ...it, date: dates[it.id], dateGuessed: false } : it)),
+    () => (plan?.items || []).map((it) => (dates[it.id] ? shiftItemDate(it, dates[it.id]) : it)),
     [plan, dates]
   );
+  const approved = useMemo(() => shown.filter((it) => !off.includes(it.id)), [shown, off]);
+
+  /* The journal as it stands, and the same pure function the commit will run,
+     run against it now. Nothing is written — `applyImport` returns a new set of
+     slices and this one is thrown away — but its duplicate list is exactly
+     what the commit's would be, so the review can say "this is already here"
+     before the button rather than in the receipt after it. */
+  const before = useMemo(() => ({
+    entries: db.entries || [], food: db.food || [], foods: db.foods || [],
+    bowel: db.bowel || [], routine: db.routine || [], routineItems: db.routineItems || [],
+  }), [db.entries, db.food, db.foods, db.bowel, db.routine, db.routineItems]);
+  const alreadyHere = useMemo(
+    () => new Set(shown.length ? applyImport(before, shown).duplicateIds : []),
+    [before, shown]
+  );
+  const dupeOn = useMemo(
+    () => approved.filter((it) => alreadyHere.has(it.id)).length,
+    [approved, alreadyHere]
+  );
+
   const groups = useMemo(() => groupByDate(shown), [shown]);
   const found = useMemo(() => (plan ? describeAdded(countKinds(plan.items)) : ""), [plan]);
+  const approvedRows = useMemo(
+    () => Object.values(countKinds(approved)).reduce((a, b) => a + b, 0),
+    [approved]
+  );
 
   const setDay = (rows, on) => setOff((prev) => {
     const ids = rows.map((r) => r.id);
@@ -7702,15 +7817,17 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
   });
 
   const commit = () => {
-    const before = {
-      entries: db.entries || [], food: db.food || [], foods: db.foods || [],
-      bowel: db.bowel || [], routine: db.routine || [], routineItems: db.routineItems || [],
-    };
     const { next, added, duplicates } = applyImport(before, approved);
     /* The earliest day touched is the one worth offering to open: it is the
        far end of what just arrived, and seeing it full is the moment this
        feature pays out. */
-    const earliest = approved.reduce((min, it) => (!min || it.date < min ? it.date : min), null);
+    const earliest = approved.reduce(
+      (min, it) => {
+        const first = it.span?.days?.[0] || it.date;
+        return !min || first < min ? first : min;
+      },
+      null
+    );
     setDb((prev) => ({ ...prev, ...next }));
     setDone({ added, duplicates, earliest });
     setPlan(null);
@@ -7724,6 +7841,7 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
 
   const startOver = () => {
     setPlan(null); setDone(null); setError(""); setText(""); setShots([]); setOff([]); setDates({});
+    setPicked({});
   };
 
   /* ---------- the feature does not exist without a key ---------- */
@@ -7761,9 +7879,10 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
       }}>
       <h2 className="font-display text-xl">Import your notes</h2>
       <p className="text-[12.5px] leading-relaxed mt-1 mb-3" style={{ color: C.subtle }}>
-        Paste what you have been writing somewhere else — a notes file, a chat with yourself,
-        a photo of a page. It gets read into meals, doses, numbers and notes, on the days the
-        notes themselves say. You approve every row before anything is written.
+        Paste whatever you have — a notes file, a chat with yourself, a photo of a page, or
+        just tell it how things have been in your own words. It gets read into meals, doses,
+        numbers and notes, on the days the notes themselves say. You approve every row before
+        anything is written.
       </p>
 
       {done ? (
@@ -7800,12 +7919,54 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
               {groups.length === 1 ? "" : "s"}. Switch off anything wrong and fix any date that
               landed badly — each row shows the words it came from.
             </p>
+            {/* Said once, up here, rather than discovered a row at a time.
+                The rows are marked too, and both come out of the same dry
+                run. */}
+            {dupeOn > 0 && (
+              <div className="fhj-import-dupes">
+                <span>
+                  {dupeOn} of these {dupeOn === 1 ? "is" : "are"} already in your journal on
+                  that day. {dupeOn === 1 ? "It" : "They"} would be skipped rather than doubled up.
+                </span>
+                <button type="button" className="fhj-linkish"
+                  onClick={() => {
+                    feedback("tap");
+                    setOff((prev) => [...new Set([
+                      ...prev,
+                      ...shown.filter((it) => alreadyHere.has(it.id)).map((it) => it.id),
+                    ])]);
+                  }}>
+                  Switch {dupeOn === 1 ? "it" : "them"} off
+                </button>
+              </div>
+            )}
             {plan.unreadable && (
               <div className="fhj-import-left">
                 <b>Couldn't place this:</b> {plan.unreadable}
               </div>
             )}
+            {/* What this app refused on the way in, as opposed to what the
+                model could not read. Different failure, different sentence —
+                and a list that is quietly shorter than the notes is the one
+                outcome that would make somebody stop trusting this. */}
+            {plan.unplaced?.length > 0 && (
+              <div className="fhj-import-left">
+                <b>This journal has nowhere to put {plan.unplaced.length === 1 ? "this" : "these"}:</b>{" "}
+                {plan.unplaced.map((u) => `“${u}”`).join(", ")}. Add a question for it in your
+                survey setup and run the import again, or keep it as a note.
+              </div>
+            )}
           </Card>
+
+          {plan.questions?.length > 0 && (
+            <ImportQuestions
+              questions={plan.questions}
+              picked={picked}
+              busy={busy}
+              changed={answers.length > 0}
+              onPick={(id, opt) => setPicked((prev) => ({ ...prev, [id]: opt }))}
+              onRerun={() => { feedback("tap"); setConfirm(true); }} />
+          )}
 
           {groups.map((g) => {
             const allOn = g.items.every((it) => !off.includes(it.id));
@@ -7822,6 +7983,7 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
                 <div className="flex flex-col gap-2">
                   {g.items.map((it) => (
                     <ImportRow key={it.id} item={it} on={!off.includes(it.id)}
+                      already={alreadyHere.has(it.id)}
                       onToggle={() => {
                         feedback("select");
                         setOff((prev) => (prev.includes(it.id) ? prev.filter((x) => x !== it.id) : [...prev, it.id]));
@@ -7833,10 +7995,18 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
             );
           })}
 
+          {/* A second reading can fail like a first one, and the review is
+              where somebody is standing when it does. */}
+          {error && <div className="fhj-import-error mt-3">{error}</div>}
+
           <div className="fhj-import-commit">
+            {/* Counted in *rows*, not proposals: a single line covering a
+                fortnight of a nightly tablet writes fourteen, and a button
+                offering to add one of them would be lying about what the tap
+                does. Same counter as the sentence at the top. */}
             <Button block onClick={commit} disabled={!approved.length} icon="check">
-              {approved.length
-                ? `Add ${approved.length} row${approved.length === 1 ? "" : "s"} to my journal`
+              {approvedRows
+                ? `Add ${approvedRows} row${approvedRows === 1 ? "" : "s"} to my journal`
                 : "Nothing selected"}
             </Button>
             <Button variant="ghost" block className="mt-2" onClick={startOver}>
@@ -7851,13 +8021,44 @@ function NoteImportScreen({ db, setDb, aiEnabled, goBack, goSettings, openLog })
             <textarea id="fhj-import-text" rows={10} value={text}
               onChange={(e) => setText(e.target.value)}
               onPaste={onPaste}
-              placeholder={"8.21 weight 12pm 182\n8.21 food, 2.5 hamburger, havarti cheese\n2acv premeal + 2 pepsin combo 12:30pm\n8.21 4pm bowel movement, small firm sank\n8.21 Trazo 50mg STARTING NEW MED. Day 1"}
+              placeholder={"8.21 weight 12pm 182\n8.21 food, 2.5 hamburger, havarti cheese\n2acv premeal + 2 pepsin combo 12:30pm\n\n— or just say it —\n\nStarted 10mg amitriptyline last Tuesday, every night since.\nSleep has been about a 4. Cut dairy on the 12th."}
               className="w-full mt-2 rounded-xl px-3 py-2.5 text-sm outline-none resize-y leading-relaxed"
               style={{ background: C.faint, border: `1px solid ${C.line}`, color: C.ink, minHeight: "9rem" }} />
             <div className="text-[11px] mt-1.5" style={{ color: C.subtle }}>
               Shorthand is fine. Dates like “8.21”, “yesterday” or “Thu” are worked out against today.
               You can paste a screenshot straight in here too.
             </div>
+            {/* Two shapes of notes, because people arrive with one or the other
+                and the ones who arrive with a paragraph assume this is not for
+                them. The prompt reads both — see "Two shapes of notes" in
+                src/lib/import.ts. */}
+            <button type="button" className="fhj-sr-helptoggle mt-2"
+              aria-expanded={showKinds}
+              onClick={() => { feedback("tap"); setShowKinds((v) => !v); }}>
+              <span>What can I paste?</span>
+              <Icon name={showKinds ? "up" : "down"} size={14} color={C.sub} />
+            </button>
+            {showKinds && (
+              <div className="fhj-import-kinds">
+                <div>
+                  <b>A log you already keep.</b> Dated shorthand, one thing a line. Read line by
+                  line, onto the days it names.
+                  <code>8.21 weight 12pm 182{"\n"}8.21 4pm bm, small firm{"\n"}2acv premeal 12:30pm</code>
+                </div>
+                <div>
+                  <b>Or how things have been, in sentences.</b> A stretch of days becomes a row
+                  per day; a number you only half-committed to arrives marked unsure with the
+                  reading it used.
+                  <code>Started 10mg amitriptyline last Tuesday and have taken it every night
+                    since. Sleep maybe a 4 most nights. Cut dairy on the 12th, itch is better —
+                    a 3 today, was a 7.</code>
+                </div>
+                <div>
+                  <b>Or a picture of either.</b> A screenshot of a chat, a photo of a page in a
+                  notebook, a printout.
+                </div>
+              </div>
+            )}
           </Card>
 
           <Card className="mt-3">
@@ -14125,9 +14326,12 @@ function DiaryScreen({
   food, foods, goals, onLog, onSaveLog, onDeleteLog, onUpdateLibrary,
   routine = [], routineItems = [], onSaveRoutine, onDeleteRoutine, onLogRoutineRows,
   onSaveRoutineItem, goRoutine,
-  onEditGoals, aiEnabled, aiAuto, onConnectAi, viewer,
+  onEditGoals, aiEnabled, aiAuto, onConnectAi, viewer, startDate,
 }) {
-  const [date, setDate] = useState(todayStr());
+  /* The diary is a pager over days and opens on today, except when something
+     sent it somewhere — a search result for a meal in March is only an answer
+     if the page it opens is March. */
+  const [date, setDate] = useState(startDate || todayStr());
   const [picker, setPicker] = useState(null);        // meal id
   const [sheet, setSheet] = useState(null);          // food log being edited, or { meal } for new
   const [routineSheet, setRoutineSheet] = useState(null); // { item, slot, log }
@@ -17278,7 +17482,7 @@ function PinnedExperiment({ result, onOpen, onHighlight }) {
   );
 }
 
-function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onLogFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, onConnectAi, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, onDismissImport, sun = [], context = [], labs = [], liveSun = null, pinnedExperiments = [], onHighlight }) {
+function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseAdd, onUseAction, goSettings, goSetup, goFood, goRoutine, goRituals, goInsights, onUpdateQuickAdd, viewer, ai, food, bowel, foods, routine, routineItems, episodes = [], onLogFlare, onEndFlare, onUpdateLibrary, onSaveFood, onDeleteFood, onSaveBowel, onDeleteBowel, onSaveRoutine, onDeleteRoutine, onLogRoutineRows, onConnectAi, rituals = [], ritualRuns = [], onCompleteRitual, onClearRitual, onPlayRitual, syncStatus, goSun, goLabs, goExperiments, goImport, goSearch, onDismissImport, sun = [], context = [], labs = [], liveSun = null, pinnedExperiments = [], onHighlight }) {
   const tpl = getProfileTemplate(profile);
   /* Where to put the sun. A place set by hand wins over the last fetched one,
      and both are absent when daily context is off — in which case every sun
@@ -17521,6 +17725,16 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             {/* Renders nothing at all unless sync is stuck on something only
                 the user can resolve. See SyncAlert. */}
             <SyncAlert status={syncStatus} onOpen={goSettings} />
+            {/* Search sits with the other two rather than in a bar of its own:
+                it is a door, not a field, and a field on Today would be a
+                permanent invitation to type on the one screen whose whole job
+                is to be read. */}
+            {goSearch && (
+              <button onClick={() => { feedback("nav"); goSearch(); }} aria-label="search your journal"
+                className="fhj-icon-btn">
+                <Icon name="search" size={18} color={C.sub} />
+              </button>
+            )}
             <button onClick={goSetup} aria-label="edit survey setup" className="fhj-icon-btn">
               <Icon name="sliders" size={18} color={C.sub} />
             </button>
@@ -18668,6 +18882,9 @@ export default function App({ viewer = false }) {
   const [reaching, setReaching] = useState(false);
   const shellRef = useRef(null);
   const [logDate, setLogDate] = useState(todayStr());
+  /* The day the Diary should open on, when something sent it somewhere other
+     than today. Null means "today", which is every ordinary visit. */
+  const [diaryDate, setDiaryDate] = useState(null);
   const [logMode, setLogMode] = useState("quick");
   const [logPhotos, setLogPhotos] = useState(false);
   const [reportParams, setReportParams] = useState({ type: "week" });
@@ -19377,6 +19594,44 @@ export default function App({ viewer = false }) {
     if (!tourSeen()) setTour(true);
   }, [tourWhenHome, screen]);
 
+  /* ---------- search ----------
+
+     The index is built here, once per journal change, rather than inside the
+     screen: it is a pure function of `db`, it costs a few thousand small
+     objects for a year of daily logging, and building it up here means the
+     search box answers on the first keystroke rather than after a mount.
+
+     It lives *above* every early return in this component, and it has to: this
+     file has already paid once for a hook declared below one (see the 1.0
+     crash note in docs/APP_STATE.md). It is null-safe for the same reason —
+     the lock screen, the recovery screen and first run all render before there
+     is a journal to index.
+
+     The memo depends on `db` as a whole rather than on the eleven slices it
+     reads. A dependency list naming eleven of them is a list that will be
+     wrong the first time a twelfth is added. */
+  const searchDocs = useMemo(() => {
+    if (!db?.profile) return [];
+    const t = getProfileTemplate(db.profile);
+    return buildIndex({
+      today: todayStr(),
+      fields: t.fields,
+      entries: db.entries || [],
+      food: db.food || [],
+      foods: db.foods || [],
+      bowel: db.bowel || [],
+      routine: db.routine || [],
+      routineItems: db.routineItems || [],
+      rituals: db.rituals || [],
+      ritualRuns: db.ritualRuns || [],
+      episodes: db.episodes || [],
+      labs: db.labs || [],
+      experiments: db.experiments || [],
+      sun: db.sun || [],
+      canWrite: !viewer,
+    });
+  }, [db, viewer]);
+
   if (!viewer && lock === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.sub }}>
@@ -19516,6 +19771,21 @@ export default function App({ viewer = false }) {
   const goToLog = (d, opts) => {
     if (viewer) return;
     setLogDate(d); setLogMode("quick"); setLogPhotos(!!opts?.photos); setScreen("log");
+  };
+
+  /* Where a result goes. Every target the index can produce is answered here
+     — a search result that lands on the wrong screen is worse than one that
+     does not exist, because it teaches somebody the search is unreliable. */
+  const openSearchHit = (target) => {
+    if (!target?.screen) return;
+    if (target.screen === "log") {
+      if (viewer) { setScreen("history"); return; }
+      goToLog(target.date || todayStr());
+      return;
+    }
+    if (target.screen === "episode" && target.id) { openEpisodeScreen(target.id); return; }
+    if (target.screen === "food") { setDiaryDate(target.date || null); setScreen("food"); return; }
+    setScreen(target.screen);
   };
   const goReport = (type) => { setReportParams({ type }); setScreen("report"); };
   const openPack = (range) => { setPackParams({ range }); setScreen("pack"); };
@@ -20264,6 +20534,7 @@ export default function App({ viewer = false }) {
     goSun: () => setScreen("sun"), goLabs: () => setScreen("labs"),
     goExperiments: () => setScreen("experiments"),
     goImport: () => setScreen("import"),
+    goSearch: () => setScreen("search"),
     onDismissImport: dismissImportInvite,
     pinnedExperiments: screen === "dashboard" ? experimentResults : [],
     onHighlight: illuminate,
@@ -20321,6 +20592,7 @@ export default function App({ viewer = false }) {
   } else if (screen === "food") {
     content = (
       <DiaryScreen
+        startDate={diaryDate}
         food={db.food || []} foods={db.foods || []} goals={db.profile.goals}
         routine={db.routine || []} routineItems={db.routineItems || []}
         aiEnabled={!!db.ai?.enabled && !viewer}
@@ -20433,6 +20705,7 @@ export default function App({ viewer = false }) {
         goSettings={() => setScreen("settings")} goSetup={() => setScreen("setup")}
         goSun={() => setScreen("sun")} goLabs={() => setScreen("labs")}
         goExperiments={() => setScreen("experiments")}
+        goSearch={() => setScreen("search")}
         context={contextRows} sun={sunSessions} labs={labRows}
         lit={lit} onClearLit={clearLit} />
     );
@@ -20442,6 +20715,13 @@ export default function App({ viewer = false }) {
     content = (
       <NoteImportScreen db={db} setDb={setDb} aiEnabled={!!db.ai?.enabled && !viewer}
         goBack={goHome} goSettings={() => setScreen("settings")} openLog={goToLog} />
+    );
+  } else if (screen === "search") {
+    content = (
+      <SearchScreen
+        docs={searchDocs} today={todayStr()} fields={tpl.fields}
+        Icon={Icon} formatDate={fmtNice} onFeedback={feedback}
+        onGo={openSearchHit} />
     );
   } else if (screen === "gallery") {
     content = <PhotoGalleryScreen profile={profile} entries={entries} tpl={tpl} onSetBaseline={setPhotoBaseline} goBack={goHome} />;
@@ -20466,7 +20746,7 @@ export default function App({ viewer = false }) {
     log: "Daily Log", calendar: "Calendar", export: "Export Data", settings: "Settings",
     setup: "Edit Survey / Tracking Setup", gallery: "Photo Progress", food: "Diary",
     routine: "Your Routine", rituals: "Your Rituals", episode: "Flare",
-    pack: "Appointment Pack", history: "History",
+    pack: "Appointment Pack", history: "History", search: "Search",
     fitbit: "Import Health Data", import: "Import Your Notes",
     sun: "Sun & Outdoor Light", experiments: "Experiments", labs: "Labs & Measurements",
     report: reportParams.savedId ? "Saved Report" : (reportParams.type === "month" ? "Monthly Report" : "Weekly Report"),
@@ -20564,6 +20844,15 @@ export default function App({ viewer = false }) {
             {/* Settings is in the header now, on every screen that has one —
                 it used to be a tab, and a preference is not somewhere you go
                 every day. */}
+            {/* Not on the Daily Log: the day pager already owns two slots in
+                this row, and a fourth control would push the date out of it. */}
+            {screen !== "search" && screen !== "log" && (
+              <button onClick={() => { feedback("nav"); setScreen("search"); }}
+                aria-label="search your journal" className="fhj-icon-btn shrink-0"
+                style={{ width: "2.5rem", height: "2.5rem" }}>
+                <Icon name="search" size={18} color={C.sub} />
+              </button>
+            )}
             {screen !== "settings" && !viewer && (
               <button onClick={() => setScreen("settings")} aria-label="settings" className="fhj-icon-btn shrink-0"
                 style={{ width: "2.5rem", height: "2.5rem" }}>
@@ -20645,7 +20934,14 @@ export default function App({ viewer = false }) {
         destinations={destinationsFor({ viewer, exclude: [] })}
         hand={hand} viewer={viewer} hideCoach={tour || tourDone} Icon={Icon}
         onBack={() => { feedback("nav"); goBack(); }}
-        onGo={(id) => { if (screen !== id) feedback("nav"); setScreen(id); }}
+        onGo={(id) => {
+          if (screen !== id) feedback("nav");
+          /* Reached from the bar rather than from a result, the Diary is about
+             today again — otherwise it would silently keep the March day a
+             search sent it to. */
+          if (id === "food") setDiaryDate(null);
+          setScreen(id);
+        }}
         onAdd={() => { feedback("nav"); setScreen("dashboard"); setAddSheet(true); }}
         onFlipHand={flipHand}
         onReach={() => setReaching(true)}
