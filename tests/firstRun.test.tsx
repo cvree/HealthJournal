@@ -1,15 +1,18 @@
 /* The first two minutes.
 
-   Eight screens: a promise, a doorway that asks who this is for, five numbered
-   acts, and a birth. What these tests protect is the shape of that flow — that
-   it is one path with no "set everything up in detail" door beside it, that
-   every screen after the first arrives already answered so Continue is never
-   blocked on work, that the two personal questions are genuinely refusable and
-   genuinely used when they are answered, that somebody can see and shape the
-   survey they are signing up for (including which questions are yes/no ones),
-   that "photos" is a question about *what* rather than a switch, that all of
-   it reaches the journal they end up with, and that the last act still turns
-   their own first entry into the first card on a timeline.
+   Nine screens: a promise, a doorway that asks who this is for, six numbered
+   acts, and a birth — plus one card at the end that is not part of the path.
+   What these tests protect is the shape of that flow — that it is one path
+   with no "set everything up in detail" door beside it, that every screen
+   after the first arrives already answered so Continue is never blocked on
+   work, that the two personal questions are genuinely refusable and genuinely
+   used when they are answered, that the question somebody came with changes
+   what is *suggested* and never what is switched on, that somebody can see and
+   shape the survey they are signing up for (including which questions are
+   yes/no ones), that "photos" is a question about *what* rather than a switch,
+   that all of it reaches the journal they end up with, that the last act still
+   turns their own first entry into the first card on a timeline — and that it
+   ends by putting dates on the promise it just made.
 
    Motion is not asserted here (jsdom has no layout, and every helper is a
    no-op under reduced motion, which these tests run with). What is asserted is
@@ -98,13 +101,24 @@ const stepText = () => [
 /** The card's own heading — the group, the subject, or the thing being kept. */
 const cardTitle = () => document.querySelector(".fhj-fr-display")?.textContent || "";
 
-/** …pick a pack → the first card of the questions pass. There is no list to
-    land on any more: the act *is* the pass, from its first screen. */
-async function toTune(who?: Who) {
+/** …pick a pack → the screen that asks what they came to find out. */
+async function toAim(who?: Who) {
   await toFocus(who);
   tap(/Eczema/);
   fireEvent.click(exact("Continue")!);
-  await waitFor(() => expect(stepText()).toMatch(/Step 2 of 5.*group 1 of/i));
+  await screen.findByText(/what do you want to find out\?/i);
+}
+
+/** …and past it, either naming an aim or refusing to.
+
+    `aim` is a label to tap; undefined means walking past it without answering,
+    which is the path most of these tests take — everything downstream has to
+    work for somebody who told the app nothing about why they are here. */
+async function toTune(who?: Who, aim?: RegExp) {
+  await toAim(who);
+  if (aim) tap(aim);
+  fireEvent.click(exact(aim ? "Continue" : "Skip this one")!);
+  await waitFor(() => expect(stepText()).toMatch(/Step 3 of 6.*group 1 of/i));
 }
 
 /** Through every group of questions, and the card that takes one of your own,
@@ -120,11 +134,11 @@ async function throughQuestions(each?: (i: number) => void) {
   }
   await waitFor(() => expect(stepText()).toMatch(/of your own/i));
   fireEvent.click(exact("Continue")!);
-  await waitFor(() => expect(stepText()).toMatch(/Step 3 of 5/i));
+  await waitFor(() => expect(stepText()).toMatch(/Step 4 of 6/i));
 }
 
-async function toPhotos(who?: Who) {
-  await toTune(who);
+async function toPhotos(who?: Who, aim?: RegExp) {
+  await toTune(who, aim);
   await throughQuestions();
 }
 
@@ -138,7 +152,7 @@ async function toPhotos(who?: Who) {
     not knowable in advance. */
 async function throughPhotos(wanted: RegExp[] = []) {
   for (let n = 0; n < 40; n++) {
-    if (!/Step 3 of 5/.test(stepText())) break;
+    if (!/Step 4 of 6/.test(stepText())) break;
     const before = stepText();
     const yes = exact("Yes — I'll photograph this");
     if (yes) {
@@ -150,19 +164,19 @@ async function throughPhotos(wanted: RegExp[] = []) {
     if (!out) break;
     fireEvent.click(out);
   }
-  await waitFor(() => expect(stepText()).toMatch(/Step 4 of 5/i));
+  await waitFor(() => expect(stepText()).toMatch(/Step 5 of 6/i));
 }
 
 /** …and on to what else the journal should keep. */
-async function toExtras(who?: Who, photos: RegExp[] = []) {
-  await toPhotos(who);
+async function toExtras(who?: Who, photos: RegExp[] = [], aim?: RegExp) {
+  await toPhotos(who, aim);
   await throughPhotos(photos);
 }
 
 /** Through the extras, the cadence and the nudge, to the first entry. */
 async function throughExtras(wanted: RegExp[] = []) {
   for (let n = 0; n < 40; n++) {
-    if (!/Step 4 of 5/.test(stepText())) break;
+    if (!/Step 5 of 6/.test(stepText())) break;
     const before = stepText();
     const yes = exact("Yes — keep this");
     if (yes) {
@@ -178,8 +192,8 @@ async function throughExtras(wanted: RegExp[] = []) {
 }
 
 /** …and on to the entry itself. */
-async function toEntry(who?: Who, photos: RegExp[] = [], extras: RegExp[] = []) {
-  await toExtras(who, photos);
+async function toEntry(who?: Who, photos: RegExp[] = [], extras: RegExp[] = [], aim?: RegExp) {
+  await toExtras(who, photos, aim);
   await throughExtras(extras);
 }
 
@@ -281,7 +295,7 @@ describe("the rail says it once", () => {
     const seen = [...document.querySelectorAll<HTMLElement>(".fhj-fr-act *")]
       .filter((el) => !el.closest("[aria-hidden='true']"))
       .map((el) => el.textContent || "").join(" ");
-    expect(seen).not.toMatch(/Step \d of 5/);
+    expect(seen).not.toMatch(/Step \d of 6/);
   });
 
   it("still tells a screen reader exactly where it is", async () => {
@@ -291,7 +305,7 @@ describe("the rail says it once", () => {
     await mountFresh();
     await toTune();
     expect(document.querySelector(".fhj-fr-rail-block")!.getAttribute("aria-label"))
-      .toMatch(/^Step 2 of 5 — Questions$/);
+      .toMatch(/^Step 3 of 6 — Questions$/);
     expect(document.querySelector(".fhj-fr-walkbar")!.getAttribute("aria-label"))
       .toMatch(/^Group 1 of \d+$/);
   });
@@ -319,6 +333,9 @@ describe("the rail says it once", () => {
     expect(document.body.textContent).not.toMatch(/What happens next/i);
     tap(/Eczema/);
     fireEvent.click(exact("Continue")!);
+    /* …the screen that asks what they came for carries its own line… */
+    await waitFor(() => expect(note()).toMatch(/what gets suggested/i));
+    fireEvent.click(exact("Skip this one")!);
     await waitFor(() => expect(note()).toMatch(/Nothing is on yet/i));
   });
 });
@@ -332,6 +349,7 @@ describe("one path, and no door beside it", () => {
     expect(document.body.textContent).not.toMatch(/in detail instead/i);
     tap(/Eczema/);
     fireEvent.click(exact("Continue")!);
+    fireEvent.click(exact("Skip this one")!);
     await waitFor(() => expect(stepText()).toMatch(/group 1 of/i));
     expect(document.body.textContent).not.toMatch(/in detail instead/i);
   });
@@ -339,7 +357,7 @@ describe("one path, and no door beside it", () => {
   it("asks what somebody is tracking first, and will not continue without it", async () => {
     await mountFresh();
     await toFocus();
-    expect(stepText()).toMatch(/Step 1 of 5/);
+    expect(stepText()).toMatch(/Step 1 of 6/);
     const cta = screen.getAllByRole("button").find((b) => /Pick what you're tracking/.test(b.textContent || ""))!;
     expect((cta as HTMLButtonElement).disabled).toBe(true);
   });
@@ -376,7 +394,133 @@ describe("one path, and no door beside it", () => {
   });
 });
 
-/* ---------- act three: the questions, one group at a time ----------
+/* ---------- act three: the question they came with ----------
+
+   The screen the flow did not have, and the one everything after it is
+   pointed at. What is protected here is that it is a *decision with
+   consequences* rather than a personality question: nothing arrives chosen,
+   choosing one says out loud what the app will do about it and when, the
+   suggestion it makes downstream is visibly a suggestion, and it is genuinely
+   skippable — a person who does not want to name a reason still gets the
+   whole app.
+
+   The one thing that must never be true: an aim switching something on. Every
+   question, photograph and button in this journal has to have been tapped by
+   the person who is going to live with it. */
+describe("the question they came with", () => {
+  it("asks it after what they track, and arrives with nothing chosen", async () => {
+    await mountFresh();
+    await toAim();
+    expect(stepText()).toMatch(/Step 2 of 6/);
+    expect(document.querySelectorAll('.fhj-fr-aim[aria-pressed="true"]')).toHaveLength(0);
+    // Every aim is offered, and the honest refusal is one of them, last.
+    const cards = [...document.querySelectorAll(".fhj-fr-aim")].map((el) => el.textContent || "");
+    expect(cards.length).toBeGreaterThanOrEqual(4);
+    expect(cards[cards.length - 1]).toMatch(/Nothing in particular/i);
+  });
+
+  it("answers with machinery and a date, not with encouragement", async () => {
+    await mountFresh();
+    await toAim();
+    tap(/Find what sets it off/);
+    const card = await waitFor(() => {
+      const el = document.querySelector('.fhj-fr-aim[aria-pressed="true"]')!;
+      expect(el.querySelector(".fhj-fr-aim-open")).toBeTruthy();
+      return el;
+    });
+    // What it will actually do: a comparison of their own days.
+    expect(card.textContent).toMatch(/compares them/i);
+    // What arrives suggested because of it — named, so the person can see the
+    // consequence of their own answer rather than meeting it three screens on.
+    expect(card.textContent).toMatch(/Meals & drinks/);
+    // And when the first answer can exist at all.
+    expect(card.querySelector(".fhj-fr-aim-when")!.textContent).toMatch(/12 days on the record/);
+    // Nothing about it congratulates anybody.
+    expect(card.textContent).not.toMatch(/great choice|good choice|perfect/i);
+  });
+
+  it("is genuinely skippable, and skipping costs nothing downstream", async () => {
+    await mountFresh();
+    await toAim();
+    expect(exact("Skip this one")).toBeTruthy();
+    fireEvent.click(exact("Skip this one")!);
+    await waitFor(() => expect(stepText()).toMatch(/Step 3 of 6.*group 1 of/i));
+    // The rest of the flow is the same flow.
+    await throughQuestions();
+    await throughPhotos();
+    await throughExtras();
+    await screen.findByText(/How is your skin today\?/i);
+  });
+
+  it("changes what is suggested, and says which of their answers is talking", async () => {
+    /* Meals are not suggested for eczema. Somebody who said they want to find
+       what sets it off is offered them anyway — and told why. */
+    await mountFresh();
+    await toExtras(undefined, [], /Find what sets it off/);
+    let seen = "";
+    for (let n = 0; n < 12; n++) {
+      if (/Meals & drinks/i.test(cardTitle())) { seen = document.body.textContent || ""; break; }
+      const on = exact("Not this one") || exact("Continue");
+      if (!on) break;
+      fireEvent.click(on);
+    }
+    expect(seen).toMatch(/you said you want to find what sets it off/i);
+    expect(seen).toMatch(/suggestion, not a decision/i);
+  });
+
+  it("never switches anything on by itself", async () => {
+    await mountFresh();
+    await toTune(undefined, /Find what sets it off/);
+    // The questions still arrive off — the aim marks, it does not tick.
+    await throughQuestions();
+    await throughPhotos();
+    // Nothing was answered in the photographs pass, so nothing is photographed.
+    await throughExtras();
+    fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 5 out of 10/ }));
+    tap(/Save my first entry/);
+    await screen.findByText("Your journal has begun.");
+    tap(/Open my journal/);
+
+    await waitFor(() => {
+      const db = saved();
+      // The aim itself is remembered…
+      expect(db.profile.aim).toBe("triggers");
+      // …and it bought nothing: no food button, no photo questions, because
+      // every card in between was answered "not this one".
+      expect(db.profile.quickAdd).not.toContain("food");
+      expect((db.profile.customQuestions || []).filter((q: any) => q.type === "photo")).toHaveLength(0);
+    }, { timeout: 10000 });
+  });
+
+  it("marks the questions that bear on it, without ticking them", async () => {
+    await mountFresh();
+    await toTune(undefined, /Find what sets it off/);
+    let marked: HTMLElement | null = null;
+    for (let i = 0; i < 20 && !marked; i++) {
+      marked = document.querySelector(".fhj-fr-extra-tag.is-aim")?.closest(".fhj-fr-wq") as HTMLElement;
+      if (marked) break;
+      const on = exact("Next group") || exact("Last one");
+      if (!on) break;
+      fireEvent.click(on);
+    }
+    expect(marked).toBeTruthy();
+    expect(marked!.textContent).toMatch(/your aim/i);
+    // Marked, and still off until somebody taps it.
+    expect(marked!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("leaves the journal with no aim at all when nobody named one", async () => {
+    await mountFresh();
+    await toEntry();
+    fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 5 out of 10/ }));
+    tap(/Save my first entry/);
+    await screen.findByText("Your journal has begun.");
+    tap(/Open my journal/);
+    await waitFor(() => expect(saved().profile.aim).toBeUndefined(), { timeout: 10000 });
+  });
+});
+
+/* ---------- act four: the questions, one group at a time ----------
 
    There is no list any more and no preset to arrive on. Both were the same
    mistake in two shapes: a check-in assembled by a default rather than by the
@@ -489,7 +633,7 @@ describe("choosing the questions, one group at a time", () => {
     expect(exact("That's my check-in")).toBeUndefined();
 
     fireEvent.click(exact("Continue")!);
-    await waitFor(() => expect(stepText()).toMatch(/Step 3 of 5/i));
+    await waitFor(() => expect(stepText()).toMatch(/Step 4 of 6/i));
   });
 
   it("takes a question of somebody's own, in their own words", async () => {
@@ -529,7 +673,7 @@ describe("choosing the questions, one group at a time", () => {
 
     fireEvent.click(exact("Add it")!);
     fireEvent.click(exact("Continue")!);
-    await waitFor(() => expect(stepText()).toMatch(/Step 3 of 5/i));
+    await waitFor(() => expect(stepText()).toMatch(/Step 4 of 6/i));
     await throughPhotos();
     await throughExtras();
     fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 3 out of 10/ }));
@@ -571,7 +715,7 @@ describe("choosing the questions, one group at a time", () => {
   });
 });
 
-/* ---------- act five: what else it should keep ----------
+/* ---------- act six: what else it should keep ----------
 
    The same change, for the same reason. These used to be five rows with the
    app's suggestions already ticked, and the row of buttons under somebody's
@@ -580,7 +724,7 @@ describe("what else the journal keeps", () => {
   it("holds up one thing a day can hold at a time, with a yes beside a no", async () => {
     await mountFresh();
     await toExtras();
-    expect(stepText()).toMatch(/Step 4 of 5.*\b1 of \d/i);
+    expect(stepText()).toMatch(/Step 5 of 6.*\b1 of \d/i);
     expect(exact("Yes — keep this")).toBeTruthy();
     expect(exact("Not this one")).toBeTruthy();
 
@@ -761,7 +905,7 @@ describe("the doorway: who this is for", () => {
   });
 });
 
-/* ---------- act four: the photographs, one subject at a time ----------
+/* ---------- act five: the photographs, one subject at a time ----------
 
    Eight things a camera can be pointed at is more than anybody weighs in a
    glance, and the cost of getting it wrong is asymmetric: a subject nobody
@@ -779,7 +923,7 @@ describe("choosing the photographs, one subject at a time", () => {
   it("holds up one subject, says what it is worth, and offers a yes beside a no", async () => {
     await mountFresh();
     await toPhotos();
-    expect(stepText()).toMatch(/Step 3 of 5.*\b1 of \d/i);
+    expect(stepText()).toMatch(/Step 4 of 6.*\b1 of \d/i);
 
     // What this one is for six weeks from now — not just what it is.
     expect(document.querySelector(".fhj-fr-pw-why")!.textContent!.length).toBeGreaterThan(20);
@@ -1012,7 +1156,7 @@ describe("the moment the journal begins", () => {
     });
     fireEvent.click(exact("Add it")!);
     fireEvent.click(exact("Continue")!);
-    await waitFor(() => expect(stepText()).toMatch(/Step 3 of 5/i));
+    await waitFor(() => expect(stepText()).toMatch(/Step 4 of 6/i));
     await throughPhotos();
     await throughExtras();
     await screen.findByText(/How is your skin today\?/i);
@@ -1037,6 +1181,150 @@ describe("the moment the journal begins", () => {
   });
 });
 
+
+/* ---------- the plan, and the notes somebody already has ----------
+
+   The last screen used to end on "keep going and it answers what memory
+   cannot", which is a lovely sentence and not an answer to the only question
+   anybody actually has at the end of a setup: *when does this start being
+   worth it?*
+
+   So it ends on three dated rungs instead, computed from the cadence this
+   person just chose against the same evidence ladder every finding in the app
+   is graded on — and then, because almost nobody arrives having tracked
+   nothing, on one offer to bring in what they have already written somewhere
+   else. What is protected here is that the dates are real and move with the
+   cadence, and that the offer is an offer: taking it goes somewhere useful,
+   and declining it opens the journal exactly as before. */
+describe("the plan at the end", () => {
+  const born = async (opts: { aim?: RegExp; weekly?: boolean } = {}) => {
+    await mountFresh();
+    await toExtras(undefined, [], opts.aim);
+    if (opts.weekly) {
+      // Walk to the cadence card and slow the journal right down.
+      for (let n = 0; n < 12; n++) {
+        if (/How often should it ask/i.test(cardTitle())) break;
+        const on = exact("Not this one") || exact("Continue");
+        if (!on) break;
+        fireEvent.click(on);
+      }
+      fireEvent.click(screen.getAllByRole("button").find((b) => /Once a week/.test(b.textContent || ""))!);
+    }
+    await throughExtras();
+    fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 5 out of 10/ }));
+    tap(/Save my first entry/);
+    await screen.findByText("Your journal has begun.");
+  };
+
+  it("ends with three dated things this journal will be able to do", async () => {
+    await born();
+    const rows = [...document.querySelectorAll(".fhj-fr-plan li")];
+    expect(rows).toHaveLength(3);
+    // Each one carries a date and a distance, not an adjective.
+    for (const row of rows) {
+      expect(row.querySelector(".fhj-fr-plan-when")!.textContent).toMatch(/\w/);
+    }
+    // The rungs are the app's own, said in days on the record.
+    const text = rows.map((r) => r.textContent).join(" ");
+    expect(text).toMatch(/12 days on the record/);
+    expect(text).toMatch(/30 days/);
+    // …and what a day of it costs, before what the days buy.
+    expect(document.querySelector(".fhj-fr-holds")!.textContent).toMatch(/a day/);
+  });
+
+  it("quotes back the question they said they came with", async () => {
+    await born({ aim: /Find what sets it off/ });
+    expect(document.body.textContent).toMatch(/What is setting this off\?/);
+  });
+
+  it("moves the dates when the journal was set to ask less often", async () => {
+    await born({ weekly: true });
+    const first = document.querySelector(".fhj-fr-plan li .fhj-fr-plan-when")!.textContent || "";
+    // Four weekly check-ins is a month away, so the first rung is weeks out
+    // rather than days — the promise follows the pace, not the other way round.
+    expect(first).toMatch(/in about \d+ weeks/i);
+    expect(document.body.textContent).toMatch(/once a week/i);
+  });
+
+  it("is honest that the dates assume the pace was kept", async () => {
+    await born();
+    expect(document.body.textContent).toMatch(/those dates assume/i);
+    expect(document.body.textContent).toMatch(/nothing is lost and nothing is scolded/i);
+  });
+
+  it("offers to bring in what somebody has already written elsewhere", async () => {
+    await born();
+    tap(/tracking this somewhere else/i);
+    expect(await screen.findByText(/You don't have to start from nothing/i)).toBeTruthy();
+    // The claim is demonstrated rather than described: shorthand, and the rows
+    // it becomes.
+    const demo = document.querySelector(".fhj-fr-import")!;
+    expect(demo.textContent).toMatch(/2acv premeal/);
+    expect(demo.textContent).toMatch(/ACV ×2, pepsin ×2/);
+    // And it is honest about the one thing that makes this different from
+    // everything else in the app.
+    expect(document.body.textContent).toMatch(/one that sends your writing/i);
+    expect(document.body.textContent).toMatch(/approve every single row/i);
+  });
+
+  it("opens the journal anyway for somebody who says not now", async () => {
+    await born();
+    tap(/tracking this somewhere else/i);
+    await screen.findByText(/You don't have to start from nothing/i);
+    tap(/Not now — open my journal/);
+    await waitFor(() => expect(saved().onboarded).toBe(true), { timeout: 10000 });
+    // The journal they built, exactly as it would have been.
+    expect(saved().profile.modules).toEqual(["eczema"]);
+    expect(saved().entries.find((e: any) => e.date === today()).answers.overall_skin_severity).toBe(5);
+  });
+
+  it("asks for the connection it needs rather than pretending it does not need one", async () => {
+    await born();
+    tap(/tracking this somewhere else/i);
+    await screen.findByText(/You don't have to start from nothing/i);
+    tap(/Set it up and bring them in/);
+    // The same connection sheet the rest of the flow uses, on its own terms:
+    // an offer that quietly turned into a settings screen would be a bait.
+    expect(await screen.findByText(/Turn what you already wrote into days on the record/i)).toBeTruthy();
+  });
+});
+
+/* The pure end of it: the answers, turned into a journal.
+
+   Driving the whole flow proves the screens; this proves the translation,
+   which is where a setup quietly loses somebody's answer. Both of these are
+   facts the flow cannot assert about itself without a connected AI and a real
+   import behind it. */
+describe("what the answers become", () => {
+  const answers = (over: Record<string, unknown> = {}) => ({
+    name: "", age: null, modules: ["eczema"], keyMetric: "overall_skin_severity",
+    score: 5, note: "", enabledKeys: ["overall_skin_severity"], customQuestions: [],
+    extras: [], photoSubjects: [], progressAngles: [], spots: [],
+    reminder: null, cadence: "daily", ai: false, aim: null, startWith: "dashboard",
+    ...over,
+  });
+
+  it("keeps the question somebody said they came with", async () => {
+    const { __internals: I } = await import("../src/App");
+    const built = (over?: Record<string, unknown>) => I.firstRunProfile(answers(over))[0] as any;
+    expect(built({ aim: "triggers" }).aim).toBe("triggers");
+    // …and leaves it off entirely when nobody named one, rather than storing
+    // a default nobody chose.
+    expect(built().aim).toBeUndefined();
+  });
+
+  it("opens the import screen for somebody who has notes elsewhere", async () => {
+    const { __internals: I } = await import("../src/App");
+    expect(I.firstRunProfile(answers({ startWith: "import" }))[1]).toBe("import");
+    // Everybody else lands on the journal they just built.
+    expect(I.firstRunProfile(answers())[1]).toBe("dashboard");
+    // Either way the first entry is written — the day they rated is theirs
+    // whichever screen opens over it.
+    expect(I.firstRunProfile(answers({ startWith: "import" }))[2]).toEqual({
+      key: "overall_skin_severity", value: 5, note: "",
+    });
+  });
+});
 
 /* ---------- being shown around, once ----------
 

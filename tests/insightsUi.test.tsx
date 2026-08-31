@@ -362,3 +362,52 @@ describe("possible relationships", () => {
     expect(document.body.textContent).not.toMatch(/These moved together/);
   });
 });
+
+/* ---------- the week-one screen ----------
+
+   The one nobody designs for: Insights on a journal four days old, where the
+   app is right to say nothing and every other tracker on the phone would have
+   drawn a confident line through four dots.
+
+   Saying nothing is the correct behaviour. Saying nothing *and no more than
+   that* is how a person decides on day four that this was not worth it — so
+   the promise the setup ended on is repeated here, with the same arithmetic
+   run against what the journal actually holds now. */
+describe("the empty screen a new journal actually sees", () => {
+  const young = (db: any, days: number, over: Record<string, unknown> = {}) => {
+    const keep = [...db.entries].sort((a: any, b: any) => (a.date < b.date ? 1 : -1)).slice(0, days);
+    db.entries = keep;
+    Object.assign(db.profile, over);
+  };
+
+  it("says when the first pattern can appear, rather than 'keep logging'", async () => {
+    await mountInsights((db) => young(db, 4, { aim: "triggers" }));
+    const rung = await waitFor(() => {
+      const el = document.querySelector(".fhj-rung");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    // How many more, and when — not an encouragement.
+    expect(rung.textContent).toMatch(/3 more check-ins/i);
+    // The next rung, not the whole ladder: a bar creeping toward day 30 is a
+    // bar nobody watches.
+    expect(rung.textContent).toMatch(/7 days on the record/);
+    // …and what they said they were here for, so the wait has a point.
+    expect(rung.textContent).toMatch(/What is setting this off\?/);
+  });
+
+  it("works for somebody who never named a reason", async () => {
+    await mountInsights((db) => young(db, 4));
+    const rung = document.querySelector(".fhj-rung")!;
+    expect(rung.textContent).toMatch(/more check-in/i);
+    expect(rung.textContent).not.toMatch(/You started this to answer/);
+  });
+
+  it("goes quiet once the journal is old enough to speak for itself", async () => {
+    /* The sample journal is months deep. A countdown under real findings would
+       be furniture. */
+    await mountInsights();
+    expect(document.querySelector(".fhj-rung")).toBeNull();
+  });
+});
+

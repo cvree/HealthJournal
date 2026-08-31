@@ -84,11 +84,11 @@ between are the schedule and a document a clinician reads has to be able to say 
 because the point of tracking food is logging it while you eat. Add as many named times as suit
 your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
 
-**The first two minutes.** First run is eight screens, not a wizard, and there is one path through
+**The first two minutes.** First run is nine screens, not a wizard, and there is one path through
 it. A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a
 rating, a photograph fourteen days apart, a note about a bad night, a dose ticked off, a flare that
 ended, three months of trend with the flare shaded behind it, with the five checkable promises
-about the build one tap below it. Then a doorway, and five numbered acts.
+about the build one tap below it. Then a doorway, and six numbered acts.
 
 **Who is this journal for?** A name and an age, both refusable, neither numbered — a doorway, not
 step one of a registration. It is here because everything after it is warmer for having been
@@ -100,10 +100,29 @@ greyed-out apology, and the age is stored as the year you were born so it is sti
 years. Both are editable in Edit Setup afterwards.
 
 **What are you tracking?** The only question that cannot be defaulted — and once it is answered,
-the screen draws the four that follow it: your questions, your photographs, everything else a day
+the screen draws the ones that follow it: your questions, your photographs, everything else a day
 holds, your first entry. It also says what those screens will and will not do: that nothing is
 switched on yet, that nothing gets photographed unless you ask, and that all of it exists again in
 Settings with more on the table than first run ever shows you.
+
+**And then the question the setup never used to ask: what do you want to find out?** Everything up
+to here establishes *what* you track, which is the part an app can guess at. Nobody ever asked
+*why* — and the why is the only fact on the screen worth tailoring around. Two people both pick
+Eczema: one wants to know what sets it off, one wants to know whether the cream she started in
+January is doing anything, one wants twelve weeks of evidence to put in front of a dermatologist
+who gets ten minutes. Those are three different journals, and they used to get the same one.
+
+So: five cards, and the last of them is *nothing in particular — just keep the record*, which is a
+real answer and is never sulked at. Picking one opens underneath itself and answers with
+**machinery rather than encouragement**: the comparison the app will actually run on your own days,
+the buttons and photo subjects that will arrive suggested two screens from now, named so you meet
+the consequence of your own answer immediately — and **the date the first answer can exist**, which
+is twelve days on the record at the pace it is currently set to ask. Nothing here says "great
+choice", and nothing here switches anything on: an aim moves the app's opinion, never your hand.
+Every question, photograph and button is still a card you say yes to, one at a time. What it does
+change is what gets offered first, and which rows on the question cards are marked *your aim* —
+because somebody who told the app their question two screens ago and is then left to scroll past
+the answer to it has been failed by the app rather than by themselves.
 
 **Three acts, and each of them walks you through it.** The questions, the photographs and
 everything else a day holds are the three screens with more on the table than anybody weighs in a
@@ -178,6 +197,30 @@ card you just filled in flies into place as the first card on a timeline**, the 
 past it into the days you have not lived yet, and the streak counts to one. A journal is a promise
 about the future, and watching your own first entry become the first thing on a timeline makes that
 promise in about three seconds.
+
+**And then it puts three dates on that promise.** *Keep going and it answers what memory cannot* is
+a lovely sentence and it is not an answer to the only question anybody has at the end of a setup,
+which is *when does this start being worth it?* So the last screen ends on three dated rungs —
+your first week, twelve days on the record, thirty days across a few different weeks — each one
+carrying what becomes possible there, worded around the question you said you came with. The dates
+are arithmetic you could check: the rungs are the same ones every finding in this app is graded on
+(`src/lib/evidence.ts`), the pace is the cadence you chose two screens earlier, and choosing *once
+a week* moves every date rather than being quietly ignored. It also says out loud that missing days
+moves them, and that nothing is lost when they do. The same arithmetic comes back on **Insights in
+week one** — the screen where a new journal has nothing to show — so *nothing stands out yet* is
+followed by how many more check-ins, and when, rather than by a shrug.
+
+**Nobody has to start from nothing.** Almost everyone arrives at a health journal having already
+tracked it somewhere — a notes file, a chat with themselves, a photograph of a page — and a journal
+that opens with one day when it could have opened with ninety is the single largest thing this flow
+can still do for somebody. So the last card offers it: four lines of real shorthand beside the
+meals, doses, numbers and movements they become, *on the dates the notes themselves give*. It is
+honest about the price in the same breath — this is the one feature in the app that sends your own
+writing anywhere, it needs the optional AI connection, and you approve every proposed row beside
+the words it came from before one of them is written. Say yes and the app opens on that screen
+instead of an empty dashboard, with the tour waiting at the dashboard rather than skipped. *Not
+now* opens the journal exactly as it would have been, and the offer stays on Today for the first
+fortnight.
 
 Nothing is ever demanded and nothing is ever assumed — two different promises, and the flow makes
 both. The way forward is live on every card and *not this one* is a real button rather than a
@@ -1060,8 +1103,11 @@ bellwether/
 │   │                           #   timeline, the trend/comparison chart,
 │   │                           #   relationships explorer, long-term view,
 │   │                           #   appointment pack (the printed page),
-│   │                           #   first run (the doorway and five acts, three
-│   │                           #     of them walked one card at a time),
+│   │                           #   first run (the doorway, six acts — one of
+│   │                           #     them the question you came with — three
+│   │                           #     walked one card at a time, a dated plan
+│   │                           #     at the end, and the offer to bring in
+│   │                           #     notes you already keep elsewhere),
 │   │                           #   tour (being shown around the finished app,
 │   │                           #     once, with the real controls spotlit),
 │   │                           #   ai connect (the three-tap guided way to a
@@ -1084,6 +1130,9 @@ bellwether/
 │   │   ├── episodes.ts         # the flare model + every number one can be asked for
 │   │   ├── appointmentPack.ts  # the printable summary: figures, floors, what it refuses
 │   │   ├── intro.ts            # the first-run choreography (hero, FLIP, timeline draw)
+│   │   ├── aims.ts             # what somebody came to find out, what each aim
+│   │   │                       #   suggests, and the dated plan it implies —
+│   │   │                       #   evidence.ts's rungs at the cadence they chose
 │   │   ├── pulse.ts            # the one-tap day, the question queue behind it,
 │   │   │                       #   and which details to offer next
 │   │   ├── tour.ts             # the stops of the one-off tour, what is behind

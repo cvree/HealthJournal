@@ -10,7 +10,7 @@
    the fast path is the cheap one and the real setup is somewhere else, and it
    makes the person who most needs help choose, on screen two, between being
    rushed and being buried. There is one path now, it is the good one, and it
-   is composed as eight screens — a doorway, five numbered acts, and a birth:
+   is composed as nine screens — a doorway, six numbered acts, and a birth:
 
      1. **The promise.** One line, and a glimpse of a journal already alive —
         a rating, a photograph, a note, a trend, a flare that ended. The claim
@@ -25,18 +25,37 @@
         open — because a journal that guilts you on screen two is one you stop
         opening on day four.
      3. **The only question that cannot be defaulted.** What are you tracking?
-     4. **What it will ask you** — one group of questions at a time.
-     5. **What is worth a photograph** — one subject at a time.
-     6. **What else it should keep** — one thing at a time, then how often it
+     4. **What they came here to find out.** The question behind the tracking —
+        triggers, a trend, whether a treatment is doing anything, a page to
+        take to an appointment. It is asked here because it is the one answer
+        that makes every screen after it different, and because a person who
+        has just named their own question reads the next four screens as work
+        towards it rather than as setup.
+     5. **What it will ask you** — one group of questions at a time, with the
+        ones that answer their question marked as such.
+     6. **What is worth a photograph** — one subject at a time.
+     7. **What else it should keep** — one thing at a time, then how often it
         should ask, then whether it should nudge.
-     7. **The first entry.** Real, not a demo. The number they pick is written
+     8. **The first entry.** Real, not a demo. The number they pick is written
         to their journal.
-     8. **The journal beginning.** The card they just filled in physically
+     9. **The journal beginning.** The card they just filled in physically
         becomes the first card on their timeline, the rail draws itself
-        downward into the days they have not lived yet, and the streak counts
-        to one.
+        downward into the days they have not lived yet, the streak counts to
+        one — and then the app answers the only question a person actually has
+        at the end of a setup: *when does this start being worth it*. Three
+        dated milestones, computed from their own cadence against the same
+        evidence ladder the rest of the app is graded on. Not "keep going and
+        it will be worth it". A date.
 
-   ---------- why acts four, five and six are all walked ----------
+   And one screen that is not part of the path, offered from the end of it:
+   **bringing in what they have already written.** Almost nobody arrives at a
+   health journal having tracked nothing — it is in a notes file, a chat with
+   themselves, a photograph of a page. A journal that starts with one day when
+   it could have started with ninety is the single largest thing this flow can
+   still do for somebody, and it is worth exactly one card at the end to say
+   so.
+
+   ---------- why acts five, six and seven are all walked ----------
 
    They used to be lists. Each list arrived pre-answered — a "Quick / Balanced
    / Thorough" preset on the questions, a set of suggestions ticked on the
@@ -54,7 +73,7 @@
 
    The second problem is the door beside the door. A guided pass that is
    optional is a guided pass that the people who need it never take, because
-   taking it means admitting on screen four that you would like some help. So
+   taking it means admitting on screen five that you would like some help. So
    there is no list any more and no preset to arrive on. Every one of these
    three acts *is* its pass: one card, one decision, a plain way to say no, and
    the running cost of the whole thing under your thumb. Six short decisions
@@ -107,6 +126,7 @@ import {
   readoutSwap, rungPop, type CardFlight,
 } from "../lib/intro";
 import AiConnect, { type AiConnectCopy } from "./AiConnect";
+import { type Aim, aimById, aimsFor, answersAim, horizon, readyLine } from "../lib/aims";
 
 export interface FirstRunScale {
   k: string;
@@ -138,7 +158,7 @@ export interface FirstRunPack {
   keyMetric: string;
   scales: FirstRunScale[];
   /** Everything this pack can ask, minus photos and weight — those are
-      choices in act four, not questions in act three. */
+      choices in acts five and six, not questions in act four. */
   questions: FirstRunQuestion[];
   /** "skin" packs photograph body areas; everything else photographs
       progress. Decides which face the Photos choice wears. */
@@ -222,6 +242,16 @@ export interface FirstRunChoice {
       *for* should arrive switched on. False for everybody else, which is
       almost everybody — nothing here turns this on without a key behind it. */
   ai: boolean;
+  /** What they said they came for, as an id from lib/aims — or null where
+      they skipped the question. It is kept on the profile rather than spent
+      on the setup and thrown away: the journal knows what it was started for,
+      which is the difference between a tool and a filing cabinet. */
+  aim: string | null;
+  /** Where the app should open. "import" only when somebody said, on the last
+      screen, that they have been keeping this somewhere else already — in
+      which case the most valuable screen in the app for them is the one that
+      turns those notes into months of journal, not an empty dashboard. */
+  startWith: "dashboard" | "import";
 }
 
 type Props = {
@@ -255,16 +285,16 @@ type Props = {
   aiOffers?: Record<string, AiConnectCopy>;
 };
 
-type Act = "hero" | "you" | "focus" | "tune" | "photos" | "extras" | "entry" | "born";
+type Act = "hero" | "you" | "focus" | "aim" | "tune" | "photos" | "extras" | "entry" | "born" | "bring";
 
 /** The numbered part of the flow. The hero, the personal screen and the birth
     all sit outside it — none of them is a step somebody is being walked
     through, and numbering the one that asks for a name would turn a welcome
     into paperwork. */
-const FLOW: Act[] = ["focus", "tune", "photos", "extras", "entry"];
+const FLOW: Act[] = ["focus", "aim", "tune", "photos", "extras", "entry"];
 
 /**
- * The five acts, and the one line each of them is worth.
+ * The six acts, and the one line each of them is worth.
  *
  * The note matters as much as the label, because it is what replaced a wall.
  * The first act used to carry a four-item list headed "What happens next",
@@ -280,10 +310,11 @@ const FLOW: Act[] = ["focus", "tune", "photos", "extras", "entry"];
  */
 const RAIL: { label: string; note: string }[] = [
   { label: "Tracking", note: "Sets what you'll be offered — you pick the questions themselves next, and all of it changes later in Settings." },
+  { label: "Your aim", note: "The one thing you'd want this to tell you. It decides what gets suggested from here on." },
   { label: "Questions", note: "Nothing is on yet. A group at a time — keep what you'll answer in March." },
   { label: "Photos", note: "Nothing is photographed unless you ask for it. One subject at a time." },
   { label: "Extras", note: "Meals, doses, flares, a nudge — each one you keep becomes a button." },
-  { label: "First entry", note: "A real one, written to your journal. Not a demo." },
+  { label: "Day one", note: "A real entry, written to your journal. Not a demo." },
 ];
 
 const ramp = (v: number, dir?: string): string => {
@@ -749,6 +780,11 @@ export default function FirstRun({
   const [name, setName] = useState("");
   const [age, setAge] = useState<number | null>(null);
   const [mods, setMods] = useState<string[]>([]);
+  /* What they came for. Null until they answer, and null is a real answer —
+     the last card on that screen is "nothing in particular", and skipping it
+     entirely leaves this null and every downstream suggestion exactly as the
+     packs alone would have made it. */
+  const [aimId, setAimId] = useState<string | null>(null);
   const [metricKey, setMetricKey] = useState<string | null>(null);
   const [score, setScore] = useState<number | null>(null);
   const [note, setNote] = useState("");
@@ -774,7 +810,7 @@ export default function FirstRun({
     setAiOffer(id);
   };
 
-  /* Act three: the questions somebody has actually said yes to. `null` is
+  /* Act four: the questions somebody has actually said yes to. `null` is
      "nobody has touched this yet", which means *nothing but the daily number*
      — there is no preset to arrive on and no set of questions the app picked
      out on somebody's behalf. Changing a pack on the screen before this one
@@ -791,7 +827,7 @@ export default function FirstRun({
      through any of these acts now. */
   const [walk, setWalk] = useState(0);
 
-  /* Act four: what is worth photographing. Nothing is pre-picked here — see
+  /* Act five: what is worth photographing. Nothing is pre-picked here — see
      the note above the act — so untouched (`null`) falls back to *nothing*
      rather than to the app's suggestions. `photoAnswered` is what has actually
      been decided, so stepping back through the pass shows a "no" as a no
@@ -802,7 +838,7 @@ export default function FirstRun({
   const [spots, setSpots] = useState<FirstRunSpot[]>([]);
   const [angles, setAngles] = useState<string[]>(["Front"]);
 
-  /* Act five. */
+  /* Act six. */
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [extraWalk, setExtraWalk] = useState(0);
   const [extraAnswered, setExtraAnswered] = useState<Set<string>>(() => new Set());
@@ -828,6 +864,14 @@ export default function FirstRun({
   useEffect(() => () => { alive.current = false; }, []);
 
   const chosen = useMemo(() => packs.filter((p) => mods.includes(p.key)), [packs, mods]);
+
+  /* Their question, and the questions on offer for it. `aimList` is ordered by
+     what this person's own conditions reach for first — the aims themselves
+     are the same five for everybody, because the thing somebody wants out of a
+     journal turns out to have very little to do with which organ it is
+     about. */
+  const aim = useMemo(() => aimById(aimId), [aimId]);
+  const aimList = useMemo(() => aimsFor(mods), [mods]);
 
   /* Every 1–10 question the chosen packs bring, de-duplicated, headline first.
      The main number is a default with an escape hatch, not an interrogation:
@@ -904,16 +948,33 @@ export default function FirstRun({
   /* Which extras start ticked: the ones this person's own conditions reach
      for. Recomputed while `picked` is still null so that going back a step and
      changing a pack updates it, and frozen the moment they touch one. */
+  /* The order the extras are held up in: the ones their own question needs
+     first, everything else after. Same list, same count, same cards — but the
+     first thing somebody is asked about is the thing they said they came for,
+     rather than whatever happens to be at the top of a catalogue written years
+     before they arrived. */
+  const walkExtras = useMemo(() => {
+    const wanted = new Set(aim?.needs.extras || []);
+    if (!wanted.size) return extras;
+    return [...extras.filter((e) => wanted.has(e.id)), ...extras.filter((e) => !wanted.has(e.id))];
+  }, [extras, aim]);
+
   const suggestedExtras = useMemo(() => {
     const out = new Set<string>();
+    const wanted = new Set(aim?.needs.extras || []);
     for (const e of extras) {
-      if ((e.suggest || []).some((m) => mods.includes(m))) out.add(e.id);
+      /* Two reasons an extra can arrive ticked: the conditions somebody picked
+         reach for it, or the question they said they came to answer cannot be
+         answered without it. The second is the stronger of the two — a person
+         who said "find what sets it off" and is then not offered a food log
+         has been asked their question and ignored. */
+      if (wanted.has(e.id) || (e.suggest || []).some((m) => mods.includes(m))) out.add(e.id);
     }
     return out;
-  }, [extras, mods]);
+  }, [extras, mods, aim]);
   const chosenExtras = picked ?? suggestedExtras;
 
-  /* ---------- act four: what is worth a photograph ----------
+  /* ---------- act five: what is worth a photograph ----------
 
      What the packs *suggest*, which is as far as this goes. The extras act
      pre-ticks its suggestions and is right to: a bowel log is a switch, and a
@@ -929,15 +990,16 @@ export default function FirstRun({
      an empty answer as a finished one rather than as an unfilled form. */
   const suggestedSubjects = useMemo(() => {
     const out = new Set<string>();
+    const wanted = new Set(aim?.needs.subjects || []);
     for (const sub of photoSubjects) {
-      if ((sub.suggest || []).some((m) => mods.includes(m))) out.add(sub.id);
+      if (wanted.has(sub.id) || (sub.suggest || []).some((m) => mods.includes(m))) out.add(sub.id);
     }
     /* A body map is no use to somebody tracking migraines. Where the packs
        don't photograph body areas, the map subject is dropped from the
        suggestion even if a pack asked for it. */
     if (!BodyMap || !chosen.some((p) => p.photoKind === "skin")) out.delete("areas");
     return out;
-  }, [photoSubjects, mods, chosen, BodyMap]);
+  }, [photoSubjects, mods, chosen, BodyMap, aim]);
   /* Not `?? suggestedSubjects`. Nothing is chosen until it is chosen. */
   const chosenSubjects = photoPicked ?? EMPTY;
 
@@ -1002,7 +1064,7 @@ export default function FirstRun({
   );
 
   /* Any 1–10 the packs brought can be the main number. It does not have to
-     have survived act three, because `enabled` adds whatever the main number
+     have survived act four, because `enabled` adds whatever the main number
      is: choosing one here is the same act as switching it on. */
   const metricChoices = useMemo(() => scales.slice(0, 6), [scales]);
 
@@ -1111,7 +1173,7 @@ export default function FirstRun({
     });
   };
 
-  /* ---------- act three: one group of questions at a time ----------
+  /* ---------- act four: one group of questions at a time ----------
 
      One section on the screen at a time, its shape said out loud, its rows
      big enough to read on a phone held one-handed, and a running total of
@@ -1167,7 +1229,7 @@ export default function FirstRun({
     setWriting(false);
   };
 
-  /* ---------- act four: one subject at a time ----------
+  /* ---------- act five: one subject at a time ----------
 
      Not a list of tickboxes with an opinion baked into it: one subject held
      up at a time, what it is, what it turns out to be worth, and a Yes beside
@@ -1227,7 +1289,7 @@ export default function FirstRun({
     });
   };
 
-  /* ---------- act five: one thing a day holds at a time ----------
+  /* ---------- act six: one thing a day holds at a time ----------
 
      The extras used to be five rows with the app's suggestions already ticked,
      which is defensible — a bowel log is a switch, and a switch somebody
@@ -1301,7 +1363,12 @@ export default function FirstRun({
     setAct("born");
   };
 
-  const finish = () => {
+  /* Where the app opens, and whether a key reached the device, are both
+     arguments rather than reads of state: the import path connects an AI and
+     finishes in the same gesture, and `aiOn` has not landed by the time the
+     callback that connected it runs. Passing the fact beats waiting a frame
+     for the fact to arrive. */
+  const finish = (startWith: "dashboard" | "import" = "dashboard", ai = aiOn) => {
     feedback("complete");
     onComplete({
       name: name.trim(),
@@ -1320,7 +1387,9 @@ export default function FirstRun({
       spots: wantsSpots ? spots : [],
       reminder,
       cadence,
-      ai: aiOn,
+      ai,
+      aim: aimId,
+      startWith,
     });
   };
 
@@ -1491,7 +1560,7 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act two: the only question ---------- */
+  /* ---------- act two: the only question that cannot be defaulted ---------- */
 
   if (act === "focus") {
     const shown = showAllPacks ? packs : packs.slice(0, 6);
@@ -1542,7 +1611,7 @@ export default function FirstRun({
         </div>
 
         <div className="fhj-fr-foot">
-          <button type="button" onClick={() => go("tune")} disabled={!mods.length}
+          <button type="button" onClick={() => go("aim")} disabled={!mods.length}
             className="fhj-fr-primary">
             <span>{mods.length ? "Continue" : "Pick what you're tracking"}</span>
             {mods.length ? <Icon name="right" size={17} color={C.onAccent} /> : null}
@@ -1553,7 +1622,129 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act three: what it will ask you ----------
+
+  /* ---------- act three: the question they came with ----------
+
+     The screen this flow was missing.
+
+     Everything before it establishes *what* somebody tracks, which is the part
+     an app can guess at. Nothing anywhere asked *why*, and the why is the only
+     fact on this screen worth tailoring around. Two people both pick Eczema:
+     one wants to know what sets it off, the other wants to know whether the
+     cream she started in January is doing anything. Those are two different
+     journals — different extras, different photographs, a different first
+     suggestion — and until this screen existed they got the same one.
+
+     Three things make it a decision rather than a survey question:
+
+     - **It answers back with machinery, not encouragement.** Picking one opens
+       what the app will actually *do* about it: the comparison it will run,
+       the buttons that arrive suggested two screens from now, and the date the
+       first answer can appear. Nothing here says "great choice".
+     - **Nothing is switched on by it.** Every suggestion it makes is still a
+       card somebody has to say yes to, one at a time, on the screens after
+       this. An aim moves the app's opinion; it never moves their hand.
+     - **"Nothing in particular" is on the screen, last, unpunished.** Somebody
+       who wants a record and no theories is not a failure of onboarding, and
+       the plan at the end works just as well for them. */
+
+  if (act === "aim") {
+    /* What an aim would suggest, as the names this person is about to meet on
+       the screens after this — a button they will be offered, or a camera
+       subject. The two are drawn apart by the mark rather than by a word:
+       "Meals & drinks" beside "Meals" is a puzzle, and "Meals & drinks" beside
+       a camera is a sentence. */
+    const named = (ids: string[], all: { id: string; label: string }[], icon?: string) =>
+      ids
+        .map((id) => all.find((x) => x.id === id))
+        .filter(Boolean)
+        .map((x) => ({ key: `${icon || "e"}|${x!.id}`, label: x!.label, icon }));
+
+    return (
+      <div className="fhj-fr" ref={actRef}>
+        <div className="fhj-fr-act">
+          <StepRail index={1} />
+          <h1 className="fhj-fr-display is-small" data-act-block>
+            {first ? `${first}, what do you want to find out?` : "What do you want to find out?"}
+          </h1>
+          <p className="fhj-fr-sub" data-act-block>
+            Almost nobody starts one of these for the sake of it. Whatever brought you here is
+            a question, and if the app knows which one it can point the next four screens at it.
+          </p>
+
+          <div className="fhj-fr-aims" data-act-block role="group" aria-label="What you want to find out">
+            {aimList.map((a) => {
+              const on = aimId === a.id;
+              const wants = [
+                ...named(a.needs.extras, extras),
+                ...named(a.needs.subjects, photoSubjects, "camera"),
+              ];
+              return (
+                <button key={a.id} type="button" aria-pressed={on}
+                  onClick={() => { feedback("select"); setAimId(on ? null : a.id); }}
+                  className={"fhj-fr-aim" + (on ? " is-on" : "")}>
+                  <span className="fhj-fr-aim-top">
+                    <span className="fhj-fr-aim-mark">
+                      <Icon name={on ? "check" : a.icon} size={15} color={on ? C.onAccent : C.sub} />
+                    </span>
+                    <span className="fhj-fr-aim-name">{a.label}</span>
+                  </span>
+                  <span className="fhj-fr-aim-blurb">{a.blurb}</span>
+
+                  {/* The consequence, drawn the moment it exists. This is the
+                      same rule the rest of the flow follows — a name changes
+                      the greeting, a question changes the seconds-a-day — and
+                      it is the whole difference between choosing something and
+                      being asked a personality question. */}
+                  {on && (
+                    <span className="fhj-fr-aim-open">
+                      {a.question && (
+                        <span className="fhj-fr-aim-quote">“{a.question}”</span>
+                      )}
+                      <span className="fhj-fr-aim-promise">{a.promise}</span>
+                      {wants.length > 0 && (
+                        <span className="fhj-fr-aim-wants">
+                          <span className="fhj-fr-eyebrow">What it will suggest</span>
+                          <span className="fhj-fr-aim-chips">
+                            {wants.map((w) => (
+                              <span key={w.key} className="fhj-fr-aim-chip">
+                                {w.icon && <Icon name={w.icon} size={10} color={C.accentText} />}
+                                {w.label}
+                              </span>
+                            ))}
+                          </span>
+                        </span>
+                      )}
+                      <span className="fhj-fr-aim-when">
+                        <Icon name="trends" size={12} color={C.accentText} />
+                        <span>{readyLine(a, cadence)}</span>
+                      </span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="fhj-fr-hint" data-act-block>
+            One answer, and it is not a contract: this changes what gets suggested, never what
+            gets switched on. You say yes to every question, photograph and button yourself, one
+            card at a time, on the screens after this.
+          </p>
+        </div>
+
+        <div className="fhj-fr-foot">
+          <button type="button" onClick={() => go("tune")} className="fhj-fr-primary">
+            <span>{aim ? "Continue" : "Skip this one"}</span>
+            <Icon name="right" size={17} color={C.onAccent} />
+          </button>
+          <button type="button" className="fhj-fr-ghost" onClick={() => go("focus", true)}>Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- act four: what it will ask you ----------
 
      A catalogue of forty questions in six folds, on a phone, arriving
      pre-answered, is not a choice — it is a scroll, and a check-in nobody
@@ -1573,6 +1764,23 @@ export default function FirstRun({
     const [sec, qs] = done ? ["", [] as FirstRunQuestion[]] : walkCards[walkAt];
     const onCount = qs.filter((q) => enabled.has(q.k)).length;
     const suggestCount = qs.filter((q) => q.quick && q.k !== activeMetric).length;
+    /* The questions on this card that bear on the thing they said they came to
+       find out. Marked rather than ticked — the whole act exists so that every
+       question in somebody's check-in got there by a tap — but marked, because
+       a person who told the app their question two screens ago and is now
+       scrolling past the answer to it has been failed by the app rather than
+       by themselves.
+
+       Rows are matched on their own words alone, and the *group* is matched
+       separately. That split is the difference between a mark and a
+       highlighter: a section called Lifestyle matches the trigger-hunter's
+       vocabulary, and tagging all six of its rows because of the heading above
+       them marks nothing at all — six identical badges is a pattern, and a
+       pattern is wallpaper. So when the whole group qualifies, the group says
+       so once, in a sentence, and the rows are left alone. */
+    const aimRows = aim ? qs.filter((q) => q.k !== activeMetric && answersAim(aim, { label: q.label })) : [];
+    const aimGroup = !!aim && answersAim(aim, { label: sec });
+    const aimQs = aimRows.length && aimRows.length < qs.length ? aimRows : [];
 
     const lead = onCount === 0
       ? (suggestCount
@@ -1585,7 +1793,7 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={1} note={done ? "Anything of your own, in your own words." : undefined} />
+          <StepRail index={2} note={done ? "Anything of your own, in your own words." : undefined} />
 
           {/* Which card of this act, drawn once. The words it used to be
               written out as live on the element rather than under it — see
@@ -1701,6 +1909,21 @@ export default function FirstRun({
                 {shapeOf(qs)} {lead}
               </p>
 
+              {aim && (aimQs.length > 0 || aimGroup || aimRows.length === qs.length) && (
+                <div className="fhj-fr-aimnote" data-act-block>
+                  <span className="fhj-fr-aimnote-mark">
+                    <Icon name={aim.icon} size={12} color={C.accentText} />
+                  </span>
+                  <span>
+                    {aimQs.length === 1
+                      ? <>One of these bears directly on <b>{aim.label.toLowerCase()}</b> — it's marked below.</>
+                      : aimQs.length > 1
+                        ? <>{aimQs.length} of these bear directly on <b>{aim.label.toLowerCase()}</b> — they're marked below.</>
+                        : <>This whole group bears on <b>{aim.label.toLowerCase()}</b> — which is why it is here, not a reason to keep all of it.</>}
+                  </span>
+                </div>
+              )}
+
               <div className="fhj-fr-walkqs" data-act-block>
                 {qs.map((q) => {
                   const on = enabled.has(q.k);
@@ -1716,7 +1939,12 @@ export default function FirstRun({
                         </span>
                         <span className="fhj-fr-wq-label">
                           {q.label}
-                          {usual && !on && <span className="fhj-fr-extra-tag">most people keep this</span>}
+                          {aimQs.includes(q) && (
+                            <span className="fhj-fr-extra-tag is-aim">your aim</span>
+                          )}
+                          {usual && !on && !aimQs.includes(q) && (
+                            <span className="fhj-fr-extra-tag">most people keep this</span>
+                          )}
                         </span>
                         <MiniControl type={q.type} />
                       </span>
@@ -1768,7 +1996,7 @@ export default function FirstRun({
           </button>
           <div className="fhj-fr-foot-row">
             <button type="button" className="fhj-fr-ghost"
-              onClick={() => (walkAt > 0 ? walkTo(walkAt - 1, true) : go("focus", true))}>
+              onClick={() => (walkAt > 0 ? walkTo(walkAt - 1, true) : go("aim", true))}>
               Back
             </button>
           </div>
@@ -1777,7 +2005,7 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act four: what is worth a photograph ----------
+  /* ---------- act five: what is worth a photograph ----------
 
      The old flow asked "photos?" as one tick among six, and then guessed: a
      body map if the pack looked like skin, one front-on progress shot if it
@@ -1821,7 +2049,7 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={2} note={detail ? "One more detail about this one." : undefined} />
+          <StepRail index={3} note={detail ? "One more detail about this one." : undefined} />
 
           <div className="fhj-fr-walkbar" data-act-block role="group"
             aria-label={`Subject ${at + 1} of ${total}`}>
@@ -1912,9 +2140,11 @@ export default function FirstRun({
               )}
 
               <p className="fhj-fr-hint" data-act-block>
-                {suggested
-                  ? `People tracking ${trackingWords} usually keep this one — which is a suggestion, not a decision. `
-                  : ""}
+                {aim && aim.needs.subjects.includes(sub.id)
+                  ? `You said you want to ${aim.label.toLowerCase()} — this is the one that shows it. Still a suggestion, not a decision. `
+                  : suggested
+                    ? `People tracking ${trackingWords} usually keep this one — which is a suggestion, not a decision. `
+                    : ""}
                 {sub.kind === "spots"
                   ? "Say yes and the next screen is a body map to pin the exact areas on. "
                   : sub.kind === "progress"
@@ -1997,7 +2227,7 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act five: what else it should keep ----------
+  /* ---------- act six: what else it should keep ----------
 
      A day holds more than a number and a photograph, and every one of the
      things it can hold turns into a one-tap button on somebody's home screen.
@@ -2016,8 +2246,8 @@ export default function FirstRun({
   if (act === "extras") {
     const total = extras.length + 2;
     const at = extraAt;
-    const stage = at < extras.length ? "extra" : at === extras.length ? "cadence" : "nudge";
-    const e = stage === "extra" ? extras[at] : null;
+    const stage = at < walkExtras.length ? "extra" : at === walkExtras.length ? "cadence" : "nudge";
+    const e = stage === "extra" ? walkExtras[at] : null;
     const on = e ? chosenExtras.has(e.id) : false;
     const answered = e ? extraAnswered.has(e.id) : false;
     const suggested = e ? suggestedExtras.has(e.id) : false;
@@ -2026,7 +2256,7 @@ export default function FirstRun({
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={3} />
+          <StepRail index={4} />
 
           <div className="fhj-fr-walkbar" data-act-block role="group"
             aria-label={`Extra ${at + 1} of ${total}`}>
@@ -2050,7 +2280,16 @@ export default function FirstRun({
 
               {suggested && (
                 <p className="fhj-fr-hint" data-act-block>
-                  Suggested for what you track — which is a suggestion, not a decision.
+                  {/* Where the aim is the reason, the reason is said. "Suggested
+                      for what you track" is true of a pack's own opinion and
+                      wrong here: this one is on the screen because of a
+                      sentence this person typed nothing into and chose two
+                      acts ago, and being told which of their own answers is
+                      talking is the difference between a suggestion and an
+                      app that has opinions about them. */}
+                  {aim && aim.needs.extras.includes(e.id)
+                    ? `You said you want to ${aim.label.toLowerCase()} — this is most of how. Still a suggestion, not a decision.`
+                    : "Suggested for what you track — which is a suggestion, not a decision."}
                 </p>
               )}
 
@@ -2161,14 +2400,14 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act six: the first entry ---------- */
+  /* ---------- act seven: the first entry ---------- */
 
   if (act === "entry") {
     const ask = metric?.ask || (metric ? `${metric.label} today?` : "How is today?");
     return (
       <div className="fhj-fr" ref={actRef}>
         <div className="fhj-fr-act">
-          <StepRail index={4} />
+          <StepRail index={5} />
           <h1 className="fhj-fr-display is-small" data-act-block>{ask}</h1>
 
           {/* This card is the thing that flies. It is laid out here exactly as
@@ -2246,11 +2485,138 @@ export default function FirstRun({
     );
   }
 
-  /* ---------- act seven: the journal begins ---------- */
+  /* ---------- the last card: bringing in what is already written ----------
 
-  /* The three beats, said back in terms of what this person actually set up.
-     Generic copy here would be the one place in the flow where the app stops
-     talking to them and starts talking to everybody. */
+     Offered from the end of the flow rather than dropped into the middle of
+     it, and never as a step somebody has to get past.
+
+     Almost nobody arrives at a health journal having tracked nothing. It is in
+     a notes file, a chat with themselves, a photograph of a page in a
+     notebook — months of shorthand that this app can already read into meals,
+     doses, numbers and notes *on the dates the notes themselves give*. The
+     difference between a journal that opens with one day in it and one that
+     opens with ninety is not a nicety: a trend needs days, and days are the
+     one thing that cannot be acquired retrospectively by trying harder.
+
+     So the offer is made once, in the only place it can be made honestly —
+     after there is a journal to import into — and it is completely truthful
+     about the cost: this is the one feature in the app that sends somebody's
+     own writing anywhere, it needs the AI connection to exist at all, and
+     every proposed row is shown beside the words it came from before a single
+     one is written. "Not now" opens the journal and leaves the door in
+     Settings, where it always was. */
+
+  if (act === "bring") {
+    const canConnect = !aiOn && !!aiOffers?.import;
+    return (
+      <div className="fhj-fr" ref={actRef}>
+        <div className="fhj-fr-act">
+          <div className="fhj-fr-eyebrow" data-act-block>One day on the record</div>
+          <h1 className="fhj-fr-display is-small" data-act-block>
+            You don't have to start from nothing.
+          </h1>
+          <p className="fhj-fr-sub" data-act-block>
+            If you have been keeping this somewhere already — a notes file, a chat with yourself,
+            a photograph of a page — hand it over and it gets read into meals, doses, numbers and
+            notes, on the dates and times your own notes give. Not today's date. Theirs.
+          </p>
+
+          {/* The argument, made rather than described: four lines of the
+              shorthand people actually keep, and the rows they become. Nobody
+              believes this from a sentence. */}
+          <div className="fhj-fr-import" data-act-block>
+            <div className="fhj-fr-import-side">
+              <div className="fhj-fr-eyebrow">What you have</div>
+              <div className="fhj-fr-import-raw">
+                {["8.21 weight 12pm 182",
+                  "8.21 food, 2.5 hamburger, havarti",
+                  "2acv premeal + 2 pepsin 12:30pm",
+                  "8.21 4pm bm, small firm sank"].map((l) => (
+                    <span key={l}>{l}</span>
+                  ))}
+              </div>
+            </div>
+            <div className="fhj-fr-import-side">
+              <div className="fhj-fr-eyebrow">What it becomes</div>
+              <div className="fhj-fr-import-rows">
+                {[["target", "Weight · 182 lb", "21 Aug, 12:00"],
+                  ["food", "Hamburger, havarti", "21 Aug, lunch"],
+                  ["pill", "ACV ×2, pepsin ×2", "21 Aug, 12:30"],
+                  ["bowel", "Movement · small, firm", "21 Aug, 16:00"]].map(([icon, label, when]) => (
+                    <span key={label} className="fhj-fr-import-row">
+                      <span className="fhj-fr-import-mark">
+                        <Icon name={icon} size={11} color={C.accentText} />
+                      </span>
+                      <span className="fhj-fr-import-label">
+                        <b>{label}</b>
+                        <span>{when}</span>
+                      </span>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          <ul className="fhj-fr-why" data-act-block>
+            {[
+              ["eye", "You approve every single row",
+                "Every proposal is listed beside the words it came from, every one can be switched off, every date can be corrected. Nothing is written until you press the button at the bottom."],
+              ["link", "This is the one that sends your writing",
+                "Reading shorthand is the whole job, so the text itself has to go. It lists the entire payload first, every time, before anything leaves — and it needs the optional AI connection, on your own free key."],
+              ["note", "Your words are copied, not improved",
+                "Nothing is rewritten, tidied or interpreted. A row it was unsure about arrives marked unsure, with the assumption it made."],
+            ].map(([icon, title, body]) => (
+              <li key={title}>
+                <span className="fhj-fr-why-mark"><Icon name={icon} size={13} color={C.accentText} /></span>
+                <span>
+                  <b>{title}</b>
+                  <span>{body}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="fhj-fr-foot">
+          <button type="button" className="fhj-fr-primary"
+            onClick={() => { if (canConnect) { feedback("nav"); setAiOffer("import"); } else finish("import"); }}>
+            <span>{canConnect ? "Set it up and bring them in" : "Bring my notes in"}</span>
+            <Icon name="right" size={17} color={C.onAccent} />
+          </button>
+          <button type="button" className="fhj-fr-ghost" onClick={() => finish()}>
+            Not now — open my journal
+          </button>
+        </div>
+
+        {/* Its own connection sheet rather than the shared one: the yes this
+            offer is about is "and then take me straight there", so connecting
+            finishes the flow into the import screen in a single gesture. The
+            key has not reached `aiOn` by the time this callback runs, which is
+            why the fact is passed rather than read. */}
+        {aiOffer === "import" && aiOffers?.import && (
+          <AiConnect
+            Icon={Icon}
+            copy={aiOffers.import}
+            onConnected={() => { setAiOn(true); setAiOffer(null); finish("import", true); }}
+            onDismiss={() => setAiOffer(null)} />
+        )}
+      </div>
+    );
+  }
+
+  /* ---------- act eight: the journal begins ---------- */
+
+  /* What a day of this journal actually holds, said back in terms of what this
+     person set up. Generic copy here would be the one place in the flow where
+     the app stops talking to them and starts talking to everybody. */
+  /* How often they said it should ask, in the words the plan needs it in —
+     "every day", "three days a week". The label on the card is a heading; this
+     is the same fact as an adverb. */
+  const cadenceWord = ({
+    daily: "every day", alternate: "every other day", thrice: "three days a week",
+    weekly: "once a week",
+  } as Record<string, string>)[cadence] || "";
+
   const keptLine = (): string => {
     const bits: string[] = [];
     if (chosenExtras.has("food")) bits.push("meals");
@@ -2261,6 +2627,15 @@ export default function FirstRun({
     bits.push("notes");
     return bits.slice(0, 4).join(", ");
   };
+
+  /* Dated from today, on their own cadence, against the same evidence ladder
+     the insights and the experiments are graded on. Nothing here is a
+     marketing horizon: if it says the first pattern can show on the 12th, that
+     is twelve days of answers at one a day, and the app will still refuse to
+     say anything on the 11th. */
+  const plan = horizon({
+    aim, cadence, photos: photosOn, metricLabel: metric?.label,
+  });
 
   return (
     <div className="fhj-fr" ref={bornRef}>
@@ -2274,7 +2649,7 @@ export default function FirstRun({
           <div className="fhj-fr-tl-row">
             <span className="fhj-fr-tl-dot" data-tl-dot aria-hidden="true"
               style={{ background: score != null ? ramp(score, metric?.dir) : C.accent }} />
-            {/* Where the card lands. Identical markup to the one in act five,
+            {/* Where the card lands. Identical markup to the one in act seven,
                 which is what makes the flight read as one object moving. */}
             <div className="fhj-fr-card is-landed" ref={landingRef}>
               <div className="fhj-fr-card-head">
@@ -2313,31 +2688,74 @@ export default function FirstRun({
             {first ? `Your journal has begun, ${first}.` : "Your journal has begun."}
           </h1>
           <p className="fhj-fr-sub" data-tl-line>
-            Keep going and it answers what memory cannot.
+            {aim && aim.question
+              ? <>You came with a question — <b style={{ color: C.ink }}>“{aim.question}”</b> Here is when
+                  this journal can start answering it.</>
+              : <>Keep going and it answers what memory cannot. Here is what that looks like, at the
+                  rate you chose.</>}
           </p>
-          <ol className="fhj-fr-beats">
-            {[
-              ["spark", "How you felt",
-                `${metric?.label || "One number"} — ${checkInTimeLabel(seconds)} a day`],
-              ["note", "What happened", keptLine()],
-              ["trends", "What changed", "trends, flares, a page for your doctor"],
-            ].map(([icon, title, sub]) => (
-              <li key={title} data-tl-line>
-                <span className="fhj-fr-beat-mark"><Icon name={icon} size={13} color={C.accentText} /></span>
-                <span>
-                  <b>{title}</b>
-                  <span>{sub}</span>
+
+          {/* One line for what a day of this costs, before three for what it
+              pays. The cost is the thing they can check tomorrow morning; the
+              dates are the thing they came for. */}
+          <div className="fhj-fr-holds" data-tl-line>
+            <span className="fhj-fr-holds-mark">
+              <Icon name="spark" size={12} color={C.accentText} />
+            </span>
+            <span>
+              {/* "about 5 seconds a day every day" is what happens when the
+                  cost and the cadence are both spelled out for a daily
+                  journal. On every other cadence they are two different facts
+                  and both are worth having. */}
+              <b>{metric?.label || "One number"}</b>, {checkInTimeLabel(seconds)}
+              {cadence === "daily" ? " a day" : ` a check-in, ${cadenceWord}`} — plus {keptLine()}{" "}
+              whenever you want them.
+            </span>
+          </div>
+
+          {/* The plan.
+
+              The single most important paragraph in the whole first run, and
+              the one that was not here. Everything before it describes what
+              the app is; this answers the only question a person actually has
+              at the end of a setup, which is *when does this start being worth
+              it*. Their own rungs, on their own rate, with dates on them —
+              and the middle one worded around what they said they came for. */}
+          <div className="fhj-fr-plan-head" data-tl-line>
+            <span className="fhj-fr-eyebrow">What it will be able to tell you</span>
+          </div>
+          <ol className="fhj-fr-plan">
+            {plan.map((m) => (
+              <li key={m.id} data-tl-line>
+                <span className="fhj-fr-plan-when">
+                  <b>{m.when}</b>
+                  <span>{m.away}</span>
+                </span>
+                <span className="fhj-fr-plan-body">
+                  <b>{m.title}</b>
+                  <span>{m.body}</span>
                 </span>
               </li>
             ))}
           </ol>
+          <p className="fhj-fr-hint" data-tl-line>
+            Those dates assume you keep to {cadenceWord || "the pace you chose"}. Miss some and they
+            move — nothing is lost and nothing is scolded, it simply arrives later. The rungs
+            themselves are the same ones every finding in this app is graded on.
+          </p>
         </div>
       </div>
 
       <div className="fhj-fr-foot">
-        <button type="button" onClick={finish} className="fhj-fr-primary">
+        <button type="button" onClick={() => finish()} className="fhj-fr-primary">
           <span>Open my journal</span>
           <Icon name="right" size={17} color={C.onAccent} />
+        </button>
+        {/* The one offer worth making after the journal exists: months of
+            somebody's own writing, already kept somewhere else, turned into
+            days on this record. See the `bring` act. */}
+        <button type="button" className="fhj-fr-ghost" onClick={() => go("bring")}>
+          I've been tracking this somewhere else already
         </button>
       </div>
     </div>

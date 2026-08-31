@@ -114,15 +114,31 @@ const mondayOf = (date: string) => {
 
 describe("the quiet state — what a slower journal actually buys", () => {
   it("says nothing is due once the week has what it asked for", async () => {
-    /* The sample journal already runs up to yesterday, so this week is in. */
-    await mount((db) => {
-      db.profile.cadence = { unit: "week", n: 1, times: 1, days: [] };
-    });
-    /* The card still opens — a journal you cannot write in because you are
-       ahead of schedule would be absurd — but it stops asking. */
-    const card = await screen.findByRole("button", { name: /Today's check-in/ });
-    expect(card.textContent).toMatch(/This week is in/);
-    expect(card.textContent).toMatch(/Nothing is due/);
+    /* The clock is pinned, and it has to be.
+
+       The state under test is "the week has had its check-in and today has
+       not been touched" — which on a Monday cannot exist at all: the week
+       starts today, so the only day that could have put it in is today, and a
+       day that put the week in is not an untouched one. The sample journal
+       runs up to yesterday, so this passed six days a week and failed every
+       Monday, on a test whose whole subject is which week a day falls in.
+
+       Only Date is faked. Timers stay real, because everything waiting on this
+       screen is waiting on React rather than on the clock. */
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 2, 12, 0, 0));   // a Wednesday
+    try {
+      await mount((db) => {
+        db.profile.cadence = { unit: "week", n: 1, times: 1, days: [] };
+      });
+      /* The card still opens — a journal you cannot write in because you are
+         ahead of schedule would be absurd — but it stops asking. */
+      const card = await screen.findByRole("button", { name: /Today's check-in/ });
+      expect(card.textContent).toMatch(/This week is in/);
+      expect(card.textContent).toMatch(/Nothing is due/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says the week is still open when it is", async () => {

@@ -1,5 +1,100 @@
 # Changelog
 
+## 1.32.0
+
+The setup asks what you came for, and then tells you when it can answer.
+
+### The question the first run never asked
+
+Everything the setup did up to now established *what* you track, which is the
+part an app can guess at. It never once asked *why* — and the why turns out to be
+the only fact on the screen worth building anything around.
+
+Two people both pick Eczema. One wants to know what sets it off. One wants to
+know whether the cream she started in January is doing anything. One wants twelve
+weeks of evidence to put in front of a dermatologist who gets ten minutes. Those
+are three different journals — different buttons, different photographs, a
+different first suggestion, a different thing to wait for — and they were all
+getting the same one.
+
+So there is a new act, second of six: **what do you want to find out?** Five
+cards, and the last of them is *nothing in particular — just keep the record*,
+which is a real answer and is never sulked at.
+
+Picking one opens underneath itself and answers with **machinery rather than
+encouragement**: the comparison the app will actually run on your own days, the
+buttons and photo subjects that will arrive suggested two screens from now —
+named, so you meet the consequence of your own answer immediately rather than
+three screens later — and **the date the first answer can exist at all**.
+Nothing on it says "great choice".
+
+**An aim moves the app's opinion. It never moves your hand.** Every question,
+every photograph and every button in this journal is still a card you say yes to,
+one at a time, exactly as before. What changes is what gets offered first, and
+which rows on the question cards carry a small mark reading *your aim* —
+because somebody who told the app their question two screens ago and is then left
+to scroll past the answer to it has been failed by the app rather than by
+themselves. Where a whole group qualifies, the group says so once in a sentence
+and the rows are left alone: six identical badges is a pattern, and a pattern is
+wallpaper.
+
+### "Keep going and it will be worth it" is not an answer to "when?"
+
+The last screen of the setup made a promise about the future and then declined to
+date it. It ends on **three dated rungs** now — your first week, twelve days on
+the record, thirty days across a few different weeks — each carrying what becomes
+possible there, worded around the question you said you came with.
+
+The dates are arithmetic you could check by hand. The rungs are the same ones
+every finding in this app is already graded on; the pace is the cadence you chose
+two screens earlier, so choosing *once a week* moves every date on the screen
+rather than being quietly ignored. And it says out loud what happens if you miss
+some: they move, nothing is lost, and nothing is scolded.
+
+The same arithmetic comes back on **Insights in week one** — the screen where a
+new journal correctly has nothing to show. *Nothing stands out yet* is now
+followed by how many more check-ins and when, and by the question you started
+this to answer, instead of by "keep logging and they'll show up on their own".
+
+### Nobody has to start from nothing
+
+Almost everybody who tracks anything seriously was already tracking it before
+they found this app — a notes file, a chat with themselves, a photograph of a
+page. The app has been able to read all of that into meals, doses, numbers and
+notes *on the dates the notes themselves give* for a while now, and it lived
+behind a button in Settings, which is exactly where somebody in their first week
+will not look.
+
+So the last card of the first run offers it, once: four lines of real shorthand
+beside the rows they become. It is honest about the price in the same breath —
+this is the one feature in the app that sends your own writing anywhere, it needs
+the optional AI connection, and you approve every proposed row beside the words
+it came from before one of them is written. Say yes and the app opens on that
+screen rather than on an empty dashboard, with the tour waiting for you at the
+dashboard rather than skipped. *Not now* opens the journal exactly as it would
+have been.
+
+A journal that starts with one day when it could have started with ninety is the
+largest thing this flow can still do for somebody, because days are the one thing
+that cannot be acquired later by trying harder.
+
+### Smaller things
+
+- **The suggestion says whose idea it was.** An extra or a photo subject on the
+  screen because of your aim now says so — *you said you want to find what sets
+  it off* — rather than the pack's generic *suggested for what you track*.
+- **The extras are asked in your order.** The thing your own question needs is
+  the first one held up, rather than whatever sat at the top of a catalogue
+  written years before you arrived.
+- **The rail fits six.** Its labels were sized for five segments and ellipsised
+  three of six; an indicator nobody can read ahead on is not one.
+- **A badge never breaks across two lines.** *MOST PEOPLE KEEP / THIS* was a
+  badge that had stopped being one.
+- **A weekly-cadence test could not pass on a Monday.** It asserted the state
+  "the week has had its check-in and today is untouched", which on the first day
+  of a week cannot exist; the clock is pinned now.
+
+
 ## 1.31.0
 
 Stop waiting for the app.

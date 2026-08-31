@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import { markTourSeen, tourSeen } from "./lib/tour";
+import { aimById, nextRung } from "./lib/aims";
 import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll, questionOut, questionIn, answerLanded } from "./lib/motion";
 import { ThumbNav, EdgeBack } from "./components/ThumbNav";
 import {
@@ -4346,7 +4347,7 @@ function AiSetupWizard({ input, summary, windowLabel, onRun, onClose, setAi }) {
   );
 }
 
-function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer, aiAutoRun = 0 }) {
+function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer, aiAutoRun = 0, profile }) {
   const [keyPresent, setKeyPresent] = useState(null); // null = still checking
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -4366,6 +4367,27 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
   }, [enabled]);
 
   const providerLabel = providerOf(conn?.provider).label;
+
+  /* How far off the next rung is, on this journal's own pace. `have` is days
+     with something on them rather than rows, because that is what every count
+     in this app means by a day — and the cadence is read as the preset the
+     person actually chose, so a three-times-a-week journal is not told it is
+     four days behind a schedule it never agreed to. */
+  const profileAim = aimById(profile?.aim);
+  const have = useMemo(() => loggedDates(entries).size, [entries]);
+  const rung = useMemo(() => (viewer ? null : nextRung({
+    have,
+    cadence: presetIdOf(readCadence(profile)) || "daily",
+    aim: profileAim,
+    metricLabel: getField(tpl, tpl.keyMetric)?.label,
+  })), [have, profile, profileAim, tpl, viewer]);
+  /* Filled against the rung being climbed, not against the whole ladder: a bar
+     that creeps by a thirtieth of itself a day is a bar nobody watches.
+
+     Never in the viewer: "three more check-ins and this can tell you something"
+     is addressed to the person keeping the journal, and the viewer is somebody
+     they handed a file to. */
+  const rungProgress = rung ? Math.min(1, Math.max(0, have / rung.entries)) : 1;
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -4454,8 +4476,34 @@ function PatternsSection({ tpl, entries, insights, ai, setAi, goSettings, viewer
             </Badge>
             <p className="text-sm mt-2.5 leading-relaxed" style={{ color: C.sub }}>
               Nothing stands out yet. These appear once a few weeks of days share enough answers
-              to compare — keep logging and they'll show up on their own.
+              to compare.
             </p>
+            {/* And then the part that was missing. "Keep logging and they'll
+                show up on their own" is true and it is a shrug, and this is the
+                exact screen a new person opens in week one to find out whether
+                any of this was worth it. The setup ended by promising them a
+                date; this is the same arithmetic, run against what the journal
+                actually holds now, so the promise is still on the screen the
+                day they come looking for it. */}
+            {rung && (
+              <div className="fhj-rung">
+                <div className="fhj-rung-bar" aria-hidden="true">
+                  <span style={{ width: `${Math.round(rungProgress * 100)}%` }} />
+                </div>
+                <p className="text-[12.5px] leading-relaxed" style={{ color: C.sub }}>
+                  <b style={{ color: C.ink }}>
+                    {rung.left} more check-in{rung.left === 1 ? "" : "s"} — around {rung.when}
+                  </b>
+                  {" "}takes this journal to {rung.entries} days on the record.{" "}
+                  {rung.body}
+                </p>
+                {profileAim?.question && (
+                  <p className="text-[12px] leading-relaxed mt-1.5" style={{ color: C.subtle }}>
+                    You started this to answer “{profileAim.question}”
+                  </p>
+                )}
+              </div>
+            )}
           </Card>
         ) : (
           insights.map((ins) => (
@@ -5425,7 +5473,7 @@ function InsightsScreen({ profile, entries, episodes = [], openLog, goExport, go
       {/* ---------- Possible Patterns ----------
           The other half of the same idea: what the app noticed without being
           asked, plus optional AI observations. */}
-      <PatternsSection tpl={tpl} entries={entries} insights={insights}
+      <PatternsSection tpl={tpl} entries={entries} insights={insights} profile={profile}
         ai={ai} setAi={setAi} goSettings={goSettings} viewer={viewer} aiAutoRun={aiAutoRun} />
 
       {/* reports entry points */}
@@ -18008,6 +18056,27 @@ const FIRST_RUN_AI_OFFERS = {
     ],
     done: "From now on, a photograph of the plate is most of the entry — check what it wrote and save it.",
   },
+  /* And the offer at the very end, which is a different argument from the two
+     above: not "this saves you typing" but "this is the difference between a
+     journal that starts today and one that starts in March". Reading somebody's
+     own shorthand is the only thing in the app that cannot be done without a
+     model, and it is also the only thing in the app that can hand somebody
+     months of days they have already lived. */
+  import: {
+    eyebrow: "What you have already written",
+    title: "Turn what you already wrote into days on the record",
+    blurb:
+      "Your notes are already a journal — they are just in the wrong shape. Reading "
+      + "“8.21 2acv premeal + 2 pepsin 12:30pm” as two doses at half past twelve on the 21st is "
+      + "the one job here that needs a model, and it is the difference between a journal that "
+      + "starts today and one that starts the day your notes do.",
+    points: [
+      "Paste your notes, or hand over a photograph of the page",
+      "Meals, doses, numbers and notes land on the dates your own notes give",
+      "Every proposed row is listed beside the words it came from, and you approve them",
+    ],
+    done: "Now the notes themselves. Paste them in, look down the list it proposes, and keep what is right.",
+  },
   meal: {
     eyebrow: "Meal photographs",
     title: "Let it read the plate for you",
@@ -18141,6 +18210,12 @@ function buildOnboardProfile(sel) {
 
   return {
     id: "p_self", name: (sel.name || "").trim(), modules: [...sel.modules],
+    /* What this journal was started to find out, as an id from lib/aims.
+       Kept rather than spent: a journal that knows what it was opened for can
+       say so later, and the alternative — asking somebody their question and
+       then forgetting it the moment setup ends — is worse than never having
+       asked. Undefined for anybody who skipped the screen. */
+    aim: sel.aim || undefined,
     /* An age typed once and stored as a number is a number that is wrong a
        year later, on a document whose whole job is to be handed to a
        clinician. The birth year it implies keeps telling the truth. */
@@ -18201,6 +18276,7 @@ function firstRunProfile(choice) {
     birthYear: choice.age ? new Date().getFullYear() - choice.age : undefined,
     customs,
     keyMetric: choice.keyMetric,
+    aim: choice.aim || null,
   });
 
   /* The camera button is earned by having something to point at, not by a
@@ -18229,7 +18305,12 @@ function firstRunProfile(choice) {
   const firstEntry = choice.score != null && choice.keyMetric
     ? { key: choice.keyMetric, value: choice.score, note: choice.note }
     : null;
-  return [profile, "dashboard", firstEntry];
+  /* Where the app opens. Almost everybody lands on the dashboard; somebody who
+     said, on the last card, that they have been keeping this somewhere else
+     already lands on the one screen that turns those notes into months of
+     journal — because an empty dashboard is the wrong answer to "I have three
+     years of this in a text file". */
+  return [profile, choice.startWith === "import" ? "import" : "dashboard", firstEntry];
 }
 
 /* Tappable front-view body map. Person faces the viewer, so their right side
@@ -18611,6 +18692,11 @@ export default function App({ viewer = false }) {
      missing has spent the one piece of goodwill it had. */
   const [tour, setTour] = useState(false);
   const [tourDone, setTourDone] = useState(false);
+  /* A tour owed but not yet payable. Somebody who finished first run by going
+     straight to the import screen has not seen a dashboard, and every stop on
+     the tour points at a control that lives on one. So the debt is held here
+     and settled the first time they arrive home. */
+  const [tourWhenHome, setTourWhenHome] = useState(false);
   /* Which flare the detail screen is showing. Kept here rather than in the URL
      for the same reason every other screen's parameter is: this app has no
      router, and a deep link into a record that may have been deleted on another
@@ -19281,6 +19367,16 @@ export default function App({ viewer = false }) {
     return () => clearTimeout(t);
   }, [justBegan]);
 
+  /* The tour that was owed to somebody who left first run through the import
+     screen. It is paid the first time they reach the dashboard, once, and only
+     if they have never been shown around — the same condition first run itself
+     applies. */
+  useEffect(() => {
+    if (!tourWhenHome || screen !== "dashboard") return;
+    setTourWhenHome(false);
+    if (!tourSeen()) setTour(true);
+  }, [tourWhenHome, screen]);
+
   if (!viewer && lock === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.sub }}>
@@ -19348,11 +19444,19 @@ export default function App({ viewer = false }) {
         return next;
       });
       if (dest === "log") { setLogDate(todayStr()); setLogMode("quick"); setLogPhotos(false); setScreen("log"); }
+      else if (dest === "import") setScreen("import");
       else setScreen("dashboard");
       setJustBegan(true);
       /* One frame after the dashboard, so the tour measures controls that
-         exist. It points at the real screen; there has to be one. */
-      if (dest !== "log" && !tourSeen()) setTour(true);
+         exist. It points at the real screen; there has to be one.
+
+         Somebody who went straight to the import screen has no dashboard to be
+         shown around yet — and every control the tour points at is on it. So
+         the tour waits rather than being skipped: the first time they arrive
+         at the dashboard, having brought their notes in or having thought
+         better of it, it runs then. */
+      if (dest === "import") setTourWhenHome(true);
+      else if (dest !== "log" && !tourSeen()) setTour(true);
     };
 
     return (
@@ -20569,7 +20673,7 @@ export const __internals = {
   rangeForOffset, offsetOfPeriod, minPeriodOffset, ReportScreen,
   DEFAULT_PREFS, LEGACY_PREFS, categoryOf, CATEGORY_META, CATEGORY_ORDER,
   QUICK_ADD_TILES, DEFAULT_QUICK_ADD, defaultQuickAdd, quickAddTile, tileSupported,
-  quickAddContext, resolveQuickAdd, firstRunQuickAdd, FIRST_RUN_EXTRAS, amountWithUnit,
+  quickAddContext, resolveQuickAdd, firstRunQuickAdd, firstRunProfile, FIRST_RUN_EXTRAS, amountWithUnit,
   scaleHaptic, HAPTIC_PATTERNS, HAPTIC_SCALE, HAPTIC_LEVELS,
   /* 1.21 — the parts the suites reach for directly. The screens themselves are
      driven through the app, not mounted in isolation: the point of the release
