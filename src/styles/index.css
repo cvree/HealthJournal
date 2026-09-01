@@ -279,8 +279,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .fhj-btn-block {
   width: 100%;
 }
+/* "Small" is the type and the padding, never the target: a button labelled
+   Start is a button, and one 36px tall was 8px short of being one. */
 .fhj-btn-sm {
-  min-height: 36px;
+  min-height: var(--fhj-tap);
   padding: 0.4375rem 0.8125rem;
   font-size: 0.8125rem;
   border-radius: var(--fhj-radius-sm);
@@ -377,6 +379,40 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   cursor: not-allowed;
 }
 
+/* ---------- the 44px floor ----------
+
+   `--fhj-tap` has said 44px since the first commit and the app applied it as a
+   `min-height`, which is half a rule: a 40px circle in a header, a 36px adjust
+   button beside a dose and a 24px "Manage" over a section are all tall enough
+   in exactly one direction, and a thumb is round.
+
+   Some of those controls cannot simply grow — a header of 44px circles reads
+   as a toolbar, and "Manage" set at 44px is no longer a quiet link. So the
+   *ink* keeps its size and the *target* grows underneath it: an invisible box
+   centred on the control, at least 44px in both directions, taking the tap.
+   Layout, rhythm and weight are untouched; nothing moves; the tap lands.
+
+   `max(100%, ...)` rather than a fixed size, so a control already bigger than
+   the floor is unchanged rather than shrunk to it, and so a wide-but-short
+   button (a "Manage" link, a segmented tab) grows only in the direction it is
+   short. */
+.fhj-tap-floor,
+.fhj-icon-btn,
+.fhj-chip.fhj-chip-sm {
+  position: relative;
+}
+.fhj-tap-floor::after,
+.fhj-icon-btn::after,
+.fhj-chip.fhj-chip-sm::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, var(--fhj-tap));
+  height: max(100%, var(--fhj-tap));
+  transform: translate(-50%, -50%);
+}
+
 /* Bare buttons elsewhere in the app still get the shared press feel. */
 button {
   transition: background-color var(--fhj-quick) ease, color var(--fhj-quick) ease,
@@ -434,7 +470,7 @@ button:active:not(:disabled) {
   gap: 0.4375rem;
   flex: none;
   padding: 0.5rem 0.9375rem;
-  min-height: 42px;
+  min-height: var(--fhj-tap);
   border-radius: var(--fhj-radius-pill);
   background: var(--fhj-faint, #2a2d35);
   border: var(--fhj-bw) solid transparent;
@@ -701,7 +737,7 @@ button:active:not(:disabled) {
 }
 .fhj-segment {
   flex: 1;
-  min-height: 42px;
+  min-height: var(--fhj-tap);
   padding: 0.4375rem 0.5rem;
   border-radius: calc(var(--fhj-radius) - 0.1875rem);
   background: transparent;
@@ -1985,6 +2021,9 @@ button.fhj-section:disabled {
   flex-wrap: wrap;
   gap: 0.4375rem;
 }
+/* Small in ink only — the target underneath is the same 44px as everything
+   else (see `.fhj-tap-floor`). It sits in a row beside a small input, and
+   growing the chip itself would stretch the row around it. */
 .fhj-chip.fhj-chip-sm {
   min-height: 34px;
   padding: 0.25rem 0.625rem;
@@ -3416,7 +3455,7 @@ button.fhj-section:disabled {
 }
 .fhj-seg > button {
   flex: 1;
-  min-height: 38px;
+  min-height: var(--fhj-tap);
   border-radius: 0.5rem;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -3620,24 +3659,35 @@ button.fhj-section:disabled {
    which works under a thumb that is already on the one it wants and does not
    work at all under a pointer that is somewhere else on a laptop screen.
 
+   **Five across, two rows.** Ten across is arithmetically impossible to tap.
+   The shell is 28rem wide and never wider; take the page and card padding off
+   that and a phone hands this control about 288px on a 320px screen, which
+   over ten columns is a 21px rung — half the 44px this app's own `--fhj-tap`
+   says a target is. Nothing about a wider phone rescues it: 390px buys 29px.
+   Five columns is 55px, and the number that gets tapped every morning is
+   finally bigger than the thumb tapping it.
+
+   It is also the shape the Quick Log has always drawn, and having two 1-10
+   scales in one app with two different geometries was its own small tax.
+
    `minmax(0, 1fr)` on the track and `min-width: 0` on the rung are what stop
-   the row from ever overflowing its card: without both, ten items with content
-   refuse to shrink past their own text and the tenth gets clipped by the
+   the row from ever overflowing its card: without both, items with content
+   refuse to shrink past their own text and the last one gets clipped by the
    rounded corner. */
 
 .fhj-scale {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: 0.1875rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.25rem;
 }
 @media (min-width: 400px) {
   .fhj-scale {
-    gap: 0.25rem;
+    gap: 0.3125rem;
   }
 }
 .fhj-scale-rung {
   min-width: 0;
-  height: 2.25rem;
+  min-height: var(--fhj-tap);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3645,7 +3695,7 @@ button.fhj-section:disabled {
   background: var(--fhj-faint, #2a2d35);
   border: 1.5px solid transparent;
   color: var(--fhj-subtle, #9a9ca6);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -3654,8 +3704,7 @@ button.fhj-section:disabled {
 }
 @media (min-width: 900px) {
   .fhj-scale-rung {
-    height: 2.5rem;
-    font-size: 0.75rem;
+    font-size: 0.875rem;
   }
 }
 .fhj-scale-rung.is-filled {
@@ -3982,6 +4031,9 @@ button.fhj-section:disabled {
 /* Skip link: off-canvas until a keyboard reaches it. */
 .fhj-skip {
   position: fixed;
+  min-height: var(--fhj-tap);
+  display: inline-flex;
+  align-items: center;
   left: 50%;
   top: 0;
   transform: translate(-50%, -140%);
@@ -6700,14 +6752,20 @@ button.fhj-section:disabled {
   border-width: var(--fhj-bw-strong);
 }
 
+/* Five across, two rows — the same geometry as every other 1-10 scale in the
+   app, and for the same reason: ten columns inside a 28rem shell is a 21px
+   rung on a 320px phone and a 29px one on a 390px phone, and this is the
+   control the whole product is built around. It is tapped first thing in the
+   morning, one-handed, by somebody who has not woken up yet. It gets 55px. */
 .fhj-pulse-scale {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 0.25rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.375rem;
 }
 
 .fhj-pulse-rung {
   position: relative;
+  min-width: 0;
   min-height: 3.25rem;
   border-radius: var(--fhj-radius-sm);
   font-size: 0.9375rem;
@@ -6724,9 +6782,10 @@ button.fhj-section:disabled {
 .fhj-pulse-rung:active:not(:disabled) {
   transform: translateY(2px);
 }
-/* Everything up to the chosen number fills, so the row reads as a level rather
+/* Everything up to the chosen number fills, so the grid reads as a level rather
    than as ten unrelated buttons — the shape of "6 out of 10" is legible from
-   across a room, before any number is read. */
+   across a room, before any number is read. Wrapped at five it fills the way a
+   page of text does, which is the reading order the eye is already in. */
 .fhj-pulse-rung.is-filled {
   background: color-mix(in srgb, var(--fhj-rung) 26%, transparent);
   border-color: color-mix(in srgb, var(--fhj-rung) 45%, transparent);
@@ -9220,6 +9279,7 @@ button.fhj-section:disabled {
   align-items: center;
   gap: 0.4rem;
   white-space: nowrap;
+  min-height: var(--fhj-tap);
   padding: 0.4rem 0.8rem;
   border-radius: var(--fhj-radius-pill);
   font-size: 12px;
@@ -9290,7 +9350,7 @@ button.fhj-section:disabled {
   align-items: center;
   gap: 0.3rem;
   max-width: 60%;
-  min-height: 40px;
+  min-height: var(--fhj-tap);
   padding: 0 0.9rem 0 0.6rem;
   border-radius: var(--fhj-radius-pill);
   font-size: 12.5px;

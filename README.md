@@ -1324,10 +1324,17 @@ download before any reset, never a silent wipe.
   favourite. It is deliberately *not* offered for the irreversible ones (clearing photos,
   restoring a backup over a journal), which keep their confirmation, because there is nothing to
   undo them with.
-- Every interactive element on every screen was audited for target size and accessible name.
-  Chips and segmented controls are 42px, calendar days and the sheet's Close button 44, and a
-  section heading that is itself a control gets a control's target rather than a heading's line
-  box.
+- **Nothing you tap is smaller than the thumb you tap it with.** `--fhj-tap` is 44px and, as of
+  1.34, it is a floor in *both* directions — the earlier audit checked height and let width
+  through, which is how the 1–10 scale this whole app is built around shipped as a row of 21px
+  slivers on a 320px phone. All three of its scales are five across and two rows down now, the
+  same shape the Quick Log always drew. Controls that could simply grow, grew; the handful whose
+  ink has to stay small — an icon in a header, a "Manage" over a section — keep their size and
+  take the tap on an invisible 44px box centred underneath (`.fhj-tap-floor`), so nothing moved
+  and everything lands. Two things are deliberately exempt and both have a full-size route to
+  the same place: a day cell in the year heatmap, and the arrows that nudge a chip row that also
+  swipes. `tests/tapTargets.test.ts` holds the floor; the measurements behind it came from a real
+  browser at 320px, because jsdom has no layout and would have passed the old code forever.
 - The toast lives above the nav bar rather than at the top of the screen, for the same reason the
   sheet actions moved: the Undo inside it has to be reachable by the thumb that caused it. It
   never takes focus — it reports something that already happened.

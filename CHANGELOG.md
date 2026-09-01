@@ -1,5 +1,123 @@
 # Changelog
 
+## 1.34.0
+
+The number you tap every morning is finally bigger than your thumb.
+
+### The scale was 21 pixels wide
+
+This app is built around one gesture. You open it, you tap a number between 1
+and 10, and the day is on the record. Everything else — the survey, the routine,
+the photos, the charts, a year of history — is optional, and the whole product
+is arranged so that the one thing that is not optional costs a single tap.
+
+That tap was landing on a target 21 pixels wide.
+
+Not by anybody's decision. `--fhj-tap: 44px` has been in the stylesheet since
+the first commit, and the app applied it faithfully — as a `min-height`, and
+only as a `min-height`. So the rungs of the daily scale were 52px tall and,
+because ten of them share a card inside a shell that is 28rem wide and never
+wider, 21px across on a 320px phone and 29px on a 390px one. Tall enough in
+exactly one direction. A thumb is round.
+
+**Measured, not guessed.** These numbers came out of a real browser driven at
+real phone widths, because they had to: jsdom has no layout engine, so every
+test that mounts this app and asks a button how big it is gets a zero back and
+passes. The stylesheet said 44 and the suite agreed with it for eleven releases.
+
+### Ten across cannot be tapped, and it is arithmetic
+
+Take the page and card padding off a 320px screen and this control is handed
+about 288 pixels. Ten columns of that is 21px. Ten columns of a 390px screen is
+29px. There is no phone wide enough to rescue it and there never will be, because
+the shell is capped at 28rem on purpose — a journal read at arm's length is not
+improved by being 1100 pixels wide.
+
+**Five across, two rows down.** Which is 55px, and which is exactly what the
+Quick Log has drawn since the beginning. There were three 1–10 scales in this
+app — the Daily Pulse on Today, the shared one in the Detailed Log and the day
+sheets, and the Quick Log's — and only one of them could be tapped. Now there is
+one shape, and it is the one that was already right.
+
+It still reads as a level. Everything up to the number you chose fills, and
+wrapped at five it fills the way a page of text does — left to right, then down
+— which is the reading order the eye is already in. A 7 is a full row and two
+more. That was legible from across a room before and it is legible now, at two
+and a half times the size.
+
+### Everything else it turned out to be hiding
+
+Once the floor is a floor in both directions, the same sweep finds the rest of
+it, and the rest of it is not nothing:
+
+- **The Detailed Log's chips** — every trigger, every food, "Gluten / wheat",
+  "Ground beef", dozens of them — were 36px tall.
+- **Yes/No**, the second most-answered control in the app, was 36px.
+- **The − and + beside a number** were 36×36.
+- **Every text field** was 42.
+- **Chips and segmented controls everywhere** were 42, which the README has been
+  describing as a considered choice. It was two pixels short of the standard the
+  same repo set, on every filter, meal and metric chip in the product.
+- **The back pill over the nav**, the skip link, the small button variant, the
+  "hold + to go anywhere" coach mark — 40, 40, 36, 33.
+
+All of them now clear 44 in both directions.
+
+### The ones whose ink has to stay small
+
+A header of 44px circles reads as a toolbar. "Manage" set at 44px is no longer a
+quiet link over a section. So for the handful of controls where growing the box
+would change what the control *is*, the ink keeps its size and the target grows
+underneath it: an invisible box, at least 44px each way, centred on the control
+and taking the tap. Layout, rhythm and weight are untouched. Nothing moved on any
+screen. The tap lands.
+
+That is `.fhj-tap-floor`, and it is `max(100%, var(--fhj-tap))` rather than a
+fixed size, so a control already bigger than the floor keeps its own hit area
+instead of being shrunk to fit one.
+
+### Two exemptions, both stated
+
+**A day in the year heatmap** is 6×11 pixels, because a year is 365 days and a
+phone is 320 pixels wide. **The arrows on a scrolling chip row** are 32px and
+float over the row they scroll. Neither can be 44 without becoming a different
+feature, and both have a full-size route to the same place — the heatmap's days
+are also reachable from the calendar and from Search, and the chip row swipes.
+Everything else in the app is 44.
+
+### Under it
+
+- **`.fhj-scale` / `.fhj-scale-rung`** (Detailed Log, day sheets, and the
+  follow-up questions inside the Daily Pulse): `repeat(5, minmax(0, 1fr))`,
+  `min-height: var(--fhj-tap)` in place of a fixed `height: 2.25rem`, numerals up
+  from 11px to 13px now that there is room to read them.
+- **`.fhj-pulse-scale` / `.fhj-pulse-rung`**: five columns, `min-width: 0` so a
+  numeral can never push the grid past its card.
+- **`.fhj-tap-floor`** and the selectors sharing its `::after` — `.fhj-icon-btn`
+  (every 32/36/40px icon button in the app) and `.fhj-chip.fhj-chip-sm`, which
+  sits in a row beside a small input and would stretch it by growing.
+- **Grown to `var(--fhj-tap)`**: `.fhj-chip`, `.fhj-segment`, `.fhj-seg > button`,
+  `.fhj-btn-sm`, `.fhj-thumb-back`, `.fhj-thumb-coach`, `.fhj-skip`, plus the
+  Tailwind one-offs — `ChipsInput`, `ToggleInput`, `TextField`, `NumberInput`'s
+  steppers, the Quick/Detailed switch, and the six small text buttons that carry
+  `fhj-tap-floor` in `App.tsx`.
+- **New `tests/tapTargets.test.ts`** (14): the token is 44, the overlay rule is
+  the overlay rule, all three scales are five across, the named controls declare
+  the floor — and a sweep over the whole stylesheet that fails on *any* new
+  interactive rule declaring a `min-height` between 24 and 43px. Source
+  assertions on purpose, and the file says why.
+- **Tests: 1908 across 74 suites** (was 1894/73).
+
+### One pre-existing failure, fixed on the way past
+
+`tests/experience.test.tsx` asserted that the report's next-period button is
+disabled at the current period, having navigated to the current period by
+switching Week to Month. It is not: the report opens on the best period it can
+find, and a month with fewer than four logged days is not it — so on the 1st,
+2nd or 3rd of any month the test opened on *last* month and failed for a reason
+that had nothing to do with the screen. It pins the clock now, which is the
+second calendar-brittle test in this suite to need it.
+
 ## 1.33.0
 
 One box that finds anything, and an import that reads a paragraph.

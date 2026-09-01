@@ -208,6 +208,14 @@ describe("editable report time frame", () => {
   });
 
   it("report screen navigates periods and toggles week/month", async () => {
+    /* Pinned, because "the current period" is a claim about the calendar.
+       The report opens on the best period it can find, and a month with
+       fewer than four logged days is not it — so on the 1st of any month
+       this test used to open on *last* month and fail an assertion about
+       the next-period button, for a reason that had nothing to do with the
+       screen. Mid-month the sample journal fills the month it is in. */
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 24, 12, 0, 0)); // Thu 24 September 2026
     const db = sample();
     db.profile.reportPrefs = {}; // skip the swipe deck
     render(React.createElement(I.ReportScreen, {
@@ -224,6 +232,7 @@ describe("editable report time frame", () => {
     // next-period button disabled at the current period
     const next = screen.getByLabelText("next period") as HTMLButtonElement;
     expect(next.disabled).toBe(true);
+    vi.useRealTimers();
   });
 
   it("survives the card picker handing off to the report on the very first run", async () => {

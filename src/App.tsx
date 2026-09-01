@@ -1861,7 +1861,7 @@ function ToggleInput({ field, value, onChange, tint, hideLabel = false }) {
     return (
       <button type="button"
         onClick={() => onChange(active ? null : val)}
-        className="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
+        className="min-h-[var(--fhj-tap)] inline-flex items-center justify-center px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
         style={{
           background: active ? (val ? tint : C.subtle) : C.faint,
           color: active ? readableInk(val ? tint : C.subtle) : C.sub,
@@ -1893,7 +1893,7 @@ function ChipsInput({ field, value, onChange, tint, hideLabel = false }) {
           const active = sel.includes(opt);
           return (
             <button key={opt} type="button" onClick={() => toggle(opt)}
-              className="px-3 py-1.5 rounded-full text-sm transition-colors"
+              className="min-h-[var(--fhj-tap)] inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm transition-colors"
               style={{
                 background: active ? tint : C.faint,
                 color: active ? readableInk(tint) : C.ink,
@@ -2087,7 +2087,7 @@ function NumberInput({ field, value, onChange, ghost = null, hideLabel = false }
       {!hideLabel && <span className="text-sm font-medium">{field.label}</span>}
       <div className="flex items-center gap-1.5">
         <button type="button" onClick={() => bump(-1)} aria-label={`decrease ${field.label}`}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
+          className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
           style={{ background: C.faint, color: C.ink }}>−</button>
         <button type="button" onClick={() => { feedback("sheetOpen"); setPad(true); }}
           aria-label={`edit ${field.label}`}
@@ -2096,7 +2096,7 @@ function NumberInput({ field, value, onChange, ghost = null, hideLabel = false }
           {field.unit && <span className="fhj-numtap-unit">{field.unit}</span>}
         </button>
         <button type="button" onClick={() => bump(1)} aria-label={`increase ${field.label}`}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
+          className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-medium shrink-0"
           style={{ background: C.faint, color: C.ink }}>+</button>
       </div>
       {pad && (
@@ -2112,7 +2112,7 @@ function TextField({ field, value, onChange }) {
     <div className="py-3" style={{ borderBottom: `1px solid ${C.line}` }}>
       <div className="text-sm font-medium mb-2">{field.label}</div>
       <input value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}
-        className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+        className="w-full min-h-[var(--fhj-tap)] rounded-xl px-3 py-2 text-sm outline-none"
         style={{ background: C.faint, border: `1px solid ${C.line}` }} />
     </div>
   );
@@ -2857,7 +2857,7 @@ function QuickField({ f, v, set, tint, ghost, deps = [], depValues = {}, skipped
                 const next = active ? sel.filter((o) => o !== opt) : [...sel, opt];
                 set(f.k, next.length ? next : null);
               }}
-                className="px-4 py-2.5 rounded-full text-sm font-medium transition-colors"
+                className="min-h-[var(--fhj-tap)] inline-flex items-center justify-center px-4 py-2.5 rounded-full text-sm font-medium transition-colors"
                 style={{ background: active ? tint : C.faint, color: active ? readableInk(tint) : C.ink }}>{opt}</button>
             );
           })}
@@ -3295,7 +3295,7 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
         {["quick", "detailed"].map((m) => (
           <button key={m} onClick={() => { feedback("tap"); setMode(m); }}
             className="relative flex-1 rounded-full text-[13.5px] font-semibold capitalize"
-            style={{ minHeight: 40, color: mode === m ? C.ink : C.sub, background: "transparent" }}>
+            style={{ minHeight: 44, color: mode === m ? C.ink : C.sub, background: "transparent" }}>
             {m} log
           </button>
         ))}
@@ -3417,7 +3417,7 @@ function LogScreen({ profile, entries, date, setDate, mode, setMode, onPatch, on
                                         <input type="text" value={answers[d.k] ?? ""}
                                           onChange={(e) => set(d.k, e.target.value || null)}
                                           placeholder="Optional — a few words is plenty"
-                                          className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                                          className="w-full min-h-[var(--fhj-tap)] rounded-xl px-3 py-2 text-sm outline-none"
                                           style={{ background: C.faint, border: `1px solid ${C.line}` }} />
                                       </div>
                                     ))}
@@ -6858,7 +6858,7 @@ function AppointmentPackCard({ db, setDb, goPack }) {
   const chip = (active, label, onClick, disabled = false) => (
     <button key={label} onClick={() => { feedback("select"); onClick(); }} disabled={disabled}
       aria-pressed={active}
-      className="px-3 py-1.5 rounded-full text-sm font-medium disabled:opacity-40"
+      className="min-h-[var(--fhj-tap)] inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium disabled:opacity-40"
       style={{ background: active ? C.accent : C.card, color: active ? C.onAccent : C.ink, border: `1px solid ${active ? C.accent : C.line}` }}>
       {label}
     </button>
@@ -7106,7 +7106,7 @@ function ExportScreen({ db, setDb, goPack }) {
 
   const chip = (active, label, onClick, key) => (
     <button key={key || label} onClick={onClick}
-      className="px-3 py-1.5 rounded-full text-sm font-medium"
+      className="min-h-[var(--fhj-tap)] inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium"
       style={{ background: active ? C.accent : C.faint, color: active ? C.onAccent : C.ink }}>
       {label}
     </button>
@@ -14220,7 +14220,7 @@ function DaySummary({ food, goals, items, logs, date, onEditGoals, viewer }) {
           )}
           {!goalRows.length && !calGoal && !viewer && (
             <button onClick={() => { feedback("nav"); onEditGoals(); }}
-              className="text-[11.5px] font-semibold text-left" style={{ color: C.accentText }}>
+              className="fhj-tap-floor text-[11.5px] font-semibold text-left" style={{ color: C.accentText }}>
               Set daily targets
             </button>
           )}
@@ -14383,12 +14383,12 @@ function DiaryScreen({
             {hasRoutine && (
               <button onClick={() => { feedback("tap"); setItemEditor(true); }}
                 aria-label="Add an item to your routine"
-                className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+                className="fhj-tap-floor text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
                 <Icon name="plus" size={12} color={C.accentText} /> Add
               </button>
             )}
             <button onClick={() => { feedback("nav"); goRoutine(); }}
-              className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+              className="fhj-tap-floor text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
               {hasRoutine ? "Manage" : "Set up"}
               <Icon name="right" size={12} color={C.accentText} />
             </button>
@@ -14653,7 +14653,7 @@ function RoutineChecklist({
                   <button type="button"
                     onClick={() => { feedback("save"); onLogRows(pending, g.label); }}
                     aria-label={`Mark all ${pending.length} ${g.label.toLowerCase()} items taken`}
-                    className="text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-full"
+                    className="fhj-tap-floor text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-full"
                     style={{ color: C.accentText, background: C.faint }}>
                     All {pending.length}
                   </button>
@@ -15083,7 +15083,7 @@ function RoutineScreen({ items = [], viewer, onSaveItem, onDeleteItem, goDiary }
           <SectionTitle cat="fhj-cat-routine"
             action={
               <button type="button" onClick={() => { feedback("nav"); goDiary(); }}
-                className="text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
+                className="fhj-tap-floor text-[11px] font-semibold flex items-center gap-0.5" style={{ color: C.accentText }}>
                 Tick things off
                 <Icon name="right" size={12} color={C.accentText} />
               </button>
@@ -17779,7 +17779,7 @@ function DashboardScreen({ profile, entries, openLog, onPatch, addOpen, onCloseA
             <h2 className="fhj-section-title">Quick Add</h2>
             <button onClick={() => { feedback("tap"); setQuickAddEditor(true); }}
               aria-label="Edit which Quick Add buttons are shown"
-              className="text-[11.5px] font-semibold" style={{ color: C.accentText }}>
+              className="fhj-tap-floor text-[11.5px] font-semibold" style={{ color: C.accentText }}>
               Edit
             </button>
           </div>
