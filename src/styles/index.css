@@ -6647,6 +6647,10 @@ button.fhj-section:disabled {
      reason: this is the day still being written. */
   border-color: color-mix(in srgb, var(--fhj-accent, #8fb0e3) 38%, transparent);
   border-width: var(--fhj-bw-strong);
+  /* A stage for the closing wash, which crosses the card once and is gone —
+     see .fhj-seal-wash. */
+  position: relative;
+  overflow: hidden;
 }
 .fhj-today-card.is-complete {
   border-color: color-mix(in srgb, var(--fhj-good, #7fbe9e) 40%, transparent);
@@ -6896,6 +6900,9 @@ button.fhj-section:disabled {
   background: var(--fhj-faint, rgba(255, 255, 255, 0.04));
   border: var(--fhj-bw-strong) solid color-mix(in srgb, var(--fhj-accent, #8fb0e3) 38%, transparent);
   cursor: pointer;
+  /* Same stage as the card on History, for the same one-second wash. */
+  position: relative;
+  overflow: hidden;
 }
 @media (hover: hover) {
   .fhj-checkin:hover {
@@ -7079,6 +7086,97 @@ button.fhj-section:disabled {
   }
   .fhj-checkin-pip.is-on {
     transform: none;
+  }
+}
+
+/* ---------- the day closing ----------
+
+   The wash. One diagonal band of the pack's own colour crossing the card as
+   the day closes, driven entirely by sealDay in lib/motion — it starts
+   invisible, it ends invisible, and under reduced motion it never moves at
+   all. Nothing about the finished card depends on it having happened, which is
+   the rule for anything that is a moment rather than a state.
+
+   On a dark card it is added as *light* rather than laid on as paint, which is
+   the difference between a sweep across the card and a coloured film over the
+   words. On a light one it is left alone: plus-lighter on a pale ground blows
+   the whole card out to white for half a second, which is a flashbulb, not a
+   page closing. */
+.fhj-seal-wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  /* The band itself. `color-mix` rather than an eight-digit hex built in the
+     component, so a pack colour in any notation works and the strength of the
+     wash is a decision that lives here with the rest of the look. */
+  background: linear-gradient(
+    100deg,
+    transparent 8%,
+    color-mix(in srgb, var(--fhj-seal-tint, var(--fhj-accent, #8fb0e3)) 18%, transparent) 46%,
+    transparent 88%
+  );
+}
+[data-theme="dark"] .fhj-seal-wash {
+  mix-blend-mode: plus-lighter;
+}
+
+/* The record behind today.
+
+   Fourteen days, oldest first, and the one on the end is today. It takes the
+   place of the pip row the moment the day closes — see RecordStrip in App and
+   recordStrip in lib/checkin, which is where the rule lives that a blank day
+   is a hairline and nothing more. There is no red here and there never will
+   be: the row is a record of what happened, not a bill for what did not.
+
+   A day with something on it is a solid mark at the good colour. Today, freshly
+   closed, is the full height of the row in the pack's own colour — the newest
+   page, and the only one the eye is asked to find. */
+.fhj-record-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0.375rem, 1fr));
+  align-items: end;
+  gap: 3px;
+  margin-top: 0.5rem;
+  height: 12px;
+}
+
+.fhj-record-mark {
+  display: block;
+  height: 4px;
+  border-radius: var(--fhj-radius-pill);
+  background: var(--fhj-line, rgba(255, 255, 255, 0.08));
+  transition:
+    height 260ms var(--fhj-out),
+    background-color 260ms var(--fhj-out);
+}
+.fhj-record-mark.is-on {
+  height: 8px;
+  background: color-mix(in srgb, var(--fhj-good, #7fbe9e) 55%, transparent);
+}
+.fhj-record-mark.is-today {
+  height: 12px;
+  /* The colour arrives inline — it is the pack's, and the pack chose it. */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fhj-good, #7fbe9e) 30%, transparent);
+}
+
+/* The stamp in the middle of a finished ring. A disc that has been pressed
+   into the page, rather than a tick drawn on top of it. */
+.fhj-ring-stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--fhj-radius-pill);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fhj-record-mark {
+    transition: none;
+  }
+  /* The wash is a GSAP no-op under reduced motion already; this is the
+     belt-and-braces for anything that ever tries to drive it from CSS. */
+  .fhj-seal-wash {
+    display: none;
   }
 }
 

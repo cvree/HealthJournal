@@ -1,5 +1,89 @@
 # Changelog
 
+## 1.35.0
+
+The day closes, and you can see the stack of days behind it.
+
+### The moment this app exists for was drawn as a checkbox
+
+Everything in Bellwether points at one event. You answer the last thing today
+asked for, and the day you were living becomes a day that is written down. That
+is the product. It is why the ring exists, why the pips exist, why the card is
+called *today's check-in* rather than *add more detail*.
+
+Here is what happened when it fired: the ring swapped a numeral for a tick, and
+the sentence under it changed from *One left.* to *Today is fully on the
+record.* No sound, no weight under the thumb, nothing that marked the difference
+between the twelfth answer and the eleventh. A state change, at the visual
+weight of ticking a box on a form, spent on the one moment the whole app is
+arranged to produce.
+
+And it was worse than flat, because it was *anticlimactic in a specific way*:
+the row of marks under the title — the part people actually watch, the thing
+that makes "two left" something you finish rather than something you are told —
+reached its most complete state and became fourteen identical solid blocks. A
+shape that had finished saying anything at the exact moment the card had the
+most to show.
+
+### What it does now, and what it still refuses to do
+
+**A seal.** `sealDay` in `lib/motion.ts`. The card settles once, a wash of the
+pack's own colour crosses it, the tick stamps into the middle of the ring, and
+the days behind today arrive mark by mark. It lasts about as long as closing a
+page, and it fires with `feedback("complete")` — sound, and a weight under the
+thumb on a phone that has a motor.
+
+**It fires on the transition, once.** `complete` is derived from the journal on
+every render, which means it is true for the rest of the day and true again
+tomorrow morning on an app that was finished last night. Neither of those is the
+moment. `useDaySeal` opens its ref at whatever the day already was, so arriving
+on a finished day is silent and only an answer that *closes* the day is an
+event. A receipt played every time you open the app is not a receipt; it is a
+noise you learn to ignore by Thursday.
+
+**The stack of pages.** The pip row is replaced — not joined — by the fortnight
+behind today, with today's mark solid on the end of it. Same visual language,
+one row of marks at a time, and it exists only in the state where the other row
+has nothing left to tell anybody. This is the satisfaction closing a page in a
+paper journal actually gives: nobody said well done, the thing you are making is
+simply visibly thicker than it was.
+
+**What it is not, and will not become.** There is still no badge, no score, no
+streak counted at you and no congratulation. A day the journal has nothing on is
+a hairline in that row and nothing else — no red, no gap count, no "four
+missed". `recordStrip` in `lib/checkin.ts` owns the rule and the tests pin it,
+including the one that matters most: today is marked because the journal holds
+it, not because it is today. A card that draws its own last mark solid
+regardless is a card that would show a finished day on an empty one.
+
+### The parts
+
+- `src/lib/checkin.ts` — `recordStrip(logged, date, days = 14)`, `RECORD_STRIP_DAYS`,
+  `recordStripLine(strip)`. Pure, and asked against the same `loggedDates` set
+  every cadence question in the app uses, so the row can never claim a day the
+  streak does not. The words are a fact about the journal — *3 of the last 14
+  days are on the record.* — and carry the row for anyone who cannot see it.
+- `src/lib/motion.ts` — `sealDay(el)`. A GSAP timeline over `[data-seal-wash]`,
+  `[data-seal-stamp]` and `[data-seal-mark]`; a no-op under reduced motion, like
+  every other entry point in that file.
+- `src/App.tsx` — `useDaySeal(complete, key)`, `SealWash`, `RecordStrip`, and a
+  finished `CheckinRing` that stamps rather than ticks. Both cards use them:
+  the one at the foot of the pulse on Today, and the one at the top of History,
+  because finishing the day from the record is finishing the day.
+- `src/styles/index.css` — `.fhj-seal-wash` (the band built with `color-mix`
+  off a `--fhj-seal-tint` the card sets, so any pack colour works;
+  `plus-lighter` only under `[data-theme="dark"]`, because on a pale card that
+  blend is a flashbulb rather than a page closing), `.fhj-record-strip` /
+  `.fhj-record-mark`, `.fhj-ring-stamp`, and both cards made a stage for the
+  wash. Reduced motion drops the wash entirely.
+- Tests: **1921 across 75 suites**. New `tests/dayClose.test.tsx` (6) pins the
+  transition — fires on the closing answer, silent on a day already finished
+  when you arrived, fires again if you clear the number and answer it a second
+  time — and that the finished card swaps one row of marks for the other rather
+  than showing both. `tests/checkin.test.ts` gains 7 for the row itself,
+  including a month-and-year crossing and the guarantee that it does not flatter
+  today.
+
 ## 1.34.0
 
 The number you tap every morning is finally bigger than your thumb.

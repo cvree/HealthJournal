@@ -408,9 +408,21 @@ What the fraction counts is **what your own setup asked for**: your questions, a
 scheduled for today. A skip counts as answered, because the question a routine row asks is "did
 you deal with this". A photo, a note and a meal are shown beside the ring and never inside it —
 the right number of notes for a Tuesday is not one, it is however many were worth writing, and a
-progress ring in a medical journal is not allowed to invent a target nobody set. Finished, it
-says *All 31 answered. Today is fully on the record* — a statement about the record, not about
-you. There is no badge, no score and no streak counted at you.
+progress ring in a medical journal is not allowed to invent a target nobody set.
+
+**And then the day closes.** Answering the last thing today asked for is the moment this whole
+app is arranged to produce, and it is drawn as one: the card settles, a wash of your pack's own
+colour crosses it, the tick stamps into the middle of the ring, and the row of marks under the
+title is replaced by **the fortnight behind today**, arriving day by day with today's mark solid
+on the end of it. It fires once, on the answer that closes the day — arriving later on a day you
+already finished is silent, because a receipt played every time you open the app is a noise you
+learn to ignore. The line reads *Today is fully on the record* — a statement about the record,
+not about you.
+
+There is still no badge, no score and no streak counted at you, and that row of days is not a
+scoreboard: a day the journal has nothing on is a hairline and nothing else. No red, no gap
+count, no "four missed". The satisfaction is the one closing a page in a paper journal gives —
+nobody said well done, the thing you are making is simply thicker than it was.
 
 **And today is at the top of History**, with the same ring and the same numbers, broken down part
 by part: *Questions 6/27*, *Routine 0/4*, *Photo —*, *Note —*, *Meals —*. The record used to

@@ -9,7 +9,7 @@ import {
 import * as XLSX from "xlsx";
 import { markTourSeen, tourSeen } from "./lib/tour";
 import { aimById, nextRung } from "./lib/aims";
-import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll, questionOut, questionIn, answerLanded } from "./lib/motion";
+import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll, questionOut, questionIn, answerLanded, sealDay } from "./lib/motion";
 import { ThumbNav, EdgeBack } from "./components/ThumbNav";
 import {
   ROOT, applyHand, canGoBack, destinationsFor, navBack, navGo, navParent, navTop,
@@ -104,7 +104,7 @@ import {
   answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord, surveyProgress,
 } from "./lib/pulse";
 import {
-  checkinStatus, checkinLine, checkinVerb, checkinPips,
+  checkinStatus, checkinLine, checkinVerb, checkinPips, recordStrip, recordStripLine,
 } from "./lib/checkin";
 /* ---------- how often this journal asks ----------
 
@@ -6206,11 +6206,17 @@ function HistoryDayRow({ entry, tpl, keyField, food, bowel, routine, onOpen, ctx
    It is a button, and it goes where you would expect: into today's check-in.
    Which means the answer to "what haven't I done today" and the way to do it
    are the same object. */
-function HistoryTodayCard({ status, tint, keyField, value, date, stand, viewer, onOpen }) {
+function HistoryTodayCard({ status, tint, keyField, value, date, stand, strip = [], sealKey, viewer, onOpen }) {
   const line = checkinLine(status);
   const settled = !!stand?.quiet && !status.complete && status.untouched;
+  /* The same moment as on Today, from the same hook, because finishing the day
+     from the record is finishing the day. It fires on whichever of the two
+     screens is mounted when the last answer lands, and never on both — only
+     one of them is ever on screen. */
+  const sealRef = useDaySeal(status.complete, sealKey);
   const body = (
     <Card className={"fhj-today-card" + (status.complete || settled ? " is-complete" : "")}>
+      {status.complete && <SealWash tint={tint} />}
       <div className="fhj-today-card-top">
         <div className="min-w-0">
           <div className="fhj-eyebrow">Today</div>
@@ -6237,7 +6243,9 @@ function HistoryTodayCard({ status, tint, keyField, value, date, stand, viewer, 
       {/* Both go with the pips. A breakdown reading "Questions 0/27" under the
           sentence "nothing is due" is two claims about the same day that cannot
           both be the point. */}
-      {!settled && <CheckinPips status={status} tint={tint} />}
+      {!settled && (status.complete
+        ? <RecordStrip strip={strip} tint={tint} />
+        : <CheckinPips status={status} tint={tint} />)}
       {!settled && <CheckinParts status={status} />}
 
       {!viewer && (
@@ -6252,9 +6260,9 @@ function HistoryTodayCard({ status, tint, keyField, value, date, stand, viewer, 
     </Card>
   );
 
-  if (viewer) return <div className="mt-4">{body}</div>;
+  if (viewer) return <div className="mt-4" ref={sealRef}>{body}</div>;
   return (
-    <button type="button" className="w-full text-left mt-4"
+    <button type="button" className="w-full text-left mt-4" ref={sealRef}
       onClick={() => { feedback("nav"); onOpen(date); }}
       aria-label={`Today's check-in — ${line}`}>
       {body}
@@ -6339,6 +6347,9 @@ function HistoryScreen({
     [tpl.fields, fieldCadences, entries, today]
   );
   const stand = useMemo(() => standing(cadence, logged, today), [cadence, logged, today]);
+  /* The fortnight behind today, for the row the card carries once today is
+     closed. Same set, same module, same claim as on Today. */
+  const strip = useMemo(() => recordStrip(logged, today), [logged, today]);
   const todayStatus = useMemo(() => checkinStatus({
     fields: tpl.fields,
     primaryKey: tpl.keyMetric,
@@ -6418,6 +6429,7 @@ function HistoryScreen({
       {/* The day being lived, before the days already lived. See
           HistoryTodayCard. */}
       <HistoryTodayCard status={todayStatus} tint={tpl.color} keyField={keyField} stand={stand}
+        strip={strip} sealKey={`${profile.id}:${today}`}
         value={typeof todayEntry?.answers?.[tpl.keyMetric] === "number"
           ? todayEntry.answers[tpl.keyMetric] : null}
         date={today} viewer={viewer} onOpen={openLog} />
@@ -16764,6 +16776,86 @@ function answerWords(field, value, dir) {
    The satisfaction here is meant to come from the same place it comes from on
    paper: the page is full. */
 
+/* ---------- the day closing ----------
+
+   The one thing on Today that is genuinely an event, drawn until now as a
+   state change: the last question of somebody's own daily review landed, and
+   the ring swapped a numeral for a tick. That is the visual weight of a
+   checkbox, spent on the moment this entire app exists to produce.
+
+   What it gets instead is a *seal* — see sealDay in lib/motion for the moment
+   itself, and RecordStrip below for what the card is left holding. Neither of
+   them congratulates anybody. The card settles, the tick stamps, and the
+   fortnight behind today arrives with today's mark solid on the end of it,
+   which is the same satisfaction closing a page in a paper journal gives:
+   nobody said well done, the stack is simply thicker than it was. */
+
+/* How far behind the tap the moment lands. The answer that completed the day
+   has a confirmation of its own — a tick under the scale, a click, a tap on
+   the wrist — and firing the day's closing into the middle of that turns two
+   events into one mush. A beat later it reads as a consequence of the tap
+   rather than as part of it, which is the whole difference between a receipt
+   and a rattle. */
+const SEAL_DELAY_MS = 260;
+
+/**
+ * Fire the closing moment exactly when the day closes, and never otherwise.
+ *
+ * `complete` is derived from the journal on every render, so it stays true for
+ * the rest of the day and is true again tomorrow morning on an app that was
+ * finished last night. Neither of those is the moment. The moment is the
+ * transition — in this sitting, on this day — so the ref opens at whatever the
+ * day already was, and only a change fires anything. Landing on a day already
+ * finished is silent, which is the right behaviour for a receipt: it is issued
+ * once, when the thing happens.
+ *
+ * `key` is the day (and whose it is). Changing it re-seats the ref without
+ * firing: walking back to a finished yesterday is not an event, it is a fact.
+ */
+function useDaySeal(complete, key) {
+  const ref = useRef(null);
+  const was = useRef({ key, complete });
+  useEffect(() => {
+    const prev = was.current;
+    was.current = { key, complete };
+    if (prev.key !== key || !complete || prev.complete) return;
+    const t = setTimeout(() => { feedback("complete"); sealDay(ref.current); }, SEAL_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [complete, key]);
+  return ref;
+}
+
+/** The wash that crosses the card once as it closes. Inert and invisible until
+    sealDay moves it, and gone again a second later — it is a moment, not a
+    decoration, so nothing about the finished card depends on it. */
+function SealWash({ tint }) {
+  return (
+    <span className="fhj-seal-wash" data-seal-wash aria-hidden="true"
+      style={{ "--fhj-seal-tint": tint }} />
+  );
+}
+
+/** The fortnight behind today, with today's mark solid on the end of it.
+
+    It replaces the pip row rather than joining it: once everything is in,
+    fourteen identical solid pips are a shape that has finished saying
+    anything, at the exact moment the card has the most to show. See
+    `recordStrip` in lib/checkin for what the row may and may not claim — in
+    particular that a blank day is a hairline and nothing else. No red, no gap
+    count, no bill for the days that did not happen. */
+function RecordStrip({ strip, tint }) {
+  if (!strip.length) return null;
+  return (
+    <span className="fhj-record-strip" role="img" aria-label={recordStripLine(strip)}>
+      {strip.map((d) => (
+        <span key={d.date} data-seal-mark
+          className={"fhj-record-mark" + (d.on ? " is-on" : "") + (d.today ? " is-today" : "")}
+          style={d.today ? { background: tint } : undefined} />
+      ))}
+    </span>
+  );
+}
+
 /** How far round the day is. The middle carries the count, so the ring can be
     read at a glance and the exact number at a look. */
 /* `settled` is the state where the period has what it asked for and today is
@@ -16790,9 +16882,21 @@ function CheckinRing({ status, tint, settled = false, size = 52, stroke = 5 }) {
         )}
       </svg>
       <span className="fhj-ring-mid" style={{ color: status.done ? C.ink : C.subtle }}>
-        {status.complete
-          ? <Icon name="check" size={Math.round(size * 0.36)} color={tint} />
-          : settled ? "—" : status.done}
+        {status.complete ? (
+          /* Stamped rather than ticked. A bare check mark floating on the
+             card's own background is the same weight the ring was already
+             carrying a numeral at; a filled disc is a thing that has been
+             pressed into the page, which is what a finished day is. It is also
+             what sealDay grows out of, so the moment has something to land
+             in. */
+          <span className="fhj-ring-stamp" data-seal-stamp
+            style={{
+              width: Math.round(size * 0.62), height: Math.round(size * 0.62),
+              background: tint, color: readableInk(tint),
+            }}>
+            <Icon name="check" size={Math.round(size * 0.34)} color="currentColor" />
+          </span>
+        ) : settled ? "—" : status.done}
       </span>
     </span>
   );
@@ -16872,7 +16976,7 @@ function CadenceStrip({ stand }) {
 
 /** The door, on Today. Sits at the foot of the pulse card, where the old link
     was, at about six times its weight. */
-function TodayCheckinCard({ status, tint, stand, onOpen }) {
+function TodayCheckinCard({ status, tint, stand, strip = [], sealKey, onOpen }) {
   const line = checkinLine(status);
   /* When the period is settled the card stops asking. It still opens — a
      journal you cannot write in because you are ahead of schedule would be
@@ -16881,16 +16985,24 @@ function TodayCheckinCard({ status, tint, stand, onOpen }) {
      `quiet` rather than `settled`: on a daily journal "settled" only means the
      day is on the record, which the ring already says better. See Standing. */
   const settled = !!stand?.quiet && !status.complete && status.untouched;
+  const sealRef = useDaySeal(status.complete, sealKey);
   return (
-    <button type="button"
+    <button type="button" ref={sealRef}
       onClick={() => { feedback("nav"); onOpen(); }}
       aria-label={`Today's check-in — ${stand?.line || line}`}
       className={"fhj-checkin fhj-pop" + (status.complete || settled ? " is-complete" : "")}>
+      {status.complete && <SealWash tint={tint} />}
       <CheckinRing status={status} tint={tint} settled={settled} size={48} />
       <span className="fhj-checkin-body">
         <span className="fhj-checkin-title">Today's check-in</span>
         <CadenceStrip stand={stand} />
-        {!settled && <CheckinPips status={status} tint={tint} />}
+        {/* One row of marks, whichever one has something left to say. While
+            the day is open that is today's questions; once it is closed a row
+            of solid pips is a shape with nothing left in it, and the days
+            behind today are what the card is actually holding. */}
+        {!settled && (status.complete
+          ? <RecordStrip strip={strip} tint={tint} />
+          : <CheckinPips status={status} tint={tint} />)}
         <span className="fhj-checkin-line">
           {settled ? "Nothing is due — open it anyway if you like." : line}
         </span>
@@ -16964,6 +17076,10 @@ function DailyPulse({
     () => standing(cadence, loggedDates(entries), date),
     [cadence, entries, date]
   );
+  /* The days behind today, for the row the card is left holding once today
+     closes. Built here from the same set every cadence question is asked
+     against, so the row can never claim a day the rest of the app does not. */
+  const strip = useMemo(() => recordStrip(loggedDates(entries), date), [entries, date]);
 
   const pulseCtx = useMemo(() => ({
     primaryKey: keyField.k,
@@ -17369,7 +17485,10 @@ function DailyPulse({
 
       {/* The way into the rest of it. Not a footnote — see the note above
           TodayCheckinCard. */}
-      {!viewer && <TodayCheckinCard status={status} tint={tpl.color} stand={stand} onOpen={onOpenLog} />}
+      {!viewer && (
+        <TodayCheckinCard status={status} tint={tpl.color} stand={stand} strip={strip}
+          sealKey={`${profile.id}:${date}`} onOpen={onOpenLog} />
+      )}
     </Card>
   );
 }

@@ -260,6 +260,56 @@ export function animateFinish(el: HTMLElement | null) {
   );
 }
 
+/* The day closing.
+
+   Today's check-in going complete is the one thing on this screen that is
+   genuinely an *event*: the last question of somebody's own daily review
+   lands, and the day they were living becomes a day that is written down.
+   Until now it was drawn as a state change — the ring quietly swapped a
+   numeral for a tick — which is the visual weight of a checkbox, for the
+   moment the whole app exists to produce.
+
+   So it gets a moment, and the moment obeys the same rule the card does: it
+   is about the record, never about the person. Nothing here cheers. What
+   happens is that the card *settles* — a single soft press-and-return, a wash
+   of the finished colour crossing it once, the tick stamping into the middle
+   of the ring, and the fortnight behind today cascading in mark by mark. It
+   is a page being closed, and it lasts about as long as closing one.
+
+   Under reduced motion it is nothing at all, and the card is simply finished
+   the next time it renders — which is exactly what it did before. */
+export function sealDay(el: HTMLElement | null) {
+  if (!el || prefersReducedMotion()) return;
+  const wash = el.querySelector<HTMLElement>("[data-seal-wash]");
+  const stamp = el.querySelector<HTMLElement>("[data-seal-stamp]");
+  const marks = Array.from(el.querySelectorAll<HTMLElement>("[data-seal-mark]"));
+  const tl = gsap.timeline();
+  tl.fromTo(el, { scale: 0.985 }, {
+    scale: 1, duration: 0.6, ease: "back.out(2.2)", clearProps: "transform",
+  }, 0);
+  if (wash) {
+    tl.fromTo(wash, { autoAlpha: 0, xPercent: -104 }, {
+      autoAlpha: 1, xPercent: 0, duration: 0.44, ease: "power2.out",
+    }, 0).to(wash, { autoAlpha: 0, duration: 0.5, ease: "power1.in" }, 0.52);
+  }
+  if (stamp) {
+    tl.fromTo(stamp, { scale: 0.35, autoAlpha: 0 }, {
+      scale: 1, autoAlpha: 1, duration: 0.5, ease: "back.out(3)",
+      clearProps: "transform,opacity",
+    }, 0.08);
+  }
+  /* The stack of pages arriving. Oldest first, so the row reads left to right
+     the way it is meant to be read, and today lands last. */
+  if (marks.length) {
+    tl.fromTo(marks, { scaleY: 0.4, autoAlpha: 0.25 }, {
+      scaleY: 1, autoAlpha: 1, duration: 0.3, ease: "power2.out",
+      stagger: { each: Math.min(0.03, 0.36 / marks.length) },
+      clearProps: "transform,opacity",
+    }, 0.12);
+  }
+  return tl;
+}
+
 /* ---------- P5 / report experience additions ---------- */
 
 /** Swipe deck: fling the top card off screen. dir: 1 include, -1 skip.

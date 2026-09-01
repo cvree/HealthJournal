@@ -303,3 +303,86 @@ export function checkinPips(s: CheckinStatus): Pip[] {
   }
   return out;
 }
+
+/* ---------- the record behind today ----------
+
+   What a paper journal gives you when you close a page, and an app almost
+   never does, is the *stack*. You put the pen down and the thing you are
+   making is visibly one page thicker. Nobody congratulated you; the evidence
+   simply moved.
+
+   That is the only kind of satisfaction this card is allowed to offer, and
+   until now it did not offer it at all: the day went complete, the ring became
+   a tick, and the row of marks that had been counting today's questions became
+   fourteen identical solid blocks — a shape that had finished saying anything
+   at the exact moment it had the most to say.
+
+   So when today closes, that row is replaced rather than added to. The marks
+   stop being today's questions and become the fortnight behind, with today's
+   landing solid on the end of it. One shape at a time, same visual language,
+   and it only exists in the one state where the other row has nothing left to
+   tell anybody.
+
+   What it is not, and must never become: a scoreboard. A day the journal has
+   nothing on is a hairline and nothing else — no red, no gap count, no "four
+   missed". The make-up row on a weekly journal follows the same rule, for the
+   same reason. A record is a record of what happened. It is not a bill for
+   what did not. */
+
+/** One day behind today, marked against the journal. */
+export interface RecordDay {
+  date: string;
+  /** The journal has something real on this day. */
+  on: boolean;
+  /** The day being closed. Always the last mark in the row. */
+  today: boolean;
+}
+
+/** How long a stretch the row draws. Two weeks is the most a phone can carry
+    at a width where a single day is still a distinguishable mark rather than a
+    hairline in a texture — the same judgement the pip row makes. */
+export const RECORD_STRIP_DAYS = 14;
+
+/**
+ * The days ending at `date`, oldest first, marked against what the journal
+ * actually holds.
+ *
+ * `logged` is the app's own set of days with something real on them — the same
+ * set every cadence question is asked against, so the row can never claim a
+ * day the streak does not.
+ */
+export function recordStrip(
+  logged: ReadonlySet<string> | Iterable<string>,
+  date: string,
+  days: number = RECORD_STRIP_DAYS
+): RecordDay[] {
+  const have = logged instanceof Set ? (logged as ReadonlySet<string>) : new Set(logged);
+  const out: RecordDay[] = [];
+  for (let i = Math.max(1, Math.floor(days)) - 1; i >= 0; i--) {
+    const d = shiftDate(date, -i);
+    out.push({ date: d, on: have.has(d), today: i === 0 });
+  }
+  return out;
+}
+
+/**
+ * What the row says to somebody who cannot see it.
+ *
+ * A shape that carries information has to carry the same information in words,
+ * and this is the sentence: how much of the recent record is written, said as
+ * a fact about the journal rather than as a verdict on the person keeping it.
+ */
+export function recordStripLine(strip: RecordDay[]): string {
+  const on = strip.filter((d) => d.on).length;
+  return `${on} of the last ${strip.length} days are on the record.`;
+}
+
+/* A date shift that does not drag a module of episode arithmetic in behind it.
+   Local-time construction on purpose: every date in this app is the day the
+   person was living, never a UTC instant. */
+function shiftDate(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  const p2 = (v: number) => String(v).padStart(2, "0");
+  return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
+}

@@ -7,7 +7,8 @@
    would be the app deciding how much somebody ought to write down. */
 import { describe, it, expect } from "vitest";
 import {
-  PIP_LIMIT, checkinLine, checkinPips, checkinStatus, checkinVerb,
+  PIP_LIMIT, RECORD_STRIP_DAYS, checkinLine, checkinPips, checkinStatus, checkinVerb,
+  recordStrip, recordStripLine,
   type CheckinSource,
 } from "../src/lib/checkin";
 import type { PulseField } from "../src/lib/pulse";
@@ -300,5 +301,65 @@ describe("what the day asked for, once a question can ask less often", () => {
   it("is the whole template when nothing narrows it — every journal, before", () => {
     expect(checkinStatus(src({ due: null })).total)
       .toBe(checkinStatus(src()).total);
+  });
+});
+
+/* The row of days the card is left holding once today closes.
+
+   It exists to give the finished card something honest to show — the stack of
+   pages behind the one just closed. The tests here are the guardrail on the
+   half of that which could go wrong: a row of days is one keystroke away from
+   being a scoreboard, and this one is not allowed to become one. */
+describe("the record behind today", () => {
+  const logged = new Set(["2026-08-29", "2026-08-31", "2026-09-01"]);
+
+  it("is the fortnight ending today, oldest first", () => {
+    const strip = recordStrip(logged, "2026-09-01");
+    expect(strip).toHaveLength(RECORD_STRIP_DAYS);
+    expect(strip[0].date).toBe("2026-08-19");
+    expect(strip[strip.length - 1].date).toBe("2026-09-01");
+    expect(strip.filter((d) => d.today)).toHaveLength(1);
+    expect(strip[strip.length - 1].today).toBe(true);
+  });
+
+  it("marks a day exactly when the journal has one, and never otherwise", () => {
+    const strip = recordStrip(logged, "2026-09-01");
+    const on = strip.filter((d) => d.on).map((d) => d.date);
+    expect(on).toEqual(["2026-08-29", "2026-08-31", "2026-09-01"]);
+  });
+
+  /* The one thing this row may never quietly start doing. Today is marked
+     because the journal holds it, not because it is today — a card that draws
+     its own last mark solid regardless is a card that would show a finished
+     day on an empty one the moment anything else on it went wrong. */
+  it("does not flatter today", () => {
+    const strip = recordStrip(new Set<string>(), "2026-09-01");
+    expect(strip.every((d) => !d.on)).toBe(true);
+  });
+
+  it("takes any iterable of days, so callers need not build a set for it", () => {
+    expect(recordStrip(["2026-09-01"], "2026-09-01").filter((d) => d.on)).toHaveLength(1);
+  });
+
+  it("crosses a month and a year without arithmetic of its own", () => {
+    const strip = recordStrip(["2025-12-31"], "2026-01-01", 3);
+    expect(strip.map((d) => d.date)).toEqual(["2025-12-30", "2025-12-31", "2026-01-01"]);
+    expect(strip[1].on).toBe(true);
+  });
+
+  it("never draws nothing", () => {
+    expect(recordStrip(logged, "2026-09-01", 0)).toHaveLength(1);
+    expect(recordStrip(logged, "2026-09-01", -4)).toHaveLength(1);
+  });
+
+  /* A shape that carries information has to carry it in words too. The words
+     are a fact about the journal — how much of the recent record is written —
+     and never a verdict on the person keeping it. */
+  it("says the same thing in words, without praise or blame", () => {
+    const line = recordStripLine(recordStrip(logged, "2026-09-01"));
+    expect(line).toBe("3 of the last 14 days are on the record.");
+    expect(line).not.toMatch(/missed|streak|well done|great|keep it up/i);
+    expect(recordStripLine(recordStrip(new Set<string>(), "2026-09-01")))
+      .toBe("0 of the last 14 days are on the record.");
   });
 });
