@@ -89,7 +89,9 @@ between are the schedule and a document a clinician reads has to be able to say 
 
 **Reminders, plural.** A check-in belongs at the end of the day; meals belong at meal times,
 because the point of tracking food is logging it while you eat. Add as many named times as suit
-your day, export them all as one calendar file, and the ones whose job is already done stay quiet.
+your day, and the ones whose job is already done stay quiet. On the phone app your phone schedules
+them itself — they arrive with the app closed, and no server, account or identifier is involved in
+making that happen. In a browser they come out as one calendar file that does the same job.
 
 **The first two minutes.** First run is nine screens, not a wizard, and there is one path through
 it. A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a
@@ -399,8 +401,11 @@ a week without one.
 dashed link at the foot of the card that said *Add more detail* — a name for an afterthought,
 attached to the thing this app is for. It is **Today's check-in** now, and it carries the state
 of the day rather than an invitation to do more work: a ring that fills as far as today has got,
-one small mark for every single thing today asked for, and a line that says where you are (*6 of
-31 in. 25 to go*). Every mark is drawn from the journal, so the number moves the instant you
+one small mark for every single thing today asked for, and a line that says where you are (*25 to
+go*). The count at the top of the pulse card and the bar under it read the same arithmetic, so
+there is exactly one size for today anywhere on the screen — and the estimate under an untouched
+one is arithmetic too, four seconds a thing, so a thirty-three-item morning is offered as two
+minutes rather than as one. Every mark is drawn from the journal, so the number moves the instant you
 answer anything, anywhere — a tap on the pulse, a question in the queue, a dose ticked off the
 routine — and it moves back down if you clear one.
 
@@ -809,11 +814,14 @@ already on your device and thrown away when you close the screen. This is the ex
 the import path — it sends nothing, ever.
 
 **Get your data out.** CSV, multi-sheet Excel, and JSON — with date-range filters — plus a full
-JSON backup including photos that restores on any device.
+JSON backup including photos that restores on any device. In a browser they download; on the phone
+app they go to the share sheet, so *Save to Files*, mail or AirDrop are all one tap, and where the
+file ends up is your choice rather than the app's.
 
-**Daily reminder.** Pick a check-in time and download a repeating calendar file, so your phone
-reminds you even with the app closed. Browser notifications are offered too, with an honest
-note that they only fire while the app is running.
+**Reminders.** On the phone app, your phone schedules them itself: they arrive at their times with
+it closed, and nothing is sent anywhere to make that happen — no push service, no account, no
+identifier. Everywhere else, a repeating calendar file does the same job, and browser
+notifications are offered on top with an honest note that they only fire while the app is running.
 
 **Extras.** Optional 4-digit app lock. Wearable import from a Google Fit / Fitbit Takeout
 export. A read-only web viewer for opening a backup on a desktop. An iOS Home Screen widget
@@ -1252,7 +1260,9 @@ bellwether/
 │   │   ├── answers.ts          # type-safe answer read/write
 │   │   ├── validate.ts         # runtime validation + causal-language audit
 │   │   ├── lock.ts             # PIN hashing
-│   │   ├── reminders.ts        # check-in times, .ics, notifications
+│   │   ├── reminders.ts        # check-in times, .ics, browser notifications
+│   │   ├── nativeReminders.ts  # the phone's own schedule, mirrored from the list
+│   │   ├── saveFile.ts         # one way out for every file: download, or share sheet
 │   │   ├── durability.ts       # persistent storage, backup freshness
 │   │   ├── deeplink.ts         # ?screen= allowlist for Home Screen shortcuts
 │   │   ├── chartView.ts        # how the trend chart is drawn (pure, saved)

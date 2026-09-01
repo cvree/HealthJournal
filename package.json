@@ -1,7 +1,7 @@
 {
   "name": "bellwether",
   "private": true,
-  "version": "1.35.0",
+  "version": "1.36.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,10 @@
   "dependencies": {
     "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.6.8",
+    "@capacitor/filesystem": "^7.1.8",
     "@capacitor/haptics": "^7.0.5",
+    "@capacitor/local-notifications": "^7.0.7",
+    "@capacitor/share": "^7.0.4",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@supabase/supabase-js": "^2.112.3",
     "gsap": "^3.12.5",

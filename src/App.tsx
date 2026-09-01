@@ -8,6 +8,11 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import { markTourSeen, tourSeen } from "./lib/tour";
+import { saveFile, savedVerb } from "./lib/saveFile";
+import {
+  nativeRemindersSupported, nativeReminderState, requestNativeReminders,
+  syncNativeReminders, clearNativeReminders,
+} from "./lib/nativeReminders";
 import { aimById, nextRung } from "./lib/aims";
 import { initSmoothScroll, scrollToTop, animateScreenIn, animateScreenChange, animateStepIn, animateFinish, flingCard, promoteCard, initReportReveal, slideFrom, prefersReducedMotion, lockPageScroll, questionOut, questionIn, answerLanded, sealDay } from "./lib/motion";
 import { ThumbNav, EdgeBack } from "./components/ThumbNav";
@@ -101,7 +106,7 @@ import FirstRun from "./components/FirstRun";
 import AiConnect from "./components/AiConnect";
 import Tour from "./components/Tour";
 import {
-  answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord, surveyProgress,
+  answerHabits, askQueue, followUps, isOneTap, pulseState, scoreWord,
 } from "./lib/pulse";
 import {
   checkinStatus, checkinLine, checkinVerb, checkinPips, recordStrip, recordStripLine,
@@ -6524,13 +6529,18 @@ function HistoryScreen({
    ============================================================ */
 
 /* serialize / csvEscape / toCSV now live in src/lib/exports.ts (typed). */
-function download(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
+
+/* Every file this app hands over goes through here, and what "here" does now
+   depends on where the app is running — see lib/saveFile. On the web it is the
+   anchor it has always been. Inside the packaged app the anchor does nothing at
+   all, silently, so native writes the file and opens the share sheet instead.
+
+   It returns a promise now. Callers that only produce a file can ignore it —
+   the share sheet is its own receipt — but anything that writes a *sentence*
+   about what happened, or marks the journal as backed up, has to wait and read
+   the answer. Claiming a backup that never left the app is the one lie a
+   durability screen may not tell. */
+const download = (blob, filename) => saveFile(blob, filename);
 
 /* metaCols / wideTable now live in src/lib/exports.ts (typed).
    Thin wrappers keep the historical signatures for all call sites. */
@@ -7099,7 +7109,7 @@ function ExportScreen({ db, setDb, goPack }) {
       `bellwether_${stamp}.xlsx`);
   };
 
-  const exportJSON = () => {
+  const exportJSON = async () => {
     const payload = {
       app: APP_NAME, exportedAt: new Date().toISOString(),
       dateRange: bounds.label, disclaimer: DISCLAIMER,
@@ -7111,9 +7121,11 @@ function ExportScreen({ db, setDb, goPack }) {
       experiments: db.experiments || [],
       reports: (db.reports || []).filter((r) => !(r.range.start > bounds.end || r.range.end < bounds.start)),
     };
-    download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+    const saved = await download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
       `bellwether_backup_${stamp}.json`);
-    if (setDb) markBackedUp(setDb);
+    /* A backup that never actually left is not a backup, and the durability
+       card reads this date to decide whether to nag. */
+    if (saved.ok && setDb) markBackedUp(setDb);
   };
 
   const chip = (active, label, onClick, key) => (
@@ -8751,6 +8763,18 @@ function ReminderCard({ profile, onSave }) {
   const [perm, setPerm] = useState(() => notificationPermission());
   const [msg, setMsg] = useState(null);
   const [adding, setAdding] = useState(false);
+  /* What the phone itself can do about this, which is the whole answer inside
+     the packaged app and none of it in a browser. Asked once on mount, and
+     never asked again on its own: iOS shows its permission dialog exactly once
+     per install, so the request lives behind a button somebody pressed. */
+  const onPhone = nativeRemindersSupported();
+  const [phone, setPhone] = useState("unsupported");
+  useEffect(() => {
+    if (!onPhone) return;
+    let alive = true;
+    nativeReminderState().then((st) => { if (alive) setPhone(st); });
+    return () => { alive = false; };
+  }, [onPhone]);
 
   const commit = (next) => onSave(sortReminders(next));
   const patch = (id, p) => commit(reminders.map((r) => (r.id === id ? { ...r, ...p } : r)));
@@ -8762,16 +8786,41 @@ function ReminderCard({ profile, onSave }) {
 
   const live = reminders.filter((r) => r.enabled);
 
-  const addToCalendar = () => {
+  const addToCalendar = async () => {
     try {
       const ics = buildRemindersICS(live);
-      download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "bellwether-reminders.ics");
-      reportResult(setMsg, {
-        ok: true,
-        text: `Calendar file saved with ${live.length} reminder${live.length === 1 ? "" : "s"} — open it to add them to your phone.`,
-      });
+      const saved = await download(new Blob([ics], { type: "text/calendar;charset=utf-8" }), "bellwether-reminders.ics");
+      const n = `${live.length} reminder${live.length === 1 ? "" : "s"}`;
+      reportResult(setMsg, saved.ok
+        ? {
+          ok: true,
+          /* Two true sentences rather than one that is true in a browser: on a
+             phone this just opened a share sheet, and "saved" is a word from
+             the other platform. */
+          text: saved.where === "share"
+            ? `Calendar file with ${n} — choose Calendar, or save it wherever you like.`
+            : `Calendar file saved with ${n} — open it to add them to your phone.`,
+        }
+        : { ok: false, text: "Couldn't hand over the calendar file on this device." });
     } catch (e) {
       reportResult(setMsg, { ok: false, text: "Couldn't build the calendar file on this device." });
+    }
+  };
+
+  const enablePhoneReminders = async () => {
+    const result = await requestNativeReminders();
+    setPhone(result);
+    if (result === "granted") {
+      const n = await syncNativeReminders(live);
+      reportResult(setMsg, {
+        ok: true,
+        text: `${n ?? live.length} reminder${(n ?? live.length) === 1 ? "" : "s"} set on this phone. They arrive with the app closed.`,
+      });
+    } else if (result === "denied") {
+      reportResult(setMsg, {
+        ok: false,
+        text: "Notifications are switched off for this app in your phone's settings. The calendar file below works regardless.",
+      });
     }
   };
 
@@ -8849,15 +8898,56 @@ function ReminderCard({ profile, onSave }) {
         <Button variant="secondary" block icon="plus" onClick={() => setAdding(true)}>Add a reminder</Button>
       )}
 
+      {/* On a phone, the phone does it.
+
+          A local notification is scheduled by the operating system on this
+          device: no server, no push service, no account and nothing to send —
+          which is the same promise as the calendar file, minus the file. It is
+          the first thing offered here because it is the one that actually
+          wakes somebody, and because on this platform the two routes below it
+          are a page that has to stay open and a document that has to be
+          filed. */}
+      {onPhone && live.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {phone === "granted" ? (
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl"
+              style={{ background: C.goodSoft, border: `1px solid ${C.line}` }}>
+              <Icon name="check" size={15} color={C.good} />
+              <p className="text-[11.5px] leading-relaxed flex-1 min-w-0" style={{ color: C.sub }}>
+                <b style={{ color: C.ink }}>
+                  {live.length} reminder{live.length === 1 ? "" : "s"} set on this phone.
+                </b>{" "}
+                They arrive at their times with the app closed. Your phone schedules them itself —
+                nothing is sent anywhere to make that happen, and changing the list here changes them.
+              </p>
+            </div>
+          ) : (
+            <>
+              <Button variant="primary" block onClick={enablePhoneReminders} disabled={phone === "denied"}>
+                {phone === "denied"
+                  ? "Notifications are off in your phone's settings"
+                  : `Remind me on this phone`}
+              </Button>
+              <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
+                Your phone does the reminding, so it works with the app closed. Scheduled on this
+                device by the phone itself — no account, no server, nothing sent anywhere.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       {live.length > 0 && (
         <div className="mt-3 flex flex-col gap-2">
-          <Button variant="primary" block onClick={addToCalendar}>
+          <Button variant={onPhone ? "secondary" : "primary"} block onClick={addToCalendar}>
             Add {live.length} reminder{live.length === 1 ? "" : "s"} to my calendar
           </Button>
           <p className="text-[11px] leading-relaxed" style={{ color: C.sub }}>
-            Downloads a small calendar file that repeats daily. Your phone does the reminding, so it still
-            works when the app is closed. Nothing is sent anywhere — the file never leaves your device
-            unless you put it somewhere yourself.
+            {onPhone
+              ? "Or put them in your calendar instead, as a small file that repeats daily — useful if you'd rather see them beside everything else in your day."
+              : "Downloads a small calendar file that repeats daily. Your phone does the reminding, so it still works when the app is closed."}{" "}
+            Nothing is sent anywhere — the file never leaves your device unless you put it somewhere
+            yourself.
           </p>
         </div>
       )}
@@ -8960,10 +9050,14 @@ function DataDurabilityCard({ db, setDb }) {
     setBusy("backup"); setMsg(null);
     try {
       const payload = await buildFullBackup(db);
-      download(new Blob([JSON.stringify(payload)], { type: "application/json" }),
+      const saved = await download(new Blob([JSON.stringify(payload)], { type: "application/json" }),
         `bellwether_full-backup_${todayStr()}.json`);
+      if (!saved.ok) throw new Error(saved.error || "not saved");
       markBackedUp(setDb);
-      reportResult(setMsg, { ok: true, text: `Full backup saved — ${payload.entries.length} entries, ${payload.photos.length} photos.` });
+      reportResult(setMsg, {
+        ok: true,
+        text: `Full backup ${savedVerb(saved.where).toLowerCase()} — ${payload.entries.length} entries, ${payload.photos.length} photos.`,
+      });
     } catch (e) {
       reportResult(setMsg, { ok: false, text: "Couldn't build the backup on this device." });
     }
@@ -10041,6 +10135,10 @@ function SettingsScreen({ db, setDb, goHome, goSetup, goImport, goNoteImport, go
               if (synced && syncEngine) await syncEngine.disable({ purge: true });
               const ix = await loadPhotoIndex();
               await deletePhotos(Object.keys(ix));
+              /* And take the reminders off the phone. A journal that has been
+                 erased and still taps somebody on the shoulder every evening
+                 is the worst version of a notification there is. */
+              await clearNativeReminders();
               setDb({ profile: blankProfile(), entries: [], reports: [], tombstones: [], ack: false, onboarded: false, ai: DEFAULT_AI, schemaVersion: SCHEMA_VERSION }); goHome();
             }
           }}>
@@ -12363,7 +12461,7 @@ function ReportScreen({ db, setDb, params, goBack }) {
     setBusyShare(true);
     try {
       const blob = await renderShareCard(cards, tpl.color, sharePhotos);
-      if (blob) download(blob, `health-report-${range.start}.png`);
+      if (blob) await download(blob, `health-report-${range.start}.png`);
     } catch (e) { window.alert("Couldn't create the share image on this device."); }
     setBusyShare(false);
   };
@@ -17130,7 +17228,6 @@ function DailyPulse({
   useEffect(() => () => { alive.current = false; }, []);
 
   const queue = useMemo(() => askQueue(pulseCtx, skipped), [pulseCtx, skipped]);
-  const progress = useMemo(() => surveyProgress(pulseCtx), [pulseCtx]);
   /* The state of the whole check-in, for the card at the foot of this one.
      Read from the journal on every render, from the same module History reads
      it from — the two screens are not allowed to disagree about today. */
@@ -17310,7 +17407,25 @@ function DailyPulse({
     ? answerWords(asking, onPulse ? value : answers[asking.k], onPulse ? keyField.dir : asking.dir)
     : null;
   const stageAnswered = stageValue != null && !(Array.isArray(stageValue) && stageValue.length === 0);
-  const pct = progress.total ? Math.round((progress.answered / progress.total) * 100) : 0;
+  /* One denominator for the day, on the whole screen.
+
+     The count in this corner and the bar under it used to read
+     `surveyProgress` — the questions in the template — while the check-in card
+     four inches below read `checkinStatus`, which is the questions plus the
+     doses scheduled for today plus the rituals today asked for. On any setup
+     with a routine on it the two are guaranteed to differ, and the demo
+     journal shipped saying **0 of 27** at the top of this card and **33 to
+     answer** at the bottom of it. lib/checkin exists to stop Today and History
+     disagreeing about somebody's day; it was being contradicted inside one
+     card.
+
+     So both read the same module now. One consequence is worth stating rather
+     than hiding: on a journal with a routine, finishing every question here
+     leaves this bar short of its end, because the day genuinely is. The card
+     immediately below names what is left and opens it, which is the honest
+     version — the alternative was a bar that filled while the day was not
+     done. */
+  const pct = status.total ? Math.round((status.done / status.total) * 100) : 0;
   /* The foot belongs to the queue, not to the number: nothing is offered for
      skipping until there is something after it to skip to. Back is the one
      thing that outlives the queue — somebody who closed it can still walk back
@@ -17326,8 +17441,8 @@ function DailyPulse({
             go, and the eyebrow is the one that cannot choose its moment. */}
         <span className="fhj-eyebrow">Today</span>
         <span className="fhj-pulse-top-end">
-          {!viewer && progress.total > 1 && (
-            <span className="fhj-next-count">{progress.answered} of {progress.total}</span>
+          {!viewer && status.total > 1 && (
+            <span className="fhj-next-count">{status.done} of {status.total}</span>
           )}
           {/* Leaving the queue, with no sentence for it. It is still only for
               the sitting — tomorrow it asks again — but "for now" was never
@@ -17343,7 +17458,7 @@ function DailyPulse({
           )}
         </span>
       </div>
-      {!viewer && progress.total > 1 && (
+      {!viewer && status.total > 1 && (
         <div className="fhj-next-bar" aria-hidden="true">
           <span className="fhj-next-bar-fill" style={{ width: `${pct}%`, background: tpl.color }} />
         </div>
@@ -19402,6 +19517,29 @@ export default function App({ viewer = false }) {
     arm();
     return () => { if (timer) clearTimeout(timer); };
   }, [viewer, db]);
+
+  /* Reminders, native layer.
+
+     The timer above only exists while this page does, and inside the packaged
+     app it does not exist at all — there is no `Notification` in a WKWebView,
+     so the effect above returns on its first line and the .ics is the only
+     thing left, which is a file, which is its own problem. On a phone the
+     right mechanism is the one the operating system already runs: a local
+     notification, scheduled on the device, no server and no identifier, which
+     is the exact constraint lib/reminders was written around.
+
+     This mirrors the list onto the phone rather than tracking it — every run
+     cancels what is pending and schedules what the profile says, so a reminder
+     somebody deleted cannot outlive it as a ghost that fires forever. Keyed on
+     the reminder list alone: re-scheduling on every keystroke of a journal
+     entry would be absurd, and the list is the only input. */
+  const reminderKey = db?.onboarded && !viewer
+    ? JSON.stringify(readReminders(db.profile))
+    : "";
+  useEffect(() => {
+    if (!reminderKey || !nativeRemindersSupported()) return;
+    void syncNativeReminders(JSON.parse(reminderKey));
+  }, [reminderKey]);
 
   // Ask the browser to stop evicting this origin's storage. Chrome usually
   // grants it silently for installed / returning visitors; a refusal is fine

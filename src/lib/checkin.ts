@@ -259,8 +259,40 @@ export function checkinLine(s: CheckinStatus): string {
   if (s.complete) return "Today is fully on the record.";
   /* "Questions" would be a lie on a setup with a routine in it: some of these
      are doses to tick rather than questions to answer. */
-  if (s.untouched) return `${s.total} to answer, about a minute.`;
+  if (s.untouched) return `${s.total} to answer, ${checkinEstimate(s.total)}.`;
   return s.left === 1 ? "One left." : `${s.left} to go.`;
+}
+
+/* Words for the small numbers, because "about 2 minutes" is a readout and
+   "about two minutes" is a sentence, and this is the only sentence on the card. */
+const SPELLED = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+
+/**
+ * Roughly how long what today asked for will take.
+ *
+ * This line used to say "about a minute" over any number at all. On the setup
+ * this app actually ships — a pack, a routine and a couple of rituals — that
+ * sentence read *33 to answer, about a minute*: one and four fifths of a
+ * second per item, including the doses. It is a small clause, and it is the
+ * first promise the card makes to somebody deciding whether this is a
+ * two-minute habit or a chore, which is exactly the kind of promise that must
+ * not be decorative.
+ *
+ * The arithmetic is the Quick Log's own — four seconds an item, rounded to the
+ * nearest five — and it was sitting a few hundred lines away in App.tsx the
+ * whole time. Rounded up into minutes rather than printed in seconds: nobody
+ * needs "2 minutes 10", and a journal that counts somebody's morning to the
+ * second has misunderstood what it is for.
+ *
+ * It over-estimates slightly at the short end on purpose. A minute that turns
+ * out to be forty seconds is a pleasant surprise; the reverse is the thing
+ * that gets an app deleted.
+ */
+export function checkinEstimate(items: number): string {
+  const secs = Math.max(5, Math.round((Math.max(0, items) * 4) / 5) * 5);
+  if (secs <= 90) return "about a minute";
+  const mins = Math.max(2, Math.round(secs / 60));
+  return `about ${SPELLED[mins] || mins} minutes`;
 }
 
 /** The name of the action, which changes with the state and nothing else. */

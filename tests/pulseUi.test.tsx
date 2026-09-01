@@ -138,8 +138,37 @@ describe("today's check-in, on Today", () => {
 
   it("says how much of the day is in, before anything is", async () => {
     await mountToday();
-    expect(line()).toMatch(/^\d+ to answer, about a minute\.$/);
+    expect(line()).toMatch(/^\d+ to answer, about (a|two|three|four|five|six|seven|eight|nine|ten) minutes?\.$/);
     expect(card().querySelector(".fhj-ring-mid")!.textContent).toBe("0");
+  });
+
+  /* The estimate is arithmetic, not decoration. The sample journal here is a
+     pack, a routine and two rituals — 33 things — and the card used to offer
+     all of it as "about a minute", which is one and four fifths of a second
+     each. A first promise this screen cannot keep is worse than no promise. */
+  it("scales the time estimate to what the day actually asks for", async () => {
+    await mountToday();
+    expect(line()).toBe("33 to answer, about two minutes.");
+  });
+
+  /* One denominator for the day, on the whole screen.
+
+     The count in the pulse card's corner used to read the *questions* in the
+     template while the card below it read the questions plus the doses plus
+     the rituals — so this journal opened saying "0 of 27" at the top of one
+     card and "33 to answer" at the foot of it. lib/checkin exists to stop two
+     screens disagreeing about somebody's day; it was being contradicted inside
+     one of them. */
+  it("says one size for today, wherever on the screen it is said", async () => {
+    await mountToday();
+    const corner = document.querySelector(".fhj-next-count")!.textContent!.trim();
+    expect(corner).toBe("0 of 33");
+    expect(line()).toMatch(/^33 to answer/);
+
+    fireEvent.click(rung(5));
+    await waitFor(() => expect(line()).toMatch(/to go\.$/));
+    expect(document.querySelector(".fhj-next-count")!.textContent!.trim()).toBe("1 of 33");
+    expect(card().querySelector(".fhj-ring-mid")!.textContent).toBe("1");
   });
 
   it("counts the one tap on the pulse, immediately", async () => {
@@ -176,7 +205,7 @@ describe("today's check-in, on Today", () => {
     await waitFor(() => expect(line()).toMatch(/to go\.$/));
     fireEvent.click(rung(5));
     await waitFor(() => expect(todayEntry()?.answers.overall_skin_severity).toBeNull());
-    expect(line()).toMatch(/to answer, about a minute\.$/);
+    expect(line()).toMatch(/^\d+ to answer, about .+\.$/);
   });
 });
 

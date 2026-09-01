@@ -7,10 +7,21 @@
 
   Two things live here, and they are answering different questions.
 
-  NSPrivacyAccessedAPITypes is about APIs, not data. WidgetBridgePlugin.swift
-  and the widget both read and write UserDefaults in the shared App Group to
-  hand today's snapshot to the lock screen. That is category CA92.1 — the app's
-  own container, its own group, nothing about the device or another app.
+  NSPrivacyAccessedAPITypes is about APIs, not data. Two categories are in it.
+
+  UserDefaults — WidgetBridgePlugin.swift and the widget both read and write it
+  in the shared App Group to hand today's snapshot to the lock screen. That is
+  category CA92.1: the app's own container, its own group, nothing about the
+  device or about another app.
+
+  File timestamps — the Filesystem plugin writes an export, a backup or a
+  report into this app's own cache so the share sheet has something to hand
+  over (see src/lib/saveFile.ts), and reading a file back reads its dates. That
+  is C617.1: files inside the app container, written by this app, a moment
+  earlier, for the person who asked for them. Capacitor's Filesystem pod ships
+  no manifest of its own, so the declaration has to live here — an upload that
+  touches a required-reason API with nothing declaring it comes back as
+  ITMS-91053 before a human reviewer sees the build.
 
   NSPrivacyCollectedDataTypes is about data leaving the device, and is
   deliberately declared for the app *with every optional switch turned on*,
@@ -69,6 +80,14 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
 			</array>
 		</dict>
 	</array>

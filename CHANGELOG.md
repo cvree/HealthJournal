@@ -1,5 +1,150 @@
 # Changelog
 
+## 1.36.0
+
+The buttons that give you your data back now work on the phone you installed this on.
+
+### Three findings from a browser walk, and two of them were the same bug
+
+The app was measured at 390px and 320px against a production build, and read in
+the places a browser cannot reach. Two of what came back were the same failure
+wearing different clothes: **the web has exactly one way to hand somebody a
+file and one way to wake a phone, this app used both, and inside a WKWebView
+neither of them exists.**
+
+That is where the packaged iOS build runs.
+
+### The file
+
+Every file this app makes for somebody to keep — the CSV, the spreadsheet, the
+JSON backup, the reminder calendar, the report image, and the raw file the
+recovery screen offers when a journal will not open — left through one line:
+
+    const a = document.createElement("a"); a.download = name; a.click();
+
+Correct on the web, and the entire mechanism behind the claim this app makes
+hardest: *your record is yours, and you can take it anywhere.* In a WKWebView
+it does nothing. No file, no share sheet, no error. The button is simply dead,
+silently, and the one promise the app cannot afford to break is the one it was
+breaking without saying so.
+
+`src/lib/saveFile.ts` is the whole fix. On the web it is the same anchor,
+unchanged — the tests pin that it is still an anchor, still carries the
+filename, still leaves nothing behind in the document. On a phone the file is
+written to the app's own cache and handed to the system share sheet, where
+*Save to Files*, *Mail* and *AirDrop* already live. The person chooses where it
+goes, which is the same bargain a download folder is, and nothing leaves the
+device unless they send it.
+
+Cache rather than Documents, deliberately: this is a handoff, not a library the
+app keeps. A second copy of a full photo backup sitting in Bellwether's own
+folder is storage nobody asked for, on the device of somebody who may be
+carrying two years of photographs.
+
+Three things fell out of doing it properly. A share sheet somebody cancelled
+resolves as success — *couldn't save your export* after a deliberate tap on
+Cancel is the app calling somebody wrong. The durability card only marks a
+journal backed up if the backup actually left, because claiming one that did
+not is the single lie a durability screen may not tell. And the sentence under
+the button now says *Shared* on a phone and *Downloaded* in a browser, because
+"downloaded" is a word from the other platform.
+
+### The reminder
+
+`lib/reminders.ts` was honest about the web's limits and built two layers on
+them: a notification the page fires while it is alive, and a downloadable
+`.ics` the phone's own calendar keeps forever. Both assume a browser. Inside
+the packaged app there is no `Notification` global at all, so
+`notificationPermission()` returns `"unsupported"` and layer one is not
+unreliable but absent — and layer two is a file, which is the paragraph above.
+
+So the shipped app had no working reminder for the one behaviour that decides
+whether a journal survives: coming back tomorrow.
+
+A packaged app is the one place this is easy *and* costs nothing. A local
+notification is scheduled on the device by the operating system — no push
+service, no server, no token, no identifier, nothing to send. That is the exact
+constraint `lib/reminders.ts` was written around, satisfied rather than worked
+around. `src/lib/nativeReminders.ts` mirrors the reminder list onto the phone
+and stores nothing of its own: every sync cancels what is pending and schedules
+what the profile says, so a reminder somebody deleted cannot outlive it as a
+ghost that fires at the old time forever. Erasing the journal takes them off
+the phone too — a deleted journal that still taps you on the shoulder every
+evening is the worst version of a notification there is.
+
+Settings leads with it on a phone and demotes the calendar file to *or put them
+in your calendar instead*. In a browser that block does not exist and nothing
+about the screen has changed.
+
+**Also missing, and found by running the sync:** `@capacitor/app` and
+`@capacitor/haptics` were never in the Podfile either. The widget bridge and
+the Taptic Engine have both been shipping as web fallbacks. All five plugins
+are declared now, and the app's privacy manifest gains
+`NSPrivacyAccessedAPICategoryFileTimestamp` (C617.1) — Capacitor's Filesystem
+pod ships no manifest of its own, and an upload that touches a required-reason
+API with nothing declaring it comes back as ITMS-91053 before a human sees it.
+
+### And Today stopped contradicting itself
+
+Two numbers, one screen, four inches apart. The corner of the pulse card read
+`0 of 27` — the questions in the template, via `surveyProgress`. The check-in
+card below it read `33 to answer` — the questions *plus* the doses scheduled
+for today *plus* the rituals today asked for, via `checkinStatus`. On any setup
+with a routine on it the two are guaranteed to disagree, and the demo journal
+shipped disagreeing by six.
+
+`lib/checkin.ts` exists to stop Today and History disagreeing about somebody's
+day, and says so in its own header: *a person who reads "7 of 11" on one screen
+and "8 of 12" on the other has learned that neither is worth reading.* It was
+being contradicted inside a single card.
+
+Both read the same module now. One consequence is stated rather than hidden: on
+a journal with a routine, answering every question here leaves the bar short of
+its end, because the day genuinely is not done — and the card immediately below
+names what is left and opens it. The alternative was a bar that filled while
+the day was not finished.
+
+**And the estimate is arithmetic now.** `checkinLine` said *about a minute*
+over any number at all. On the setup this app actually ships that read **33 to
+answer, about a minute** — one and four fifths of a second per item, doses
+included. It is a small clause and it is the first promise the card makes to
+somebody deciding whether this is a two-minute habit or a chore.
+`checkinEstimate` uses the Quick Log's own arithmetic, which was sitting a few
+hundred lines away the whole time: four seconds an item, rounded to the nearest
+five, printed in whole minutes and in words. The same card now reads **33 to
+answer, about two minutes**, and it over-estimates slightly at the short end on
+purpose — a minute that turns out to be forty seconds is a pleasant surprise,
+and the reverse is what gets an app deleted.
+
+### The parts
+
+- `src/lib/saveFile.ts` — `saveFile(blob, name)`, `savedVerb(where)`. Resolves,
+  never throws: every caller is a button with a sentence under it, and a
+  rejected promise in an export handler is a button that goes quiet. Seven call
+  sites, including `RecoveryScreen`, where a dead button would mean offering
+  somebody a rescue that is not one immediately before offering to wipe what is
+  left.
+- `src/lib/nativeReminders.ts` — `nativeRemindersSupported`, `nativeReminderState`,
+  `requestNativeReminders`, `plannedNotifications` (pure, so the schedule is
+  testable without a phone), `syncNativeReminders`, `clearNativeReminders`.
+  Notification ids are a djb2 hash of the reminder's own id, kept under 2^31 for
+  the Android side's Java int — a counter would stack a second copy of the same
+  reminder on every sync.
+- `src/lib/checkin.ts` — `checkinEstimate(items)`.
+- `src/App.tsx` — the pulse card's count and bar read `checkinStatus`;
+  `surveyProgress` is no longer imported.
+- Tests: **1941 across 76 suites**. New `tests/nativeHandover.test.ts` (13) pins
+  that the web path is unchanged, that nothing native is touched in a browser,
+  and that the phone's schedule is derived from the journal and only from it.
+  `tests/checkin.test.ts` gains 5 for the estimate, `tests/pulseUi.test.tsx` 2
+  for one denominator.
+
+**Not verified on a device.** The web half is measured and pinned; the native
+half is written against the plugin contracts and cannot be exercised from here.
+Run `npx cap sync ios` on a Mac (CocoaPods is not installed in this
+environment, so `pod install` was skipped) and check the export, the backup and
+a scheduled reminder on hardware before trusting any of it.
+
 ## 1.35.0
 
 The day closes, and you can see the stack of days behind it.

@@ -7,8 +7,8 @@
    would be the app deciding how much somebody ought to write down. */
 import { describe, it, expect } from "vitest";
 import {
-  PIP_LIMIT, RECORD_STRIP_DAYS, checkinLine, checkinPips, checkinStatus, checkinVerb,
-  recordStrip, recordStripLine,
+  PIP_LIMIT, RECORD_STRIP_DAYS, checkinEstimate, checkinLine, checkinPips, checkinStatus,
+  checkinVerb, recordStrip, recordStripLine,
   type CheckinSource,
 } from "../src/lib/checkin";
 import type { PulseField } from "../src/lib/pulse";
@@ -361,5 +361,57 @@ describe("the record behind today", () => {
     expect(line).not.toMatch(/missed|streak|well done|great|keep it up/i);
     expect(recordStripLine(recordStrip(new Set<string>(), "2026-09-01")))
       .toBe("0 of the last 14 days are on the record.");
+  });
+});
+
+/* How long the card says today will take.
+
+   It used to say "about a minute" over any number at all, which on the setup
+   this app ships — a pack, a routine and a couple of rituals — read as
+   "33 to answer, about a minute". The estimate is the first promise the card
+   makes to somebody deciding whether this is a habit or a chore, and a
+   decorative one is worse than none. */
+describe("how long it says it will take", () => {
+  it("stays a minute while a minute is true", () => {
+    expect(checkinEstimate(1)).toBe("about a minute");
+    expect(checkinEstimate(10)).toBe("about a minute");
+    /* 23 items × 4s, rounded to the nearest five, is 90 seconds exactly — the
+       last number this line may still call a minute. */
+    expect(checkinEstimate(23)).toBe("about a minute");
+  });
+
+  it("grows once a minute stops being true", () => {
+    expect(checkinEstimate(24)).toBe("about two minutes");
+    expect(checkinEstimate(33)).toBe("about two minutes");
+    expect(checkinEstimate(45)).toBe("about three minutes");
+  });
+
+  /* Words, not numerals: this is the only sentence on the card, and "about 2
+     minutes" is a readout. Past ten it gives up and prints the number, which is
+     a journal nobody has. */
+  it("spells the small numbers", () => {
+    expect(checkinEstimate(60)).toBe("about four minutes");
+    expect(checkinEstimate(24)).not.toMatch(/\d/);
+  });
+
+  it("never promises less than it will take, and never returns nothing", () => {
+    expect(checkinEstimate(0)).toBe("about a minute");
+    expect(checkinEstimate(-3)).toBe("about a minute");
+    /* Monotonic: more to answer can never read as less time. */
+    let last = 0;
+    for (let n = 1; n <= 200; n++) {
+      const mins = /a minute/.test(checkinEstimate(n))
+        ? 1
+        : Number(checkinEstimate(n).replace(/\D+/g, "")) ||
+          ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+            .indexOf(checkinEstimate(n).split(" ")[1]);
+      expect(mins).toBeGreaterThanOrEqual(last);
+      last = mins;
+    }
+  });
+
+  it("is the sentence the untouched card actually prints", () => {
+    const line = checkinLine(checkinStatus(src({ routine: { done: 0, skipped: 0, total: 30 } })));
+    expect(line).toBe("35 to answer, about two minutes.");
   });
 });

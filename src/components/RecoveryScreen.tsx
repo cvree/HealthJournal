@@ -4,6 +4,7 @@
 
 import React from "react";
 import { C } from "../lib/theme";
+import { saveFile } from "../lib/saveFile";
 
 export default function RecoveryScreen({
   raw,
@@ -14,16 +15,16 @@ export default function RecoveryScreen({
   detail?: string;
   onStartFresh: () => void;
 }) {
+  /* Through lib/saveFile, like every other file this app hands over. It matters
+     more here than anywhere: this button is the last copy of a journal that
+     will not open, and inside the packaged app a bare anchor does nothing at
+     all — which would mean offering somebody a rescue that silently is not
+     one, immediately before offering to wipe what is left. */
   const downloadRaw = () => {
-    const blob = new Blob([raw], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `bellwether-recovered-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    void saveFile(
+      new Blob([raw], { type: "application/json" }),
+      `bellwether-recovered-${new Date().toISOString().slice(0, 10)}.json`
+    );
   };
 
   const startFresh = () => {
