@@ -111,7 +111,13 @@ export default function AiConnect({ Icon, copy, onConnected, onDismiss }: Props)
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => () => { alive.current = false; }, []);
+  /* Re-armed on every run of the effect, not only initialised at the ref.
+     React's StrictMode mounts a component, tears the effect down and runs it
+     again — so a cleanup that is the *only* thing writing this flag leaves it
+     false for the rest of the component's life, and every callback guarded by
+     it becomes a no-op. In development that is not a subtle bug: it is what
+     made pressing the first screen's one button do nothing at all. */
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   /* A key already on this device is the whole job already done. Nobody should
      be walked to Google for a second copy of something they have. */

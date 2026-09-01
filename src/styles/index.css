@@ -6226,6 +6226,28 @@ button.fhj-section:disabled {
   border-color: var(--fhj-line-strong, #464a55);
 }
 
+/* And the third answer: no to every card that is left.
+
+   Quieter than the no above it and set as a link rather than a slab, because
+   it is the one answer on this screen that is *about the deck* rather than
+   about the card — and because somebody reading it on card one should not be
+   invited to leave before they have seen what they are leaving. It earns its
+   weight around card three, which is where people start reading it. */
+.fhj-fr-pw-none {
+  width: 100%;
+  min-height: var(--fhj-tap);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fhj-subtle, #9a9ca6);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--fhj-quick) ease;
+}
+@media (hover: hover) {
+  .fhj-fr-pw-none:hover { color: var(--fhj-ink, #ecebe7); }
+}
+
 /* Back, and the way out, side by side under the primary. Leaving a guided
    pass has to cost one tap from anywhere in it — walking back out the way you
    came is the thing that makes a wizard feel like a trap. */
@@ -6246,6 +6268,8 @@ button.fhj-section:disabled {
   flex: 0 0 auto;
   padding: 0 1rem;
 }
+
+
 
 /* ============================================================
    First run, part three: the question they came with, and the plan

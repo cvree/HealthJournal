@@ -58,8 +58,14 @@ const tap = (re: RegExp) =>
   fireEvent.click(screen.getAllByRole("button").find((b) => re.test(b.textContent || ""))!);
 /** Buttons whose trimmed label matches exactly — "Continue" must not also find
     "Continue to photos". */
-const exact = (label: string) =>
-  screen.getAllByRole("button").find((b) => (b.textContent || "").trim() === label);
+/* A string matches the whole label; a pattern is tested against it, which is
+   how a label carrying a count ("None of the 8") is found without the test
+   having to know the count. */
+const exact = (label: string | RegExp) =>
+  screen.getAllByRole("button").find((b) => {
+    const t = (b.textContent || "").trim();
+    return typeof label === "string" ? t === label : label.test(t);
+  });
 
 /** Who is going through the flow. Undefined means they refused both, which is
     the path most of these tests take — everything downstream has to work for
@@ -1052,6 +1058,109 @@ describe("choosing the photographs, one subject at a time", () => {
       const db = saved();
       expect(db.profile.customQuestions.some((q: any) => q.type === "photo")).toBe(false);
       expect(db.profile.quickAdd).not.toContain("photo");
+    }, { timeout: 10000 });
+  });
+});
+
+describe("none of the rest", () => {
+  /* The guided pass is a card at a time on purpose — the row of buttons under
+     somebody's thumb for a year should not be an arrangement they never looked
+     at. That holds for the first card and stops holding around the fourth.
+
+     Measured in a browser at 390px, the shortest possible route through a new
+     journal was twenty-seven screens, and thirteen of them were these two
+     decks being told no. So each deck carries the control the Questions act
+     has always had. It is an answer, not a skip: every remaining card is
+     answered no, and every yes already given survives. */
+
+  it("is offered while the deck is long, and not on its last card", async () => {
+    await mountFresh();
+    await toPhotos();
+    expect(exact(/^None of the \d+$/)).toBeTruthy();
+    // Walk to the final subject: with one card to go it would be "Not this
+    // one" under a longer name, so it is not drawn.
+    for (let n = 0; n < 40; n++) {
+      if (!exact(/^None of the \d+$/)) break;
+      fireEvent.click(exact("Not this one")!);
+    }
+    expect(exact("Not this one")).toBeTruthy();   // still on a subject card
+    expect(exact(/^None of the \d+$/)).toBeFalsy();
+  });
+
+  it("counts the cards that are left, not the deck", async () => {
+    await mountFresh();
+    await toPhotos();
+    const read = () => Number(/None of the (\d+)/.exec(exact(/^None of the \d+$/)!.textContent!)![1]);
+    const first = read();
+    expect(first).toBeGreaterThan(2);
+    fireEvent.click(exact("Not this one")!);
+    expect(read()).toBe(first - 1);
+  });
+
+  it("answers no to every photograph left and leaves the act", async () => {
+    await mountFresh();
+    await toPhotos();
+    fireEvent.click(exact(/^None of the \d+$/)!);
+    await waitFor(() => expect(stepText()).toMatch(/Step 5 of 6/i));
+    // and no camera was assembled out of it
+    expect(document.querySelector(".fhj-fr-preview-row")!.textContent).not.toMatch(/Photo/);
+  });
+
+  it("keeps a yes already given, and still shows the screen that yes owes", async () => {
+    await mountFresh();
+    await toPhotos();
+    // The deck opens on the body map for somebody tracking skin.
+    expect(cardTitle()).toMatch(/body areas/i);
+    fireEvent.click(exact("Yes — I'll photograph this")!);
+    fireEvent.click(exact(/^None of the \d+$/)!);
+    // Not out of the act: saying no to the rest may not stand somebody one
+    // card short of the map they just asked for.
+    await screen.findByText(/Which areas\?/i);
+    expect(stepText()).toMatch(/Step 4 of 6/i);
+  });
+
+  it("stops at the cadence card on the extras, because that is not an extra", async () => {
+    await mountFresh();
+    await toExtras();
+    expect(exact(/^None of the \d+$/)).toBeTruthy();
+    fireEvent.click(exact(/^None of the \d+$/)!);
+    // Still act five — how often it asks and whether it nudges are the two
+    // questions nobody should be able to answer by accident.
+    await screen.findByText(/How often should it ask\?/i);
+    expect(stepText()).toMatch(/Step 5 of 6/i);
+  });
+
+  it("is reversible — Back returns to the card it was pressed on", async () => {
+    await mountFresh();
+    await toPhotos();
+    const where = cardTitle();
+    fireEvent.click(exact(/^None of the \d+$/)!);
+    await waitFor(() => expect(stepText()).toMatch(/Step 5 of 6/i));
+    fireEvent.click(exact("Back")!);
+    await waitFor(() => expect(cardTitle()).toBe(where));
+  });
+
+  it("reaches a finished journal with no camera and no extra tiles", async () => {
+    await mountFresh();
+    await toPhotos();
+    fireEvent.click(exact(/^None of the \d+$/)!);
+    await waitFor(() => expect(stepText()).toMatch(/Step 5 of 6/i));
+    fireEvent.click(exact(/^None of the \d+$/)!);
+    await screen.findByText(/How often should it ask\?/i);
+    fireEvent.click(exact("Continue")!);            // cadence → nudge
+    fireEvent.click(exact("Continue")!);            // nudge → the first entry
+    await screen.findByText(/How is your skin today\?/i);
+    fireEvent.click(screen.getByRole("button", { name: /Overall skin severity 4 out of 10/ }));
+    tap(/Save my first entry/);
+    await screen.findByText("Your journal has begun.");
+    tap(/Open my journal/);
+    await waitFor(() => {
+      const db = saved();
+      expect(db.profile.customQuestions.some((q: any) => q.type === "photo")).toBe(false);
+      expect(db.profile.quickAdd).not.toContain("photo");
+      expect(db.profile.quickAdd).not.toContain("food");
+      // …and the journal still works: the daily number is on the record.
+      expect(db.entries.find((e: any) => e.date === today()).answers.overall_skin_severity).toBe(4);
     }, { timeout: 10000 });
   });
 });

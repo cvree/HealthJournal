@@ -17225,7 +17225,13 @@ function DailyPulse({
   const stageRef = useRef(null);
   const landRef = useRef(null);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  /* Re-armed on every run of the effect, not only initialised at the ref.
+     React's StrictMode mounts a component, tears the effect down and runs it
+     again — so a cleanup that is the *only* thing writing this flag leaves it
+     false for the rest of the component's life, and every callback guarded by
+     it becomes a no-op. In development that is not a subtle bug: it is what
+     made pressing the first screen's one button do nothing at all. */
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const queue = useMemo(() => askQueue(pulseCtx, skipped), [pulseCtx, skipped]);
   /* The state of the whole check-in, for the card at the foot of this one.

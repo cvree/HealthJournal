@@ -93,8 +93,8 @@ your day, and the ones whose job is already done stay quiet. On the phone app yo
 them itself — they arrive with the app closed, and no server, account or identifier is involved in
 making that happen. In a browser they come out as one calendar file that does the same job.
 
-**The first two minutes.** First run is nine screens, not a wizard, and there is one path through
-it. A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a
+**The first two minutes.** First run is a doorway and six acts, not a wizard, and there is one path
+through it. A full-screen hero — *Your health, remembered.* — over a journal that is already alive: a
 rating, a photograph fourteen days apart, a note about a bad night, a dose ticked off, a flare that
 ended, three months of trend with the flare shaded behind it, with the five checkable promises
 about the build one tap below it. Then a doorway, and six numbered acts.
@@ -138,6 +138,15 @@ everything else a day holds are the three screens with more on the table than an
 glance, and all three are now dealt out **one card at a time**. There is no list beside them and no
 preset to arrive on — both were the same mistake in two shapes, a journal assembled by a default
 rather than by the person who has to answer it at 7am on the morning they feel worst.
+
+**And any of them can be answered in one tap once you know it isn't for you.** The argument for a
+card at a time holds on the first card and stops holding on the fourth: somebody who has said *not
+this one* three times running is no longer deciding, they are dismissing, one screen at a time. So
+under the Yes and the No there is a third answer — **None of the 7** — which says no to every card
+that is left and names how many that is. It is an answer, not an escape hatch: every remaining
+subject is recorded as a no, every yes already given survives, Back returns you to the card you
+pressed it on, and a yes that owes a screen (the body map, the photo angles) still gets it. Taking
+it on both decks is the difference between eighteen screens and five.
 
 **What should it ask you?** One group of questions per screen: how big the group is and what
 answering it feels like (*five questions here — three rated 1–10, two yes / no*), **the control
