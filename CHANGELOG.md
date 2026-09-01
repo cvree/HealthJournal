@@ -1,5 +1,125 @@
 # Changelog
 
+## 1.35.0
+
+Thirteen screens of saying no, answered once — and the front door works in
+development again.
+
+### Twenty-seven screens to a journal
+
+Driven in a real browser at 390px, taking the shortest route a person can take
+— refusing the name, choosing *nothing in particular*, pressing Next on every
+question group without reading it — the road from the hero to a first entry was
+**twenty-seven screens**. Thirteen of them were the same screen: a subject or an
+extra, held up on its own, being told no.
+
+Eight photo subjects. Five extras. Each one a full screen with a heading, an
+argument, an illustration and a Yes beside a No.
+
+That the deck is dealt a card at a time is deliberate, and the reason is good:
+the row of buttons under somebody's thumb for the next year should not be an
+arrangement the app suggested and they never looked at. The reason holds on the
+first card. It stops holding around the fourth. A person who has said *not this
+one* three times running is not deciding any more — they are dismissing, one
+screen at a time, and the deck is eight cards long.
+
+The people this app is for are managing eczema, IBS, POTS, migraine, long
+COVID. Fatigue and brain fog are symptoms of the thing they came to track.
+Thirteen consecutive screens of a question they have already answered in their
+head is not a considered setup; it is a toll.
+
+### None of the 7
+
+So each deck now carries the answer the Questions act has had all along. Under
+the Yes and the No, quieter than both:
+
+> **None of the 7**
+
+It is an answer, not a skip, and the difference is the whole design:
+
+- **Every remaining card is recorded as a no.** Nothing is left un-decided for a
+  default to fill in later — which is the exact thing the walk exists to
+  prevent.
+- **Every yes already given survives.** Say yes to progress shots and no to the
+  rest, and you have progress shots.
+- **A yes that still owes a screen gets it.** Saying yes to the body map and
+  then declining the rest lands you on the body map, not past it. Stranding
+  somebody one card short of the thing they just asked for was the one failure
+  a guided pass could produce, and it is not reintroduced by the way out of one.
+- **On the extras it stops at the cadence card.** How often the journal asks and
+  whether it nudges are not things a day *holds*; they are the two questions
+  nobody should be able to answer by accident.
+- **Back returns to the card you pressed it on.** Nothing here is one-way.
+
+It appears only while it is a different offer from the button above it — with
+one card to go, "none of the rest" is "Not this one" under a longer name — and
+it names the number, because somebody who cannot see how long the deck is
+cannot tell whether declining it is worth a tap.
+
+It is set as a line of text rather than a slab, under the two answers rather
+than down beside Back, for two reasons. It belongs where the other answers are,
+because it is one of them. And it should not invite anybody to leave on card one,
+before they have seen what they would be leaving. It earns its weight around
+card three, which is where people start reading it.
+
+**Twenty-seven screens to sixteen.** For anybody who wants to walk the decks,
+nothing has changed at all.
+
+### The button on the first screen did nothing
+
+In development only, and for eleven releases.
+
+`FirstRun` guarded its one state change behind an `alive` ref written like this:
+
+```js
+const alive = useRef(true);
+useEffect(() => () => { alive.current = false; }, []);
+```
+
+React's StrictMode mounts a component, tears its effects down, and runs them
+again. That cleanup is the only thing writing the flag — so on the second mount
+it had already been set to false and nothing set it back. `alive.current` was
+false for the rest of the component's life, and every callback guarded by it was
+a no-op.
+
+The callback in question is the one that ends the hero: the headline slides back
+down, the collage lifts away, and *then* the act changes. The animation ran. The
+act never changed. Pressing **Start my journal** in `npm run dev` left a black
+screen with a faint headline on it and no way forward.
+
+Production was always fine — StrictMode's double-invoke is development-only —
+which is exactly why it survived: the built app worked, the tests ran under
+reduced motion where the callback fires on the same tick, and the one place it
+broke was the one place nobody runs a test. The cost was quiet and real: the
+front door of the app could not be opened by anybody working on it.
+
+Two other components carried the same pattern — `AiConnect`, and the Daily
+Pulse's question queue in `App.tsx`, where it silently stopped the queue
+advancing after an answer. All three re-arm the flag in the effect body now,
+which is the form that survives a remount.
+
+### Under it
+
+- **`declineRestOfPhotos` / `declineRestOfExtras`** in `src/components/FirstRun.tsx`:
+  both compute the kept set synchronously rather than reading a memo that has
+  not seen the new state, and both decide where to land from that set — the
+  first owed detail card, or out of the deck.
+- **`.fhj-fr-pw-none`** — a third answer under `.fhj-fr-pw-actions`. It is not a
+  third control in `.fhj-fr-foot-row`: that row is built for two, and a third
+  ghost clips its own label at 320px.
+- **`alive` re-armed** in `FirstRun`, `AiConnect` and the Daily Pulse.
+- **`tests/firstRun.test.tsx` 68 → 75.** Offered while the deck is long and not
+  on its last card; the count is the cards left, not the deck; it leaves the act
+  and assembles no camera; a yes survives and still gets its detail screen; the
+  extras stop at cadence; Back is honoured; and the whole thing reaches a
+  finished journal with the daily number on the record. `exact()` takes a
+  pattern as well as a string now, so a label carrying a count can be found
+  without the test knowing the count.
+- **One flaky test made honest.** `tests/quickAddTiles.test.tsx` waited on the
+  journal *write* and then asserted the *receipt* on the same tick. It passed on
+  a quiet machine and failed once in a full parallel run; it is a `findBy` now.
+- **Tests: 1915 across 74 suites** (was 1908/74).
+
 ## 1.34.0
 
 The number you tap every morning is finally bigger than your thumb.

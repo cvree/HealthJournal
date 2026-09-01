@@ -137,7 +137,12 @@ describe("a POTS journal", () => {
       expect(saved().entries.find((e: any) => e.date === today())?.answers.water_intake).toBe(1));
     // No sheet opened — the tap was the log — and the receipt carries the undo.
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText(/Water: 1 cup today/)).toBeTruthy();
+    /* `findBy` rather than `getBy`: the `waitFor` above waits on the *write*,
+       and the receipt is a later render than the write. Asserting it on the
+       same tick passed on a quiet machine and failed on a loaded one, which is
+       the one failure mode this repo has already paid for once — see
+       tests/setupTestEnv.ts. */
+    expect(await screen.findByText(/Water: 1 cup today/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Undo/ }));
     await waitFor(() =>
       expect(saved().entries.find((e: any) => e.date === today())?.answers.water_intake).toBeFalsy());

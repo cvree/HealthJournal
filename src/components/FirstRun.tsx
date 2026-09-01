@@ -861,7 +861,13 @@ export default function FirstRun({
      the sample journal. Setting state on a torn-down flow is a warning nobody
      can act on. */
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  /* Re-armed on every run of the effect, not only initialised at the ref.
+     React's StrictMode mounts a component, tears the effect down and runs it
+     again — so a cleanup that is the *only* thing writing this flag leaves it
+     false for the rest of the component's life, and every callback guarded by
+     it becomes a no-op. In development that is not a subtle bug: it is what
+     made pressing the first screen's one button do nothing at all. */
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const chosen = useMemo(() => packs.filter((p) => mods.includes(p.key)), [packs, mods]);
 
@@ -1273,6 +1279,41 @@ export default function FirstRun({
     if (yes) offerAi(id);
   };
 
+  /* ---------- "none of the rest" ----------
+
+     The guided pass is a card at a time on purpose: the row of buttons under
+     somebody's thumb for the next year should not be an arrangement the app
+     suggested and they never looked at. That argument is sound for the first
+     card and it stops being sound around the fourth. Somebody who has said
+     "not this one" three running is no longer deciding — they are dismissing,
+     one screen at a time, and the deck is eight cards long.
+
+     Measured on the shortest possible route through a new journal: twenty-seven
+     screens, thirteen of which are these two decks answering no. So the decks
+     get the control the Questions act has had all along. "None of these" is
+     already this app's word for *I have seen the shape of these and I want
+     none of them*; a deck's version of it is simply "and none of the rest".
+
+     It is not a skip. Every remaining card is answered — no — and every yes
+     already given survives, which is the difference between this and walking
+     out of the act. */
+  const declineRestOfPhotos = () => {
+    feedback("skip");
+    const dropped = new Set(walkSubjects.slice(photoAt).map((sub) => sub.id));
+    const kept = new Set([...chosenSubjects].filter((id) => !dropped.has(id)));
+    setPhotoAnswered(new Set(walkSubjects.map((sub) => sub.id)));
+    setPhotoPicked(kept);
+    /* A yes already given to the body map or to progress shots still owes the
+       screen that makes it mean anything. Declining the rest of the deck may
+       not strand somebody one card short of the map they asked for — so this
+       lands on the first detail card when one is owed, and leaves the act only
+       when none is. Computed from `kept` rather than from the memo, which has
+       not seen this state yet. */
+    const owed = (kept.has("areas") && !!BodyMap ? 1 : 0) + (kept.has("progress") ? 1 : 0);
+    if (owed) setPhotoWalk(walkSubjects.length);
+    else go("extras");
+  };
+
   const toggleAngle = (a: string) => {
     feedback("select");
     setAngles((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
@@ -1323,6 +1364,18 @@ export default function FirstRun({
        over a flow that has already accepted the yes. Closing it lands on the
        next card either way. */
     if (yes) offerAi(id);
+  };
+
+  /** The same offer, on the other deck — and it stops at the cadence card
+      rather than leaving the act, because how often the journal asks and
+      whether it nudges are not things a day *holds*. They are the two
+      questions nobody should be able to answer by accident. */
+  const declineRestOfExtras = () => {
+    feedback("skip");
+    const dropped = new Set(walkExtras.slice(extraAt).map((e) => e.id));
+    setExtraAnswered(new Set(walkExtras.map((e) => e.id)));
+    setPicked(new Set([...chosenExtras].filter((id) => !dropped.has(id))));
+    setExtraWalk(walkExtras.length);
   };
 
   /* The offer itself, drawn once and dropped into the two acts that can raise
@@ -2165,6 +2218,22 @@ export default function FirstRun({
                   onClick={() => answerSubject(sub.id, false, at)}>
                   Not this one
                 </button>
+                {/* Under the two answers, not down in the foot beside Back:
+                    it *is* an answer — it says no to every card that is left —
+                    and it belongs where somebody is already looking when they
+                    decide. The foot is built for two controls and a third one
+                    clips its own label at 320px.
+
+                    Only where it is a different offer from the button above
+                    it: with one card to go, "none of the rest" is "Not this
+                    one" under a longer name. And it says the number, because
+                    somebody who cannot see how long the deck is cannot tell
+                    whether declining it is worth a tap. */}
+                {walkSubjects.length - at >= 2 && (
+                  <button type="button" className="fhj-fr-pw-none" onClick={declineRestOfPhotos}>
+                    None of the {walkSubjects.length - at}
+                  </button>
+                )}
               </div>
             </>
           ) : null}
@@ -2305,6 +2374,11 @@ export default function FirstRun({
                   onClick={() => answerExtra(e.id, false, at)}>
                   Not this one
                 </button>
+                {walkExtras.length - at >= 2 && (
+                  <button type="button" className="fhj-fr-pw-none" onClick={declineRestOfExtras}>
+                    None of the {walkExtras.length - at}
+                  </button>
+                )}
               </div>
             </>
           ) : stage === "cadence" ? (
